@@ -1,5 +1,19 @@
 # Cross-window task drag — Phase 0 report
 
+> **Superseded in part, 2026-09-09.** The blocking finding below — "there is
+> only one window" — is no longer true. `src-tauri/src/notes.rs` now ships the
+> multi-window work this report priced at 3–4 days: `NoteRegistry` answers both
+> questions §0.1 said nothing could, and `open_note` / `restore_session` /
+> `register_note_list` are in place. Stage 0 is also done, not half-done:
+> `tasks_commands::move_task` performs the `toIndex` → `previous` translation
+> §0.4 called out as missing. Stage 1 (in-list reorder) landed in f601190.
+>
+> Still accurate and still worth heeding: §0.2 on the JS side having no shared
+> store (so `dragSession` must move into Rust for Stage 3), §0.4 on every reorder
+> being a fallible network round-trip with no offline queue, and §0.5 on Smart App
+> Control blocking unsigned build scripts. The recommendation to drop the 600ms
+> raise-on-hover stands.
+
 Investigation requested by the implementation brief, 2026-09-08. No feature code
 written, per the brief's working agreement.
 
