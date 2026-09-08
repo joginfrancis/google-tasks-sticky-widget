@@ -1,0 +1,257 @@
+.task-item {
+  position: relative;
+  list-style: none;
+  border-radius: var(--radius-row);
+}
+
+.task-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 6px 4px 6px 8px;
+  border-radius: var(--radius-row);
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.task-item:hover .task-row,
+.task-item.is-menu-open .task-row {
+  background: var(--surface-hover);
+}
+
+.task-item.is-subtask .task-row {
+  padding-left: 30px;
+}
+
+/* Checkbox ---------------------------------------------------------------- */
+
+.checkbox {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  padding: 0;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-on-accent);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.checkbox:hover {
+  border-color: var(--accent);
+}
+
+.checkbox svg {
+  width: 12px;
+  height: 12px;
+}
+
+.task-item.is-done .checkbox {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.task-item.is-subtask .checkbox {
+  width: 14px;
+  height: 14px;
+}
+
+/* Content ----------------------------------------------------------------- */
+
+.task-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.task-title {
+  line-height: 1.35;
+  /* Long titles wrap rather than truncate — a task you can't read is useless,
+     and vertical space is the cheaper resource here. */
+  overflow-wrap: anywhere;
+  cursor: text;
+  transition: color var(--duration) var(--ease);
+}
+
+.task-item.is-subtask .task-title {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.task-item.is-done .task-title {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  cursor: default;
+}
+
+.task-notes {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  line-height: 1.35;
+  cursor: text;
+  /* Two lines is enough to recognise the note; the rest is one click away in
+     the editor, and an unbounded note would push every other task off-screen. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.task-item.is-done .task-notes {
+  cursor: default;
+}
+
+/* Inline editing ----------------------------------------------------------- */
+
+.task-edit {
+  width: 100%;
+  padding: 1px 4px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.35;
+  resize: none;
+  outline: none;
+  /* Grows with content instead of scrolling a two-line box. */
+  field-sizing: content;
+  min-height: 1.35em;
+}
+
+.task-edit.is-notes {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+/* The pause between ticking and the row relocating, so the eye can follow it. */
+.task-item.is-settling {
+  opacity: 0.55;
+  transition: opacity var(--duration) var(--ease);
+}
+
+/* Options trigger ---------------------------------------------------------- */
+
+.task-menu-trigger {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  /* Hidden until the row is hovered, like Google's — but it does exist, which
+     a right-click-only menu never signalled. */
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease);
+}
+
+.task-item:hover .task-menu-trigger,
+.task-item.is-menu-open .task-menu-trigger,
+.task-menu-trigger:focus-visible {
+  opacity: 1;
+}
+
+.task-menu-trigger:hover {
+  background: var(--surface-active);
+  color: var(--text);
+}
+
+/* Inline write failure ----------------------------------------------------- */
+
+.task-item.has-error .task-row {
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+.task-error {
+  margin: 0;
+  padding: 0 8px 6px 33px;
+  font-size: var(--font-size-sm);
+  color: var(--danger);
+}
+
+/* Context menu ------------------------------------------------------------ */
+
+.menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+
+.task-menu {
+  position: absolute;
+  right: 6px;
+  top: 100%;
+  z-index: 11;
+  min-width: 156px;
+  padding: 4px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+}
+
+.task-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.task-menu-item:hover {
+  background: var(--surface-hover);
+}
+
+.task-menu-item.is-danger {
+  color: var(--danger);
+}
+
+.task-menu-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+
+.task-menu-item.has-submenu {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.submenu-chevron {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+/* Expands in place rather than flying out sideways — a flyout would leave the
+   340px window on half the screen positions. */
+.task-submenu {
+  margin: 2px 0 2px 10px;
+  padding-left: 4px;
+  border-left: 1px solid var(--border);
+  max-height: 132px;
+  overflow-y: auto;
+}
+
+.task-menu-item.is-sub {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}

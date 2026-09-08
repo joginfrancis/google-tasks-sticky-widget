@@ -1,0 +1,210 @@
+.header-menu {
+  position: relative;
+  display: flex;
+}
+
+.dropdown {
+  position: absolute;
+  right: 0;
+  top: 26px;
+  z-index: 11;
+  min-width: 176px;
+  padding: 4px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.dropdown-item:hover {
+  background: var(--surface-hover);
+}
+
+.dropdown-item.is-sub {
+  padding-left: 8px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+/* Fixed-width slot keeps every label on the same left edge whether or not it
+   carries a tick — a ragged menu reads as broken. */
+.check-slot {
+  flex: 0 0 12px;
+  color: var(--accent);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.chevron {
+  margin-left: auto;
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.sublist {
+  margin: 2px 0 2px 12px;
+  padding-left: 4px;
+  border-left: 1px solid var(--border);
+}
+
+.dropdown-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+
+.dropdown-item.is-danger {
+  color: var(--danger);
+}
+
+.dropdown-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.dropdown-item:disabled:hover {
+  background: transparent;
+}
+
+/* List prompt -------------------------------------------------------------- */
+
+.list-prompt {
+  position: absolute;
+  right: 0;
+  top: 26px;
+  z-index: 12;
+  width: 232px;
+  padding: 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.26);
+}
+
+.list-prompt-title {
+  margin: 0 0 7px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.list-prompt-warning {
+  margin: 0 0 9px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.list-prompt-input {
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+}
+
+.list-prompt-input:focus {
+  border-color: var(--accent);
+}
+
+.list-prompt-error {
+  margin: 7px 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--danger);
+  line-height: 1.4;
+}
+
+.list-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.list-prompt-button {
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.list-prompt-button:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.list-prompt-button.is-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+
+.list-prompt-button.is-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.list-prompt-button.is-primary.is-danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #fff;
+}
+
+.list-prompt-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* A list row is two targets: switch this note to it, or open it in its own. */
+.sublist-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.sublist-row .dropdown-item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sublist-open {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease);
+}
+
+.sublist-row:hover .sublist-open,
+.sublist-open:focus-visible {
+  opacity: 1;
+}
+
+.sublist-open:hover {
+  background: var(--surface-active);
+  color: var(--text);
+}

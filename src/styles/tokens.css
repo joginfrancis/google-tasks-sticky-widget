@@ -1,0 +1,125 @@
+/*
+ * Design tokens.
+ *
+ * Light is defined on bare :root so nothing depends on a media query to have a
+ * colour. Dark is redefined twice — once under prefers-color-scheme guarded
+ * against an explicit light choice, once under [data-theme="dark"] — so the
+ * in-app toggle wins in both directions rather than only one.
+ */
+
+:root {
+  /* Surfaces */
+  --surface: #fbfbfd;
+  --surface-header: #f3f3f6;
+  --surface-raised: #ffffff;
+  --surface-hover: rgba(0, 0, 0, 0.045);
+  --surface-active: rgba(0, 0, 0, 0.075);
+
+  /* Lines */
+  --border: #e4e4e9;
+  --border-strong: #c9c9d1;
+
+  /* Text */
+  --text: #1a1a1f;
+  --text-secondary: #5c5c66;
+  --text-muted: #8a8a94;
+  --text-on-accent: #ffffff;
+
+  /* Accents */
+  --accent: #0f6cbd;
+  --accent-hover: #115ea3;
+  --danger: #c4314b;
+  --warning: #bc4b09;
+  --success: #0e7a4c;
+
+  /* Sync status dots */
+  --dot-synced: #5c9e78;
+  --dot-syncing: #0f6cbd;
+  --dot-offline: #b58a3c;
+  --dot-error: #c4314b;
+
+  /* Geometry */
+  --radius-window: 10px;
+  --radius-row: 6px;
+  --radius-control: 5px;
+
+  /* Type */
+  --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system,
+    sans-serif;
+  --font-size: 13px;
+  --font-size-sm: 11.5px;
+
+  /* Motion — restrained on purpose (SPEC §2.1) */
+  --ease: cubic-bezier(0.33, 0, 0.13, 1);
+  --duration-fast: 110ms;
+  --duration: 180ms;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface: #202024;
+    --surface-header: #292930;
+    --surface-raised: #2c2c33;
+    --surface-hover: rgba(255, 255, 255, 0.06);
+    --surface-active: rgba(255, 255, 255, 0.1);
+
+    --border: #35353d;
+    --border-strong: #4a4a55;
+
+    --text: #ededf0;
+    --text-secondary: #b4b4be;
+    --text-muted: #85858f;
+    --text-on-accent: #0a1521;
+
+    --accent: #62abec;
+    --accent-hover: #86c0f2;
+    --danger: #e87f8d;
+    --warning: #e0994f;
+    --success: #6bbf94;
+
+    --dot-synced: #6bbf94;
+    --dot-syncing: #62abec;
+    --dot-offline: #d7a95e;
+    --dot-error: #e87f8d;
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --surface: #202024;
+  --surface-header: #292930;
+  --surface-raised: #2c2c33;
+  --surface-hover: rgba(255, 255, 255, 0.06);
+  --surface-active: rgba(255, 255, 255, 0.1);
+
+  --border: #35353d;
+  --border-strong: #4a4a55;
+
+  --text: #ededf0;
+  --text-secondary: #b4b4be;
+  --text-muted: #85858f;
+  --text-on-accent: #0a1521;
+
+  --accent: #62abec;
+  --accent-hover: #86c0f2;
+  --danger: #e87f8d;
+  --warning: #e0994f;
+  --success: #6bbf94;
+
+  --dot-synced: #6bbf94;
+  --dot-syncing: #62abec;
+  --dot-offline: #d7a95e;
+  --dot-error: #e87f8d;
+
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration: 0ms;
+  }
+}

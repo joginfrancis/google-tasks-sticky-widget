@@ -1,0 +1,64 @@
+.add-trigger,
+.add-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  text-align: left;
+  border-radius: 0 0 var(--radius-window) var(--radius-window);
+}
+
+.add-trigger {
+  cursor: text;
+  transition: background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.add-trigger:hover {
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+}
+
+.add-plus {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-muted);
+}
+
+.add-field input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  outline: none;
+}
+
+.add-field input::placeholder {
+  color: var(--text-muted);
+}
+
+.add-field:focus-within .add-plus {
+  color: var(--accent);
+}
+
+.add-field input:disabled {
+  opacity: 0.6;
+}
+
+.add-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.add-error {
+  margin: 0;
+  padding: 6px 12px 0;
+  font-size: var(--font-size-sm);
+  color: var(--danger);
+  line-height: 1.4;
+}

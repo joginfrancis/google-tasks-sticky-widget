@@ -1,0 +1,57 @@
+[package]
+name = "sticky-widget"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "sticky_widget_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri-plugin-window-state = "2.4.1"
+tauri-plugin-log = "2.9.1"
+log = "0.4.34"
+sha2 = "0.11.0"
+base64 = "0.23.1"
+urlencoding = "2.1.3"
+constant_time_eq = "0.6.0"
+getrandom = "0.4.3"
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "json", "blocking", "form", "query"] }
+keyring = { version = "4.2.0", features = ["v1", "windows-native-keyring-store"], default-features = false }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+winreg = "0.56.0"
+tauri-plugin-global-shortcut = "2.3.2"
+tauri-plugin-single-instance = "2.4.4"
+
+
+[features]
+# Switches Tauri from dev mode (load the frontend from devUrl) to production
+# (serve it from the binary). `tauri build` passes this; a plain `cargo build`
+# does not, at any profile — the choice is this feature, not debug/release.
+#
+# We build with `cargo build --release --features custom-protocol` because the
+# full `tauri build` runs a bundler whose freshly-compiled binaries Smart App
+# Control blocks on this machine (BUILD_PLAN Phase 9).
+custom-protocol = ["tauri/custom-protocol"]
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

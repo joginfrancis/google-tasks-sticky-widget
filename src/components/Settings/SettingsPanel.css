@@ -1,0 +1,238 @@
+.settings {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--surface);
+}
+
+.settings-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 8px;
+  background: var(--surface-header);
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-title {
+  font-weight: 600;
+}
+
+.settings-body {
+  flex: 1;
+  padding: 4px 10px 12px;
+}
+
+.settings section {
+  padding: 8px 0;
+}
+
+.settings section + section {
+  border-top: 1px solid var(--border);
+}
+
+.settings h2 {
+  margin: 0 0 4px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 4px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-control);
+  text-align: left;
+  color: inherit;
+}
+
+.settings-row.is-clickable {
+  cursor: pointer;
+}
+
+.settings-row.is-clickable:hover {
+  background: var(--surface-hover);
+}
+
+.settings-label {
+  color: var(--text);
+}
+
+.settings-value {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* Switch ------------------------------------------------------------------ */
+
+.switch {
+  flex: 0 0 auto;
+  position: relative;
+  width: 34px;
+  height: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: transparent;
+  transition: background var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
+}
+
+.switch.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  transition: transform var(--duration) var(--ease),
+    background var(--duration) var(--ease);
+}
+
+.switch.is-on .switch-knob {
+  transform: translateX(16px);
+  background: var(--text-on-accent);
+}
+
+/* Controls ---------------------------------------------------------------- */
+
+.settings-select {
+  max-width: 150px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 6px;
+  padding: 6px 4px 0;
+}
+
+.settings-button {
+  flex: 1;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.settings-button:hover {
+  background: var(--surface-hover);
+}
+
+.settings-button.is-danger {
+  color: var(--danger);
+}
+
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  margin: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.segment {
+  flex: 1;
+  padding: 4px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.segment:hover {
+  background: var(--surface-hover);
+}
+
+.segment.is-active {
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+
+.settings-error {
+  margin: 8px 4px 0;
+  padding: 7px 9px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+.settings-hint {
+  margin: -2px 4px 4px;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.settings-note {
+  margin: 6px 4px 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+/* Hotkey recorder ---------------------------------------------------------- */
+
+.hotkey-recorder {
+  width: calc(100% - 8px);
+  margin: 2px 4px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-family: "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease);
+}
+
+.hotkey-recorder:hover {
+  border-color: var(--accent);
+}
+
+.hotkey-recorder.is-recording {
+  border-color: var(--accent);
+  color: var(--accent);
+  /* Reads as "listening" without an animation competing for attention. */
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.settings-warning {
+  margin: 6px 4px 0;
+  padding: 6px 8px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  color: var(--warning);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}

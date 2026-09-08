@@ -1,0 +1,572 @@
+.widget {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--surface);
+  /* Re-declared, not just inherited. `body` resolves `color: var(--text)`
+     against the *root* value, so overriding `--text` here for a note colour
+     would otherwise change nothing — every child keeps body's already-computed
+     colour and dark text stays invisible on a pale note. */
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-window);
+  overflow: hidden;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2);
+}
+
+/* Header ------------------------------------------------------------------ */
+
+.widget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 7px 7px 12px;
+  background: var(--surface-header);
+  border-bottom: 1px solid var(--border);
+}
+
+.widget-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.widget-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.icon-button:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.icon-button:disabled {
+  cursor: default;
+}
+
+/* Spins only while a sync is actually in flight, so the motion means something
+   rather than being decoration. */
+.icon-button.is-spinning svg {
+  animation: spin 900ms linear infinite;
+  color: var(--accent);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .icon-button.is-spinning svg {
+    animation: none;
+    opacity: 0.55;
+  }
+}
+
+/* Body -------------------------------------------------------------------- */
+
+.widget-body {
+  flex: 1;
+  padding: 6px 6px 10px;
+}
+
+.task-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Completed section -------------------------------------------------------- */
+
+.completed {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.completed-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.completed-toggle:hover {
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+}
+
+.chevron-icon {
+  display: inline-block;
+  font-size: 9px;
+  transition: transform var(--duration) var(--ease);
+}
+
+.chevron-icon.is-open {
+  transform: rotate(90deg);
+}
+
+/* Empty states ------------------------------------------------------------- */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 3px;
+  text-align: center;
+  padding: 20px;
+}
+
+.empty-title {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.empty-hint {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.all-done {
+  margin: 10px 8px;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* Pin ---------------------------------------------------------------------- */
+
+.pin-button.is-top {
+  color: var(--accent);
+}
+
+.pin-button.is-normal svg {
+  /* Unpinned reads as a pin lying flat rather than a different glyph. */
+  transform: rotate(45deg);
+  opacity: 0.75;
+}
+
+.pin-button.is-bottom {
+  color: var(--text-muted);
+}
+
+/* Undo --------------------------------------------------------------------- */
+
+.undo-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px 7px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-header);
+}
+
+.undo-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.undo-button {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.undo-button:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* Footer ------------------------------------------------------------------- */
+
+.widget-footer {
+  border-top: 1px solid var(--border);
+}
+
+.widget-error {
+  margin: 0;
+  padding: 7px 12px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+/* New-note button ---------------------------------------------------------- */
+
+.new-note-button {
+  flex: 0 0 auto;
+  margin-right: 2px;
+}
+
+/* List title --------------------------------------------------------------- */
+
+.list-title {
+  position: relative;
+  /* Shrinks rather than filling, so the drag handle beside it keeps real
+     estate. A header made entirely of buttons cannot be grabbed. */
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.drag-handle {
+  flex: 1 1 auto;
+  /* Needs height to be grabbable at all; the header sets the rest. */
+  align-self: stretch;
+  min-width: 24px;
+}
+
+.list-title-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 3px 6px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.list-title-button:hover {
+  background: var(--surface-hover);
+}
+
+.list-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-title-chevron {
+  flex: 0 0 auto;
+  font-size: 9px;
+  color: var(--text-muted);
+  transition: transform var(--duration) var(--ease);
+}
+
+.list-title-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.list-title-edit {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.list-title-edit input {
+  width: 100%;
+  padding: 2px 6px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-weight: 600;
+  outline: none;
+}
+
+.list-title-error {
+  font-size: var(--font-size-sm);
+  color: var(--danger);
+}
+
+.list-dropdown {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 11;
+  min-width: 190px;
+  max-width: 260px;
+  margin-top: 3px;
+  padding: 4px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+}
+
+.list-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.list-dropdown-item:hover {
+  background: var(--surface-hover);
+}
+
+.list-dropdown-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sync button -------------------------------------------------------------- */
+
+.sync-button-wrap {
+  position: relative;
+  display: flex;
+}
+
+.sync-core {
+  /* The status lives here; the ring around it is just the refresh affordance. */
+  fill: var(--dot-synced);
+  transition: fill var(--duration) var(--ease);
+}
+
+.sync-button.is-synced .sync-core { fill: var(--dot-synced); }
+.sync-button.is-offline .sync-core { fill: var(--dot-offline); }
+.sync-button.is-error .sync-core { fill: var(--dot-error); }
+.sync-button.is-syncing .sync-core { fill: var(--dot-syncing); }
+
+.sync-button.is-syncing .sync-arrow {
+  transform-origin: 50% 50%;
+  animation: spin 900ms linear infinite;
+}
+
+.sync-button:disabled {
+  opacity: 1; /* syncing is a state, not an unavailable control */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sync-button.is-syncing .sync-arrow {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+.sync-popover {
+  position: absolute;
+  right: -4px;
+  top: 26px;
+  z-index: 11;
+  width: 200px;
+  padding: 9px 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+}
+
+.sync-detail {
+  margin: 4px 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Pin ---------------------------------------------------------------------- */
+
+.pin-button.is-pinned {
+  color: var(--accent);
+}
+
+/* Add-task row, now at the top --------------------------------------------- */
+
+.widget-add {
+  border-bottom: 1px solid var(--border);
+}
+
+.widget-add .add-trigger,
+.widget-add .add-field {
+  border-radius: 0;
+}
+
+/* Colour bar --------------------------------------------------------------- */
+
+.swatch {
+  position: relative;
+  width: 19px;
+  height: 19px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease);
+}
+
+.swatch:hover {
+  transform: scale(1.15);
+}
+
+/* "Default" is the absence of a colour, drawn as a diagonal rather than as
+   another colour that could be mistaken for a choice. */
+.swatch.is-default {
+  background: linear-gradient(
+    135deg,
+    var(--surface) 45%,
+    var(--border-strong) 45%,
+    var(--border-strong) 55%,
+    var(--surface) 55%
+  );
+}
+
+/* Colour wheel + palette --------------------------------------------------- */
+
+.color-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 9px;
+  border-top: 1px solid var(--border);
+}
+
+.color-palette {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  /* Grows leftward from the wheel: the wheel is the anchor and stays put. */
+  margin-right: auto;
+}
+
+.color-wheel {
+  flex: 0 0 auto;
+  width: 19px;
+  height: 19px;
+  margin-left: auto;
+  padding: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  /* The note colour itself, ringed in the derived text colour so it contrasts
+     on any background without needing a second palette. */
+  background: var(--surface);
+  border: 1.25px solid var(--text-muted);
+  transition: border-color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease);
+}
+
+.color-wheel:hover {
+  border-color: var(--text-secondary);
+}
+
+/* Open reads as a firmer ring rather than a highlight: enough to tell the
+   states apart, not enough to draw the eye. */
+.color-wheel.is-open {
+  border-color: var(--text);
+  box-shadow: inset 0 0 0 1.5px var(--surface);
+}
+
+.swatch.is-add {
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border-style: dashed;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.swatch.is-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Kept in the DOM but out of the way — the blank swatch clicks it. */
+.color-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Pebble roll -------------------------------------------------------------- */
+
+/* Rotation is only perceptible on a marked surface: a flat disc spinning looks
+   static. The inset highlight gives each swatch a lit side, so the spin reads
+   as rolling rather than sliding. */
+.color-palette .swatch {
+  box-shadow:
+    inset 2px 2px 3px rgba(255, 255, 255, 0.55),
+    inset -2px -2px 3px rgba(0, 0, 0, 0.09);
+  animation: pebble-roll 300ms cubic-bezier(0.22, 0.9, 0.3, 1.06) backwards;
+}
+
+.color-palette .swatch.is-active {
+  /* The active ring must survive the pebble shadow above. */
+  box-shadow:
+    inset 2px 2px 3px rgba(255, 255, 255, 0.55),
+    inset -2px -2px 3px rgba(0, 0, 0, 0.09),
+    0 0 0 2px var(--surface),
+    0 0 0 3.5px var(--accent);
+}
+
+@keyframes pebble-roll {
+  from {
+    /* Starts tucked under the wheel; `--roll` is how many places along it sits,
+       so the far swatches travel further and set off sooner. */
+    transform: translateX(calc(var(--roll) * 24px)) rotate(calc(var(--roll) * 48deg));
+    opacity: 0;
+  }
+  60% {
+    opacity: 1;
+  }
+  to {
+    transform: translateX(0) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+/* The system-level animation preference is the toggle for this — no app setting
+   duplicates it. */
+@media (prefers-reduced-motion: reduce) {
+  .color-palette .swatch {
+    animation: none;
+  }
+}

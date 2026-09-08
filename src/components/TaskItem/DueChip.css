@@ -1,0 +1,174 @@
+.due-wrap {
+  position: relative;
+  display: inline-flex;
+  align-self: flex-start;
+}
+
+.due-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  padding: 1px 7px 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.due-chip:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.due-chip.is-overdue {
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+  color: var(--danger);
+}
+
+.due-chip.is-done {
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+/* Calendar ----------------------------------------------------------------- */
+
+.calendar {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 12;
+  width: 230px;
+  margin-top: 4px;
+  padding: 8px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.26);
+}
+
+.calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.calendar-title {
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+.calendar-nav {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.calendar-nav:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+}
+
+.calendar-weekday {
+  display: grid;
+  place-items: center;
+  height: 20px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.calendar-day {
+  display: grid;
+  place-items: center;
+  height: 26px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.calendar-day:hover {
+  background: var(--surface-hover);
+}
+
+/* Days spilling in from the neighbouring months stay clickable but recede, so
+   the current month reads as one block. */
+.calendar-day.is-outside {
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+
+.calendar-day.is-today {
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.calendar-day.is-selected {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+
+.calendar-day.is-selected:hover {
+  background: var(--accent-hover);
+}
+
+.calendar-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.calendar-action {
+  flex: 1;
+  padding: 4px 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.calendar-action:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.calendar-action.is-danger {
+  color: var(--danger);
+}
+
+.calendar-note {
+  margin: 7px 0 1px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  line-height: 1.35;
+  text-align: center;
+}
