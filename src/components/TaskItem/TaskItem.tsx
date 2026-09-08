@@ -19,6 +19,14 @@ interface Props {
   onMoveToList: (id: string, destinationListId: string) => void;
   /** Every list except the one this task is already in. */
   otherLists: { id: string; title: string }[];
+  /**
+   * Begins a possible drag. Only supplied for rows that may be reordered —
+   * top-level, incomplete tasks — so an absent handler is what makes a row
+   * undraggable, not a check inside it.
+   */
+  onDragPress?: (event: React.PointerEvent, row: HTMLElement) => void;
+  /** True while this row is the one being dragged; it renders as a gap. */
+  isDragging?: boolean;
 }
 
 export function TaskItem({
@@ -33,6 +41,8 @@ export function TaskItem({
   onOpenInGoogle,
   onMoveToList,
   otherLists,
+  onDragPress,
+  isDragging,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
@@ -40,6 +50,7 @@ export function TaskItem({
   const [draft, setDraft] = useState("");
   const [dueOpen, setDueOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const rowRef = useRef<HTMLLIElement>(null);
 
   const done = task.status === "completed";
   const overdue = !done && isOverdue(task.due);
@@ -88,8 +99,10 @@ export function TaskItem({
 
   return (
     <li
+      ref={rowRef}
       className={[
         "task-item",
+        isDragging ? "is-dragging" : "",
         isSubtask ? "is-subtask" : "",
         done ? "is-done" : "",
         isSettling ? "is-settling" : "",
@@ -101,6 +114,20 @@ export function TaskItem({
       onContextMenu={(event) => {
         event.preventDefault();
         setMenuOpen(true);
+      }}
+      onPointerDown={(event) => {
+        if (!onDragPress || editing) return;
+        // Anything the user can operate keeps its own press. Dragging from a
+        // checkbox or a menu button would make those unusable, and a press
+        // inside text is a caret placement.
+        if (
+          (event.target as HTMLElement).closest(
+            "button, input, textarea, select, a, [contenteditable='true']",
+          )
+        ) {
+          return;
+        }
+        if (rowRef.current) onDragPress(event, rowRef.current);
       }}
     >
       <div className="task-row">

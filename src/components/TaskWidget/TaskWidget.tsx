@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useRef, useState } from "react";
 import type {
   Settings,
   SyncStatus as Status,
@@ -7,6 +7,7 @@ import type {
   WindowLayer,
 } from "../../types";
 import { TaskItem } from "../TaskItem/TaskItem";
+import { useDragSession } from "../../hooks/useDragSession";
 import { TaskInput } from "../TaskInput/TaskInput";
 import { HeaderMenu } from "../HeaderMenu/HeaderMenu";
 import { PinControl } from "./PinControl";
@@ -18,6 +19,8 @@ import "./TaskWidget.css";
 
 interface Props {
   tasks: Task[];
+  /** Reorder within the current list. Index is among top-level active rows. */
+  onReorder: (id: string, toIndex: number) => void;
   taskLists: TaskList[];
   settings: Settings;
   status: Status;
@@ -108,6 +111,56 @@ export function TaskWidget(props: Props) {
     };
   }, [props.tasks, props.settlingIds]);
 
+  // Only top-level, incomplete rows can be reordered: the move API positions
+  // tasks among their siblings, and a subtask's position is owned by its parent.
+  const reorderable = useMemo(
+    () => active.filter((t) => !t.parentId),
+    [active],
+  );
+
+  const listRef = useRef<HTMLUListElement>(null);
+
+  /**
+   * Which slot the pointer is over, measured from live row geometry rather than
+   * a cached layout — rows change height when an error appears or a note wraps.
+   *
+   * Returns an insertion index in `reorderable`, or null when the pointer is
+   * outside the list entirely.
+   */
+  const resolveIndex = useCallback(
+    (client: { x: number; y: number }) => {
+      const list = listRef.current;
+      if (!list) return null;
+
+      const bounds = list.getBoundingClientRect();
+      const slack = 24; // Forgive a little overshoot past either end.
+      if (
+        client.y < bounds.top - slack ||
+        client.y > bounds.bottom + slack ||
+        client.x < bounds.left - slack ||
+        client.x > bounds.right + slack
+      ) {
+        return null;
+      }
+
+      const rows = Array.from(
+        list.querySelectorAll<HTMLElement>("li.task-item:not(.is-subtask)"),
+      );
+      for (let i = 0; i < rows.length; i += 1) {
+        const rect = rows[i].getBoundingClientRect();
+        // Past a row's midpoint means "after it", which is the next slot.
+        if (client.y < rect.top + rect.height / 2) return i;
+      }
+      return rows.length;
+    },
+    [],
+  );
+
+  const { session, beginPress } = useDragSession({
+    resolveIndex,
+    onCommit: props.onReorder,
+  });
+
   return (
     <div className="widget" style={themeStyle}>
       <header className="widget-header" data-tauri-drag-region>
@@ -186,12 +239,40 @@ export function TaskWidget(props: Props) {
               <p className="all-done">All done for now.</p>
             )}
 
-            <ul className="task-list">
-              {active.map((task) => (
+            <ul className="task-list" ref={listRef}>
+              {active.map((task) => {
+                // The gap is drawn before the row currently occupying the slot,
+                // so the list shows where a drop would land rather than where
+                // the pointer is.
+                const slot = reorderable.indexOf(task);
+                const showGap =
+                  session !== null &&
+                  session.overIndex !== null &&
+                  slot !== -1 &&
+                  slot === session.overIndex;
+
+                return (
+                <Fragment key={task.id}>
+                {showGap && (
+                  <li className="drop-gap" aria-hidden="true" />
+                )}
                 <TaskItem
-                  key={task.id}
                   task={task}
                   isSubtask={Boolean(task.parentId)}
+                  isDragging={session?.taskId === task.id}
+                  onDragPress={
+                    task.parentId
+                      ? undefined
+                      : (event, row) =>
+                          beginPress({
+                            taskId: task.id,
+                            fromListId: selectedId ?? "",
+                            fromIndex: reorderable.indexOf(task),
+                            title: task.title,
+                            row,
+                            event,
+                          })
+                  }
                   isSettling={props.settlingIds.has(task.id)}
                   error={props.errors[task.id] ?? null}
                   onToggle={props.onToggle}
@@ -202,7 +283,14 @@ export function TaskWidget(props: Props) {
                   onMoveToList={props.onMoveToList}
                   otherLists={otherLists}
                 />
-              ))}
+                </Fragment>
+                );
+              })}
+              {/* A drop past the last row lands here. */}
+              {session !== null &&
+                session.overIndex === reorderable.length && (
+                  <li className="drop-gap" aria-hidden="true" />
+                )}
             </ul>
 
             {completed.length > 0 && (

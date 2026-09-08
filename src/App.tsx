@@ -402,6 +402,7 @@ export default function App() {
       onSetDue={(id, due) => void tasks.editTask(id, { due })}
       onOpenInGoogle={tasks.openInGoogle}
       onMoveToList={(id, dest) => void tasks.moveTaskToList(id, dest)}
+      onReorder={(id, toIndex) => void tasks.moveTask(id, { toIndex })}
       onCreateList={tasks.createList}
       onRenameList={tasks.renameList}
       onDeleteList={tasks.deleteList}
