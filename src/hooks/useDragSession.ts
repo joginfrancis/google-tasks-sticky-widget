@@ -86,6 +86,8 @@ export function useDragSession(options: {
   const foreignTargetRef = useRef<string | null>(null);
   /** One hit-test in flight at a time; moves arrive far faster than IPC. */
   const hitTestBusyRef = useRef(false);
+  /** Identifies this gesture, so a receiver can recognise a repeated drop. */
+  const dragIdRef = useRef("");
 
   const cancel = useCallback(() => {
     pendingRef.current = null;
@@ -124,6 +126,7 @@ export function useDragSession(options: {
         foreignTargetRef.current = target === self ? null : target;
 
         emitDragOver({
+          dragId: dragIdRef.current,
           originLabel: self,
           targetLabel: foreignTargetRef.current,
           taskId: current.taskId,
@@ -177,6 +180,7 @@ export function useDragSession(options: {
         void windowFrame().then((f) => {
           frameRef.current = f;
         });
+        dragIdRef.current = crypto.randomUUID();
 
         const rect = pending.row.getBoundingClientRect();
         setSession({
@@ -243,6 +247,7 @@ export function useDragSession(options: {
           : { screenX: 0, screenY: 0 };
 
         emitDragDrop({
+          dragId: dragIdRef.current,
           originLabel: windowLabel(),
           targetLabel: foreign,
           taskId: current.taskId,

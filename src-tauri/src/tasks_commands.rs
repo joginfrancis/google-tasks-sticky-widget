@@ -388,7 +388,18 @@ pub fn move_task(
         log::warn!("post-move resync failed, order may be stale: {err:?}");
     }
 
-    let _ = app.emit("tasks:updated", destination);
+    let _ = app.emit("tasks:updated", destination.clone());
+
+    // The list it came from needs telling too, or the note showing it goes on
+    // displaying a task that now lives somewhere else until its own poll comes
+    // round — which, with two notes side by side, is plainly wrong on screen.
+    if is_cross_list {
+        if let Err(err) = sync_list(&app, &task_list_id, true) {
+            log::warn!("post-move resync of the origin list failed: {err:?}");
+        }
+        let _ = app.emit("tasks:updated", task_list_id);
+    }
+
     Ok(())
 }
 

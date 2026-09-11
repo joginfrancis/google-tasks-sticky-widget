@@ -24,6 +24,15 @@ import {
 } from "../lib/dragBus";
 import { windowLabel } from "../lib/window";
 
+/**
+ * Shared across every instance of this hook in the window, deliberately.
+ *
+ * The duplicate to guard against is the hook being mounted twice, so per-
+ * instance memory would not help: each copy would see a drop it had not handled
+ * and move the task again.
+ */
+const handledDrop = { current: "" };
+
 export interface ForeignDrag {
   taskId: string;
   fromListId: string;
@@ -43,6 +52,15 @@ export function useForeignDrag(options: {
   optionsRef.current = options;
   const dragRef = useRef<ForeignDrag | null>(null);
   dragRef.current = drag;
+
+  /**
+   * The last drop acted on, so the same one arriving twice is a no-op.
+   *
+   * A module-level ref rather than one per hook instance: duplicate listeners
+   * come from the hook being mounted twice, and two instances each with their
+   * own memory would both happily perform the move.
+   */
+  const handledDropRef = handledDrop;
 
   // This window's own position and DPI. Refreshed on every drag rather than
   // cached for the session: unlike the source note, this one may well have been
@@ -87,6 +105,13 @@ export function useForeignDrag(options: {
       onDragDrop((payload) => {
         if (!alive) return;
         if (payload.targetLabel !== self || payload.originLabel === self) return;
+
+        // One gesture, one move. The same drop can reach us more than once —
+        // StrictMode alone double-registers this listener in development — and
+        // moving a task Google has already moved fails as a task that no longer
+        // exists, which is a confusing thing to show for a drag that worked.
+        if (handledDropRef.current === payload.dragId) return;
+        handledDropRef.current = payload.dragId;
 
         const frame = frameRef.current;
         const current = dragRef.current;

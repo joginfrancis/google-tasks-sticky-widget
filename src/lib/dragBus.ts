@@ -27,6 +27,17 @@ export const DRAG_DROP = "drag:drop";
 export const DRAG_END = "drag:end";
 
 export interface DragOverPayload {
+  /**
+   * Identifies one drag gesture.
+   *
+   * A drop must be acted on exactly once. Listeners can be registered more than
+   * once for reasons that have nothing to do with this code — React's
+   * StrictMode double-mounts every effect in development, which is enough to
+   * move the same task twice, the second attempt failing on a task Google has
+   * already moved. Carrying the gesture's identity makes a repeat recognisable
+   * rather than something to be prevented by careful listener bookkeeping.
+   */
+  dragId: string;
   /** Window the drag started in, so a note can ignore its own broadcast. */
   originLabel: string;
   /** Note the cursor is over now, or null when it is over none. */
