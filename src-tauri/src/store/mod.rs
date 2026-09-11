@@ -150,6 +150,59 @@ impl Store {
         })
     }
 
+    /// Applies a **full** fetch, treating it as the complete truth for the list.
+    ///
+    /// `upsert_tasks` can only remove what Google explicitly reports as
+    /// `deleted`, and Google stops reporting a deletion once it purges the task
+    /// for good — after which no response mentions the row ever again and the
+    /// cached copy becomes immortal. The widget goes on showing a task that
+    /// exists nowhere else, while reporting itself perfectly synced.
+    ///
+    /// Only sound for a full fetch: a delta returns a subset by design, so
+    /// applying this to one would delete every task that merely had not changed.
+    pub fn replace_tasks_for_list(
+        &self,
+        task_list_id: &str,
+        tasks: &[Task],
+    ) -> Result<(), String> {
+        self.with_conn(|conn| {
+            let tx = conn.unchecked_transaction()?;
+            {
+                // Scoped to the list: a task moved to another list is still a
+                // real task, and its new list owns it now.
+                tx.execute(
+                    "DELETE FROM tasks WHERE task_list_id = ?1",
+                    params![task_list_id],
+                )?;
+
+                let mut insert = tx.prepare(
+                    "INSERT OR REPLACE INTO tasks (
+                        id, task_list_id, parent_id, title, notes, due,
+                        status, completed_at, position, updated, deleted,
+                        web_view_link
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, ?11)",
+                )?;
+
+                for task in tasks.iter().filter(|t| !t.deleted) {
+                    insert.execute(params![
+                        task.id,
+                        task.task_list_id,
+                        task.parent_id,
+                        task.title,
+                        task.notes,
+                        task.due,
+                        task.status,
+                        task.completed_at,
+                        task.position,
+                        task.updated,
+                        task.web_view_link,
+                    ])?;
+                }
+            }
+            tx.commit()
+        })
+    }
+
     pub fn tasks_for_list(&self, task_list_id: &str) -> Result<Vec<Task>, String> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
@@ -301,6 +354,47 @@ mod tests {
         store.upsert_tasks(&[gone]).unwrap();
 
         assert!(store.tasks_for_list("list1").unwrap().is_empty());
+    }
+
+    /// The failure this guards against reported itself as a successful sync:
+    /// Google purges a deleted task eventually and then names it in no response
+    /// at all, so a merge — which can only add and update — left the row cached
+    /// forever.
+    #[test]
+    fn a_full_sync_drops_rows_google_no_longer_returns() {
+        let store = Store::in_memory().unwrap();
+        store
+            .upsert_tasks(&[task("a", "needsAction"), task("d", "needsAction")])
+            .unwrap();
+
+        // A full fetch that simply does not mention `d`.
+        store
+            .replace_tasks_for_list("list1", &[task("a", "needsAction")])
+            .unwrap();
+
+        let ids: Vec<String> = store
+            .tasks_for_list("list1")
+            .unwrap()
+            .into_iter()
+            .map(|t| t.id)
+            .collect();
+        assert_eq!(ids, vec!["a".to_string()]);
+    }
+
+    /// Replacing is scoped, or syncing one list would empty every other.
+    #[test]
+    fn a_full_sync_leaves_other_lists_alone() {
+        let store = Store::in_memory().unwrap();
+        let mut elsewhere = task("x", "needsAction");
+        elsewhere.task_list_id = "list2".into();
+        store
+            .upsert_tasks(&[task("a", "needsAction"), elsewhere])
+            .unwrap();
+
+        store.replace_tasks_for_list("list1", &[]).unwrap();
+
+        assert!(store.tasks_for_list("list1").unwrap().is_empty());
+        assert_eq!(store.tasks_for_list("list2").unwrap().len(), 1);
     }
 
     #[test]

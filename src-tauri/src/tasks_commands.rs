@@ -111,9 +111,19 @@ pub fn sync_list(app: &AppHandle, task_list_id: &str, full: bool) -> Result<(), 
         if cursor.is_some() { "delta" } else { "full" }
     );
 
-    store
-        .upsert_tasks(&tasks)
-        .map_err(|e| ApiError::Malformed(e))?;
+    // A full fetch is the whole truth for this list, so it replaces rather than
+    // merges: a task Google has already purged appears in no response at all,
+    // and merging can only ever add and update. A delta must merge, because it
+    // deliberately returns only what changed.
+    if cursor.is_none() {
+        store
+            .replace_tasks_for_list(task_list_id, &tasks)
+            .map_err(|e| ApiError::Malformed(e))?;
+    } else {
+        store
+            .upsert_tasks(&tasks)
+            .map_err(|e| ApiError::Malformed(e))?;
+    }
 
     // Only advance the cursor after the write succeeded. Advancing first would
     // lose those changes permanently if the write failed.
