@@ -8,6 +8,7 @@ import type {
 } from "../../types";
 import { TaskItem } from "../TaskItem/TaskItem";
 import { useDragSession } from "../../hooks/useDragSession";
+import { DragGhost } from "./DragGhost";
 import { TaskInput } from "../TaskInput/TaskInput";
 import { HeaderMenu } from "../HeaderMenu/HeaderMenu";
 import { PinControl } from "./PinControl";
@@ -167,7 +168,10 @@ export function TaskWidget(props: Props) {
   });
 
   return (
-    <div className="widget" style={themeStyle}>
+    <div
+      className={`widget${session !== null ? " is-dragging-active" : ""}`}
+      style={themeStyle}
+    >
       <header className="widget-header" data-tauri-drag-region>
         <button
           className="icon-button new-note-button"
@@ -358,6 +362,10 @@ export function TaskWidget(props: Props) {
       {/* Always present: collapsed it is a single wheel, so a menu item to
           reveal it would cost more than it saves. */}
       <ColorBar value={props.color} onChange={props.onChangeColor} />
+
+      {/* Last child so it paints over the list without needing a z-index war,
+          and inside `.widget` so it inherits this note's colour variables. */}
+      {session !== null && <DragGhost session={session} />}
     </div>
   );
 }

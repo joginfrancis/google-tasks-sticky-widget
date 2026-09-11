@@ -550,3 +550,78 @@
     animation: none;
   }
 }
+
+/* Dragged row ------------------------------------------------------------- */
+
+/* A drag sweeps the pointer across rows of text with the button held, which is
+   also the gesture for selecting text — so without this every reorder leaves a
+   blue smear of selection behind it. Scoped to the drag rather than set
+   permanently, because task titles are meant to be selectable the rest of the
+   time. */
+.widget.is-dragging-active {
+  user-select: none;
+  cursor: grabbing;
+}
+
+/* The row under the pointer during a drag. `position: fixed` is what lets it
+   escape both the scroll area's overflow and the widget's own `overflow:
+   hidden` — neither ancestor creates a containing block, so this resolves
+   against the viewport. It stays inside `.widget` rather than portalling to
+   `body` so it inherits the note's colour variables.
+
+   `pointer-events: none` is not cosmetic: the ghost sits directly under the
+   cursor, and without it every pointermove would hit the ghost instead of the
+   list, so the drop position could never be resolved. */
+.drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 60;
+  pointer-events: none;
+
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 6px 4px 6px 8px;
+  box-sizing: border-box;
+
+  border-radius: var(--radius-row);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  /* Lifted off the list rather than sliding within it, so it is obvious the row
+     has left its slot and the gap is where it would land. */
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+  opacity: 0.95;
+}
+
+/* Matches the real checkbox's box so the ghost reads as the same row, without
+   being interactive or implying a state the drop will not change. */
+.drag-ghost-checkbox {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+}
+
+.drag-ghost-title {
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  /* Two lines at most. The source row can be far taller once notes, a due chip
+     and the expanded actions are showing, and a ghost that reproduced all of it
+     would cover the drop target the user is aiming at. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* A drag is already fully expressed by position; the shadow is the only motion
+   cue worth dropping when motion is unwelcome. */
+@media (prefers-reduced-motion: reduce) {
+  .drag-ghost {
+    box-shadow: none;
+  }
+}
