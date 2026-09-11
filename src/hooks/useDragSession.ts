@@ -61,6 +61,14 @@ interface StartArgs {
 export function useDragSession(options: {
   resolveIndex: (client: { x: number; y: number }) => number | null;
   onCommit: (taskId: string, toIndex: number) => void;
+  /**
+   * The task was dropped into another note and is leaving this one.
+   *
+   * Fires only on a drop that was accepted by a different window — a release
+   * over the desktop, or back into this same list, is a cancel and leaves the
+   * row exactly where it was.
+   */
+  onDepart?: (taskId: string) => void;
 }) {
   const [session, setSession] = useState<DragSession | null>(null);
 
@@ -254,6 +262,11 @@ export function useDragSession(options: {
           fromListId: current.fromListId,
           ...screen,
         });
+        // Take it off this note now rather than when the move lands. Clearing
+        // the session alone would un-dim the row for the moment in between, so
+        // a successful drag would end with a flash of the task you just moved.
+        optionsRef.current.onDepart?.(current.taskId);
+
         announcedForeignRef.current = false;
         foreignTargetRef.current = null;
         setSession(null);

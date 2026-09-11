@@ -30,6 +30,8 @@ interface Props {
   tasks: Task[];
   /** Reorder within the current list. Index is among top-level active rows. */
   onReorder: (id: string, toIndex: number) => void;
+  /** The task was dropped into another note; drop it from this view. */
+  onDepart: (taskId: string) => void;
   /** Take a task dragged in from another note into this window's list. */
   onAdopt: (taskId: string, fromListId: string, toIndex: number) => void;
   taskLists: TaskList[];
@@ -193,6 +195,7 @@ export function TaskWidget(props: Props) {
   const { session, beginPress } = useDragSession({
     resolveIndex,
     onCommit: props.onReorder,
+    onDepart: props.onDepart,
   });
 
   // A task being dragged in from another note. Rendered through the same gap as

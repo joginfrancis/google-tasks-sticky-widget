@@ -11,6 +11,16 @@ import { isMainNote } from "../lib/window";
 const UNDO_WINDOW_MS = 6000;
 
 /**
+ * How long a departed row stays hidden before this note checks for itself.
+ *
+ * A successful move announces both lists well inside this, so the re-read it
+ * triggers normally settles the question first. This only matters when the move
+ * failed and announced nothing, and it needs to be long enough not to race the
+ * announcement into putting the row back for a frame.
+ */
+const DEPART_RECONCILE_MS = 2500;
+
+/**
  * Moves `id` to `toIndex` among its top-level active siblings.
  *
  * `toIndex` is in the frame the move API uses: siblings with the moved task
@@ -573,6 +583,33 @@ export function useTasks(connected: boolean) {
     [readCache, setError],
   );
 
+  /**
+   * The task has been dropped into another note; take it off this one now.
+   *
+   * Without this the row springs back to full brightness the instant the
+   * pointer is released and only disappears once the move lands, so a
+   * successful drag ends with a flash of the thing you just moved away.
+   *
+   * The receiving note performs the move, so this window is not told directly
+   * whether it worked. It does not need to be: a move announces both lists, and
+   * the re-read that follows either finds the task gone or puts it back. The
+   * timer is the safety net for the case that announces nothing — a move that
+   * failed outright — so the row cannot stay hidden on a task that never left.
+   */
+  const departTask = useCallback(
+    (taskId: string) => {
+      const listId = currentListRef.current;
+      setTasks((prev) =>
+        prev.filter((t) => t.id !== taskId && t.parentId !== taskId),
+      );
+      if (!listId) return;
+      window.setTimeout(() => {
+        if (currentListRef.current === listId) void readCache(listId);
+      }, DEPART_RECONCILE_MS);
+    },
+    [readCache],
+  );
+
   /** Kept as a named intent; the context menu reads better for it. */
   const moveTaskToList = useCallback(
     (id: string, destinationListId: string) =>
@@ -692,6 +729,7 @@ export function useTasks(connected: boolean) {
     moveTask,
     moveTaskToList,
     adoptTask,
+    departTask,
     createList,
     renameList,
     deleteList,

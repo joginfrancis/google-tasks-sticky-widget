@@ -406,6 +406,7 @@ export default function App() {
       onAdopt={(id, fromListId, toIndex) =>
         void tasks.adoptTask(id, fromListId, toIndex)
       }
+      onDepart={tasks.departTask}
       onCreateList={tasks.createList}
       onRenameList={tasks.renameList}
       onDeleteList={tasks.deleteList}
