@@ -499,14 +499,19 @@ pub fn delete_task(
     task_list_id: String,
     task_id: String,
 ) -> Result<(), String> {
-    client(&app)?
-        .delete_task(&task_list_id, &task_id)
-        .map_err(|err| {
+    // A task Google has never heard of is the outcome delete was asking for, so
+    // report success and drop the stale cache row. Surfacing "that task no
+    // longer exists" leaves the user staring at a row they just deleted, with
+    // an error telling them it is already gone.
+    match client(&app)?.delete_task(&task_list_id, &task_id) {
+        Ok(()) | Err(ApiError::NotFound) => {}
+        Err(err) => {
             if err == ApiError::Unauthorized {
                 on_auth_lost(&app);
             }
-            err.user_message()
-        })?;
+            return Err(err.user_message());
+        }
+    }
 
     app.state::<Store>().delete_task(&task_id)
 }

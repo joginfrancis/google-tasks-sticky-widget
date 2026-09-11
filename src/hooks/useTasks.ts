@@ -99,9 +99,29 @@ export function useTasks(connected: boolean) {
     setSelectedListId(id);
   }, []);
 
+  /**
+   * Rows hidden by a pending delete.
+   *
+   * Deletion waits out an undo window, so for those seconds the task is gone
+   * from the screen but still in the cache and still in Google. Every re-read
+   * would otherwise resurrect it — and a background sync lands inside that
+   * window often enough that Delete looked like it simply did not work.
+   */
+  const suppressedRef = useRef<Set<string>>(new Set());
+
   const readCache = useCallback(async (listId: string) => {
     const cached = await invoke<Task[]>("list_tasks", { taskListId: listId });
-    if (currentListRef.current === listId) setTasks(cached);
+    if (currentListRef.current !== listId) return;
+
+    const hidden = suppressedRef.current;
+    setTasks(
+      hidden.size === 0
+        ? cached
+        : cached.filter(
+            (t) =>
+              !hidden.has(t.id) && !(t.parentId && hidden.has(t.parentId)),
+          ),
+    );
   }, []);
 
   /* -- Startup ------------------------------------------------------------ */
@@ -318,9 +338,13 @@ export function useTasks(connected: boolean) {
 
       try {
         await invoke("delete_task", { taskListId: listId, taskId });
+        // Gone from Google and from the cache, so nothing is left to hide.
+        suppressedRef.current.delete(taskId);
       } catch (err) {
-        // The row is still in the cache, so a re-read brings it back rather
-        // than leaving it deleted on screen but alive in Google.
+        // The row is still in the cache, so lifting the suppression and
+        // re-reading brings it back rather than leaving it deleted on screen
+        // but alive in Google.
+        suppressedRef.current.delete(taskId);
         await readCache(listId);
         setError(taskId, String(err));
       }
@@ -348,6 +372,10 @@ export function useTasks(connected: boolean) {
       // undo is comprehensible, a stack of them is not.
       flushPendingDelete();
 
+      // Hide it from re-reads too, not just from the current render: a sync
+      // landing inside the undo window would otherwise put the row straight
+      // back, which is what made Delete look like it had done nothing.
+      suppressedRef.current.add(id);
       setTasks((prev) => prev.filter((t) => t.id !== id && t.parentId !== id));
 
       const timer = window.setTimeout(() => {
@@ -370,6 +398,9 @@ export function useTasks(connected: boolean) {
     window.clearTimeout(pending.timer);
     pendingRef.current = null;
     setPendingDelete(null);
+    // Nothing was deleted anywhere, so lifting the suppression and re-reading
+    // is the whole of undo.
+    suppressedRef.current.delete(pending.taskId);
     void readCache(pending.listId);
   }, [readCache]);
 
