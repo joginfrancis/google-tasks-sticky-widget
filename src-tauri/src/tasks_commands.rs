@@ -399,23 +399,35 @@ pub fn move_task(
     }
     store.upsert_tasks(std::slice::from_ref(&moved))?;
 
-    // A move renumbers siblings server-side, and the response only describes the
-    // moved task — so the local order is stale until the next sync fills it in.
-    if let Err(err) = sync_list(&app, &destination, true) {
-        log::warn!("post-move resync failed, order may be stale: {err:?}");
-    }
-
-    let _ = app.emit("tasks:updated", destination.clone());
-
-    // The list it came from needs telling too, or the note showing it goes on
-    // displaying a task that now lives somewhere else until its own poll comes
-    // round — which, with two notes side by side, is plainly wrong on screen.
+    // Tell the views now. Everything they need is already in the cache: the
+    // response carried the moved task's new list and position, and the row it
+    // left has been deleted. Waiting for the resync below put three or four
+    // seconds between the drop and the other note noticing it.
+    announce(&app, &destination);
     if is_cross_list {
-        if let Err(err) = sync_list(&app, &task_list_id, true) {
-            log::warn!("post-move resync of the origin list failed: {err:?}");
-        }
-        let _ = app.emit("tasks:updated", task_list_id);
+        announce(&app, &task_list_id);
     }
+
+    // Then reconcile in the background. A move renumbers siblings server-side
+    // and the response describes only the moved task, so the *order* of the
+    // others can be stale even when their contents are not — worth correcting,
+    // not worth making a drag wait for. On its own thread because this command
+    // runs on the main one, where two full fetches freeze the UI outright.
+    let handle = app.clone();
+    let origin = task_list_id.clone();
+    std::thread::spawn(move || {
+        if let Err(err) = sync_list(&handle, &destination, true) {
+            log::warn!("post-move resync failed, order may be stale: {err:?}");
+        }
+        announce(&handle, &destination);
+
+        if is_cross_list {
+            if let Err(err) = sync_list(&handle, &origin, true) {
+                log::warn!("post-move resync of the origin list failed: {err:?}");
+            }
+            announce(&handle, &origin);
+        }
+    });
 
     Ok(())
 }

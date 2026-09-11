@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import type { SyncStatus, Task, TaskList } from "../types";
 import { isMainNote } from "../lib/window";
 
@@ -108,6 +108,19 @@ export function useTasks(connected: boolean) {
    * window often enough that Delete looked like it simply did not work.
    */
   const suppressedRef = useRef<Set<string>>(new Set());
+
+  /**
+   * Other notes showing this list have their own copy of it, and nothing has
+   * been deleted anywhere yet — so without telling them, a row deleted in one
+   * note sits there in the other until the undo window expires. Both windows
+   * hide it immediately, and Undo brings it back in both.
+   */
+  const broadcastPending = useCallback(
+    (event: "task:pending-delete" | "task:pending-restore", taskId: string) => {
+      void emit(event, { taskId, listId: currentListRef.current });
+    },
+    [],
+  );
 
   const readCache = useCallback(async (listId: string) => {
     const cached = await invoke<Task[]>("list_tasks", { taskListId: listId });
@@ -240,6 +253,34 @@ export function useTasks(connected: boolean) {
     });
     return () => {
       unlisten.then((fn) => fn());
+    };
+  }, [readCache]);
+
+  // A delete waiting out its undo window in another note. Nothing has been
+  // deleted yet, so this is purely about the two views agreeing: hide the row
+  // here as well, and bring it back if that note's Undo is pressed.
+  useEffect(() => {
+    type Pending = { taskId: string; listId: string | null };
+
+    const hide = listen<Pending>("task:pending-delete", (event) => {
+      const { taskId, listId } = event.payload;
+      if (listId !== currentListRef.current) return;
+      suppressedRef.current.add(taskId);
+      setTasks((prev) =>
+        prev.filter((t) => t.id !== taskId && t.parentId !== taskId),
+      );
+    });
+
+    const restore = listen<Pending>("task:pending-restore", (event) => {
+      const { taskId, listId } = event.payload;
+      if (listId === null || listId !== currentListRef.current) return;
+      suppressedRef.current.delete(taskId);
+      void readCache(listId);
+    });
+
+    return () => {
+      void hide.then((fn) => fn());
+      void restore.then((fn) => fn());
     };
   }, [readCache]);
 
@@ -377,6 +418,7 @@ export function useTasks(connected: boolean) {
       // back, which is what made Delete look like it had done nothing.
       suppressedRef.current.add(id);
       setTasks((prev) => prev.filter((t) => t.id !== id && t.parentId !== id));
+      broadcastPending("task:pending-delete", id);
 
       const timer = window.setTimeout(() => {
         void commitDelete(listId, id);
@@ -401,6 +443,7 @@ export function useTasks(connected: boolean) {
     // Nothing was deleted anywhere, so lifting the suppression and re-reading
     // is the whole of undo.
     suppressedRef.current.delete(pending.taskId);
+    broadcastPending("task:pending-restore", pending.taskId);
     void readCache(pending.listId);
   }, [readCache]);
 
