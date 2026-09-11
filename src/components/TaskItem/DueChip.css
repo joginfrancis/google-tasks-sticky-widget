@@ -172,3 +172,13 @@
   line-height: 1.35;
   text-align: center;
 }
+
+/* Positioned against the viewport rather than the chip: as an absolutely
+   positioned child the calendar was clipped by the scrolling task list, so a
+   date opened near the bottom of a note was hidden inside the scroll area and
+   had to be scrolled to. Coordinates come from DueChip, which flips it above
+   the chip when there is no room below. */
+.calendar.due-popover {
+  position: fixed;
+  margin-top: 0;
+}

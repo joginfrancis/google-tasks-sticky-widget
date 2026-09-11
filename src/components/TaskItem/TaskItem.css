@@ -268,6 +268,49 @@
   opacity: 0.75;
 }
 
+/* Title and date share one line, so a collapsed row is exactly one line tall
+   whether or not it carries a date. The title takes the slack and ellipsises;
+   the chip keeps its natural width, sitting just left of the options button. */
+.task-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.task-line .task-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Open, the title is the thing being read, so let it wrap in full. */
+.task-item.is-expanded .task-line .task-title {
+  white-space: normal;
+  overflow: visible;
+}
+
+.task-line .due-wrap {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.task-line .due-chip {
+  margin-top: 0;
+}
+
+/* A row is grabbable, so say so before the drag starts. */
+.task-item .task-title {
+  cursor: default;
+}
+
+.task-item.is-dragging,
+.task-item.is-dragging .task-title {
+  cursor: grabbing;
+}
+
 /* Expanded row ------------------------------------------------------------- */
 
 /* Reads as a card lifted out of the list, so it is obvious which task the

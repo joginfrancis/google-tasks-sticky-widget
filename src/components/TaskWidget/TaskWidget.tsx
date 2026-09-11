@@ -1,4 +1,11 @@
-import { Fragment, useCallback, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   Settings,
   SyncStatus as Status,
@@ -59,6 +66,24 @@ export function TaskWidget(props: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const toggleExpand = (id: string) =>
     setExpandedId((current) => (current === id ? null : id));
+
+  // Clicking anywhere that is not a task closes the open one. Without this the
+  // only way to put a row away is to find and click it again, which is an odd
+  // thing to have to do once you have already looked elsewhere.
+  useEffect(() => {
+    if (expandedId === null) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      // A popup belonging to the open row — the date picker especially — is
+      // part of that row even when it is drawn outside the row's own box.
+      if (target?.closest("li.task-item, .due-popover, .task-menu")) return;
+      setExpandedId(null);
+    };
+
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [expandedId]);
 
   const selectedId = props.settings.selectedTaskListId ?? "";
 

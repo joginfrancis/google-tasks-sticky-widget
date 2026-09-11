@@ -4,6 +4,15 @@ import { formatDue, isOverdue } from "../../lib/date";
 import { DueChip } from "./DueChip";
 import "./TaskItem.css";
 
+/**
+ * How long a single click waits to see whether a second one is coming.
+ *
+ * Windows' own double-click threshold defaults to 500ms, but that is far too
+ * long to sit on before opening a row — the delay reads as lag. 220ms catches
+ * an ordinary double click while still feeling immediate.
+ */
+const DOUBLE_CLICK_GRACE_MS = 220;
+
 interface Props {
   task: Task;
   isSubtask: boolean;
@@ -66,6 +75,7 @@ export function TaskItem({
    * register as a click and toggle the row open.
    */
   const pressOrigin = useRef<{ x: number; y: number } | null>(null);
+  const expandTimer = useRef<number | null>(null);
 
   const done = task.status === "completed";
   const overdue = !done && isOverdue(task.due);
@@ -76,6 +86,15 @@ export function TaskItem({
       inputRef.current.select();
     }
   }, [editing]);
+
+  // A row unmounted mid-gesture — completed, deleted, or dragged to another
+  // list — must not expand itself a moment later.
+  useEffect(
+    () => () => {
+      if (expandTimer.current !== null) window.clearTimeout(expandTimer.current);
+    },
+    [],
+  );
 
   const beginEdit = (field: "title" | "notes") => {
     if (done) return; // Editing a finished task is almost always a misclick.
@@ -100,15 +119,35 @@ export function TaskItem({
   };
 
   /**
-   * Collapsed, a click opens the row; expanded, it edits the title.
+   * A single click anywhere on the row toggles it open; a double click on text
+   * edits that text, whether the row is open or closed.
    *
-   * The same target meaning two things is deliberate — it matches Google Tasks,
-   * and it keeps the most common action (open and look) a single click while
-   * still allowing a rename without a menu.
+   * The expand is held back a beat so the first click of a double click does
+   * not open the row on its way to edit mode — without that, every rename
+   * flashes the row open and shut on the way in.
    */
-  const handleTitleClick = (event: React.MouseEvent) => {
-    // A drag that happens to finish over the title still fires a click. Ignore
-    // it, or reordering a task would also toggle it open.
+  const cancelPendingExpand = () => {
+    if (expandTimer.current !== null) {
+      window.clearTimeout(expandTimer.current);
+      expandTimer.current = null;
+    }
+  };
+
+  const handleRowClick = (event: React.MouseEvent) => {
+    if (editing) return;
+
+    // Buttons, the date chip and the menu own their own clicks. Toggling the
+    // row as well would make pressing one feel like it did two things.
+    if (
+      (event.target as HTMLElement).closest(
+        "button, input, textarea, select, a, [role='button'], .due-chip, .task-menu",
+      )
+    ) {
+      return;
+    }
+
+    // A drag that happens to finish over the row still fires a click. Ignore
+    // it, or reordering a task would toggle it open as well.
     const origin = pressOrigin.current;
     if (origin) {
       const moved =
@@ -116,8 +155,22 @@ export function TaskItem({
       if (moved > 4) return;
     }
 
-    if (isExpanded) beginEdit("title");
-    else onToggleExpand(task.id);
+    // The second click of a double click; the dblclick handler takes it.
+    if (event.detail > 1) {
+      cancelPendingExpand();
+      return;
+    }
+
+    cancelPendingExpand();
+    expandTimer.current = window.setTimeout(() => {
+      expandTimer.current = null;
+      onToggleExpand(task.id);
+    }, DOUBLE_CLICK_GRACE_MS);
+  };
+
+  const handleTextDoubleClick = (field: "title" | "notes") => {
+    cancelPendingExpand();
+    beginEdit(field);
   };
 
   const handleEditKey = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -152,6 +205,7 @@ export function TaskItem({
         event.preventDefault();
         setMenuOpen(true);
       }}
+      onClick={handleRowClick}
       onPointerDown={(event) => {
         pressOrigin.current = { x: event.clientX, y: event.clientY };
         if (!onDragPress || editing) return;
@@ -203,15 +257,33 @@ export function TaskItem({
               onBlur={commitEdit}
             />
           ) : (
-            <span
-              className="task-title"
-              onClick={handleTitleClick}
-              title={
-                done ? undefined : isExpanded ? "Click to edit" : "Click for details"
-              }
-            >
-              {task.title}
-            </span>
+            <div className="task-line">
+              <span
+                className="task-title"
+                onDoubleClick={() => handleTextDoubleClick("title")}
+                title={done ? undefined : "Double-click to edit"}
+              >
+                {task.title}
+              </span>
+
+              {/* The date sits on the title line rather than under it, so a
+                  collapsed row is one line tall whatever it carries. */}
+              {task.due && (
+                <DueChip
+                  label={formatDue(task.due)}
+                  overdue={overdue}
+                  done={done}
+                  open={dueOpen}
+                  value={task.due}
+                  onOpen={() => !done && setDueOpen(true)}
+                  onClose={() => setDueOpen(false)}
+                  onChange={(next) => {
+                    setDueOpen(false);
+                    onSetDue(task.id, next);
+                  }}
+                />
+              )}
+            </div>
           )}
 
           {editing === "notes" ? (
@@ -232,47 +304,32 @@ export function TaskItem({
             // collapsed row cannot express.
             <span
               className={`task-notes ${task.notes ? "" : "is-placeholder"}`}
-              onClick={() => beginEdit("notes")}
+              onDoubleClick={() => handleTextDoubleClick("notes")}
+              title="Double-click to edit"
             >
               {task.notes || "Add details…"}
             </span>
-          ) : (
-            task.notes && (
-              <span className="task-notes is-clamped">{task.notes}</span>
-            )
-          )}
+          ) : null}
+          {/* Notes are deliberately absent when collapsed: a row carrying
+              details would otherwise be taller than one without, and the list
+              stops scanning as a single column of tasks. */}
 
-          {task.due ? (
+          {/* Only offered when open — a collapsed row with no date stays clean,
+              and the chip above covers the case where one is already set. */}
+          {isExpanded && !task.due && !done && (
             <DueChip
-              label={formatDue(task.due)}
-              overdue={overdue}
-              done={done}
+              label="Add date"
+              overdue={false}
+              done={false}
               open={dueOpen}
-              value={task.due}
-              onOpen={() => !done && setDueOpen(true)}
+              value={null}
+              onOpen={() => setDueOpen(true)}
               onClose={() => setDueOpen(false)}
               onChange={(next) => {
                 setDueOpen(false);
                 onSetDue(task.id, next);
               }}
             />
-          ) : (
-            isExpanded &&
-            !done && (
-              <DueChip
-                label="Add date"
-                overdue={false}
-                done={false}
-                open={dueOpen}
-                value={null}
-                onOpen={() => setDueOpen(true)}
-                onClose={() => setDueOpen(false)}
-                onChange={(next) => {
-                  setDueOpen(false);
-                  onSetDue(task.id, next);
-                }}
-              />
-            )
           )}
 
           {isExpanded && (

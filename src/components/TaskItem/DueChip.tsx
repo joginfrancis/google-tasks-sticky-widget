@@ -1,5 +1,10 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import "./DueChip.css";
+
+/** Calendar width and rough height, needed before it has been laid out. */
+const CALENDAR_W = 230;
+const CALENDAR_H = 250;
+const EDGE_GAP = 6;
 
 interface Props {
   label: string;
@@ -35,8 +40,55 @@ export function DueChip(props: Props) {
 
   const cells = monthCells(month);
 
+  /**
+   * The calendar is positioned against the viewport rather than the chip.
+   *
+   * As an absolutely-positioned child it was clipped by the scrolling task
+   * list, so opening a date near the bottom of a note hid the calendar inside
+   * the scroll area and you had to scroll to reach it. Fixed positioning takes
+   * it out of that container; flipping above the chip keeps it inside the
+   * window, which is the one boundary nothing in a webview can cross.
+   */
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const [placement, setPlacement] = useState<{ top: number; left: number }>({
+    top: 0,
+    left: 0,
+  });
+
+  useLayoutEffect(() => {
+    if (!props.open || !wrapRef.current) return;
+
+    const place = () => {
+      const chip = wrapRef.current?.getBoundingClientRect();
+      if (!chip) return;
+
+      // Below the chip by default, above it when that would overflow — and
+      // clamped, so a window too short for either still shows the whole thing.
+      const below = chip.bottom + 4;
+      const above = chip.top - CALENDAR_H - 4;
+      const fitsBelow = below + CALENDAR_H <= window.innerHeight - EDGE_GAP;
+      const top = fitsBelow ? below : Math.max(EDGE_GAP, above);
+
+      const left = Math.min(
+        Math.max(EDGE_GAP, chip.left),
+        window.innerWidth - CALENDAR_W - EDGE_GAP,
+      );
+
+      setPlacement({ top, left });
+    };
+
+    place();
+    // The note can be resized or scrolled while the calendar is open.
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [props.open]);
+
   return (
-    <span className="due-wrap">
+    <span className="due-wrap" ref={wrapRef}>
       {!props.hideTrigger && (
         <button
           className={`due-chip ${props.overdue ? "is-overdue" : ""} ${props.done ? "is-done" : ""}`}
@@ -70,7 +122,10 @@ export function DueChip(props: Props) {
       {props.open && (
         <>
           <div className="menu-scrim" onClick={props.onClose} />
-          <div className="calendar">
+          <div
+            className="calendar due-popover"
+            style={{ top: placement.top, left: placement.left }}
+          >
             <div className="calendar-head">
               <button
                 className="calendar-nav"
