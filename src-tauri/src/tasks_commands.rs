@@ -18,6 +18,20 @@ fn cursor_key(task_list_id: &str) -> String {
     format!("updated_min:{task_list_id}")
 }
 
+/// Tells every window that a list changed.
+///
+/// The cache is the single source of truth and each note is only a view of it,
+/// so a write is not finished until the other views have been told. Without
+/// this, two notes showing one list diverge the moment either is touched, and
+/// stay wrong until a poll happens to come round — which looks exactly like two
+/// windows syncing separately, even though there is only ever one store and one
+/// scheduler behind them.
+///
+/// Every mutation ends with a call to this, and any new one must too.
+fn announce(app: &AppHandle, task_list_id: &str) {
+    let _ = app.emit("tasks:updated", task_list_id.to_string());
+}
+
 fn client(app: &AppHandle) -> Result<TasksClient, String> {
     let token = app
         .state::<AuthState>()
@@ -208,6 +222,7 @@ pub fn create_task(
         })?;
 
     app.state::<Store>().upsert_tasks(std::slice::from_ref(&created))?;
+    announce(&app, &task_list_id);
     Ok(created)
 }
 
@@ -228,6 +243,7 @@ pub fn set_task_completed(
         })?;
 
     app.state::<Store>().upsert_tasks(std::slice::from_ref(&updated))?;
+    announce(&app, &task_list_id);
     Ok(updated)
 }
 
@@ -290,6 +306,7 @@ pub fn update_task(
         })?;
 
     app.state::<Store>().upsert_tasks(std::slice::from_ref(&updated))?;
+    announce(&app, &task_list_id);
     Ok(updated)
 }
 
@@ -534,7 +551,9 @@ pub fn delete_task(
         }
     }
 
-    app.state::<Store>().delete_task(&task_id)
+    app.state::<Store>().delete_task(&task_id)?;
+    announce(&app, &task_list_id);
+    Ok(())
 }
 
 #[cfg(test)]
