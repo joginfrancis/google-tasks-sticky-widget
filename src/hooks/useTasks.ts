@@ -11,6 +11,35 @@ import { isMainNote } from "../lib/window";
 const UNDO_WINDOW_MS = 6000;
 
 /**
+ * Moves `id` to `toIndex` among its top-level active siblings.
+ *
+ * `toIndex` is in the frame the move API uses: siblings with the moved task
+ * already removed. Subtasks travel with their parent, and the widget regroups
+ * children under parents when it renders, so only the parent order matters here.
+ */
+function reorderLocally(list: Task[], id: string, toIndex: number): Task[] {
+  const moved = list.find((t) => t.id === id);
+  if (!moved) return list;
+
+  const children = list.filter((t) => t.parentId === id);
+  const rest = list.filter((t) => t.id !== id && t.parentId !== id);
+  const siblings = rest.filter(
+    (t) => !t.parentId && t.status === "needsAction",
+  );
+
+  // Past the end means last, which is a legitimate drop rather than an error.
+  const anchor = siblings[toIndex];
+  if (!anchor) return [...rest, moved, ...children];
+
+  const out: Task[] = [];
+  for (const task of rest) {
+    if (task.id === anchor.id) out.push(moved, ...children);
+    out.push(task);
+  }
+  return out;
+}
+
+/**
  * Owns everything task-shaped: the cached list, the selected list id, sync
  * status, and the write path.
  *
@@ -408,6 +437,14 @@ export function useTasks(connected: boolean) {
       if (crossList) {
         // Leaving this list, so drop it from view immediately.
         setTasks((prev) => prev.filter((t) => t.id !== id && t.parentId !== id));
+      } else if (options.toIndex !== undefined) {
+        // Land the row where it was dropped before the network is consulted.
+        // `move_task` is a round-trip to Google, and without this the list goes
+        // on showing the old order for a second or more: the row appears to
+        // snap back to where it started and then jump, which reads as a failed
+        // drag. The readCache below still reconciles against what the server
+        // actually did, and the catch re-reads if it refused.
+        setTasks((prev) => reorderLocally(prev, id, options.toIndex as number));
       }
 
       try {
