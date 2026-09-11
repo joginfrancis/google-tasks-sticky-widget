@@ -403,6 +403,9 @@ export default function App() {
       onOpenInGoogle={tasks.openInGoogle}
       onMoveToList={(id, dest) => void tasks.moveTaskToList(id, dest)}
       onReorder={(id, toIndex) => void tasks.moveTask(id, { toIndex })}
+      onAdopt={(id, fromListId, toIndex) =>
+        void tasks.adoptTask(id, fromListId, toIndex)
+      }
       onCreateList={tasks.createList}
       onRenameList={tasks.renameList}
       onDeleteList={tasks.deleteList}

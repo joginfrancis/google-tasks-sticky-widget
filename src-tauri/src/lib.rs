@@ -106,6 +106,8 @@ pub fn run() {
             notes::close_note_window,
             notes::open_note_labels,
             notes::register_note_list,
+            notes::note_window_at,
+            notes::note_window_frame,
             sync::note_activity,
             sync::request_sync,
             sync::sync_interval_secs,

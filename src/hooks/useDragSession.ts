@@ -13,6 +13,16 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  emitDragDrop,
+  emitDragEnd,
+  emitDragOver,
+  noteWindowAt,
+  toScreen,
+  windowFrame,
+  type WindowFrame,
+} from "../lib/dragBus";
+import { windowLabel } from "../lib/window";
 
 /** Pixels the pointer must travel before a press becomes a drag. */
 const DRAG_THRESHOLD_PX = 4;
@@ -68,10 +78,70 @@ export function useDragSession(options: {
     | (StartArgs & { origin: { x: number; y: number }; pointerId: number })
   >(null);
 
+  /** This window's position and DPI, captured once when a drag begins. */
+  const frameRef = useRef<WindowFrame | null>(null);
+  /** True once another note has been told a drag is over it. */
+  const announcedForeignRef = useRef(false);
+  /** The note last reported under the cursor, for the drop to act on. */
+  const foreignTargetRef = useRef<string | null>(null);
+  /** One hit-test in flight at a time; moves arrive far faster than IPC. */
+  const hitTestBusyRef = useRef(false);
+
   const cancel = useCallback(() => {
     pendingRef.current = null;
+    if (announcedForeignRef.current) {
+      announcedForeignRef.current = false;
+      emitDragEnd();
+    }
+    foreignTargetRef.current = null;
     setSession(null);
   }, []);
+
+  /**
+   * Tells whichever note is under the cursor that a task is hovering it.
+   *
+   * Deliberately fire-and-forget: the target draws its own indicator from this
+   * broadcast, so there is nothing to wait for and no reply to handle. Dropped
+   * frames while a hit-test is in flight are fine — another move is always
+   * moments away, and the last one before release is what the drop uses.
+   */
+  const announceForeign = useCallback(
+    async (
+      current: DragSession,
+      client: { x: number; y: number },
+      event: PointerEvent,
+    ) => {
+      const frame = frameRef.current;
+      if (!frame || hitTestBusyRef.current) return;
+      hitTestBusyRef.current = true;
+
+      try {
+        const { screenX, screenY } = toScreen(frame, client.x, client.y);
+        const target = await noteWindowAt(screenX, screenY);
+
+        // A note may have closed, or the pointer left every window.
+        const self = windowLabel();
+        foreignTargetRef.current = target === self ? null : target;
+
+        emitDragOver({
+          originLabel: self,
+          targetLabel: foreignTargetRef.current,
+          taskId: current.taskId,
+          fromListId: current.fromListId,
+          screenX,
+          screenY,
+        });
+        announcedForeignRef.current = true;
+      } catch {
+        // A failed hit-test just means no foreign target this frame.
+        foreignTargetRef.current = null;
+      } finally {
+        hitTestBusyRef.current = false;
+      }
+      void event;
+    },
+    [],
+  );
 
   const beginPress = useCallback((args: StartArgs) => {
     const { event, row } = args;
@@ -101,6 +171,13 @@ export function useDragSession(options: {
         const dy = event.clientY - pending.origin.y;
         if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
 
+        // Fetched once per drag rather than per move: an IPC round-trip on
+        // every frame would be the most expensive thing in the gesture, and a
+        // note cannot be moved while the pointer is held.
+        void windowFrame().then((f) => {
+          frameRef.current = f;
+        });
+
         const rect = pending.row.getBoundingClientRect();
         setSession({
           taskId: pending.taskId,
@@ -127,18 +204,56 @@ export function useDragSession(options: {
 
       const client = { x: event.clientX, y: event.clientY };
       const index = optionsRef.current.resolveIndex(client);
+
       setSession({
         ...current,
         cursor: client,
         overListId: index === null ? null : current.fromListId,
         overIndex: index,
       });
+
+      // Inside our own list there is nothing to tell anyone: this window draws
+      // its own indicator and commits its own move.
+      if (index !== null) {
+        if (announcedForeignRef.current) {
+          announcedForeignRef.current = false;
+          emitDragEnd();
+        }
+        return;
+      }
+
+      // Outside it, the cursor may be over another note. Only Rust can say
+      // which, so ask — throttled to one question per frame.
+      void announceForeign(current, client, event);
     };
 
     const onUp = () => {
       const current = sessionRef.current;
       pendingRef.current = null;
       if (!current) return;
+
+      // Released over another note: hand the task to it and stop. That window
+      // knows its own list and its own row geometry, and it is still there if
+      // this one closes.
+      const foreign = foreignTargetRef.current;
+      if (foreign && current.overIndex === null) {
+        const frame = frameRef.current;
+        const screen = frame
+          ? toScreen(frame, current.cursor.x, current.cursor.y)
+          : { screenX: 0, screenY: 0 };
+
+        emitDragDrop({
+          originLabel: windowLabel(),
+          targetLabel: foreign,
+          taskId: current.taskId,
+          fromListId: current.fromListId,
+          ...screen,
+        });
+        announcedForeignRef.current = false;
+        foreignTargetRef.current = null;
+        setSession(null);
+        return;
+      }
 
       // A drop on no valid target, or back where it started, is a cancel — not
       // a write. Reordering to the same place would still cost a network call.

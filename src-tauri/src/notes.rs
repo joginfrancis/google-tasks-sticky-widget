@@ -364,3 +364,52 @@ pub fn register_note_list(
     sync.wake();
     Ok(())
 }
+
+/// Which note window sits under a point on the desktop, in physical pixels.
+///
+/// The answer has to come from here because a webview knows only its own
+/// insides: it cannot see the note next to it, let alone where that note is on
+/// screen. This is what lets a drag that leaves one note find another.
+///
+/// Only note windows are considered, so the desktop, other applications and any
+/// non-note window of our own all fall out as `None` with nothing special
+/// written for them.
+///
+/// Hit-testing by bounds rather than by Win32 `WindowFromPoint`: it needs no
+/// native dependency, and notes are normally laid out side by side. The
+/// difference shows only where two notes overlap, where this reports whichever
+/// the registry lists first rather than whichever is on top.
+#[tauri::command]
+pub fn note_window_at(app: AppHandle, x: i32, y: i32) -> Option<String> {
+    let mut labels = app.state::<NoteRegistry>().labels();
+    labels.push(MAIN_LABEL.to_string());
+
+    labels.into_iter().find(|label| {
+        let Some(window) = app.get_webview_window(label) else {
+            return false;
+        };
+        // A hidden note is not a drop target, and `main` in particular hides
+        // rather than closes.
+        if !window.is_visible().unwrap_or(false) {
+            return false;
+        }
+        let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) else {
+            return false;
+        };
+        x >= pos.x
+            && x < pos.x + size.width as i32
+            && y >= pos.y
+            && y < pos.y + size.height as i32
+    })
+}
+
+/// Where a note window sits and how its pixels are scaled.
+///
+/// A drag converts its own client coordinates into physical screen ones, and the
+/// note underneath converts them back. Both directions need this.
+#[tauri::command]
+pub fn note_window_frame(window: tauri::Window) -> Result<(i32, i32, f64), String> {
+    let pos = window.outer_position().map_err(|e| e.to_string())?;
+    let scale = window.scale_factor().map_err(|e| e.to_string())?;
+    Ok((pos.x, pos.y, scale))
+}

@@ -15,6 +15,7 @@ import type {
 } from "../../types";
 import { TaskItem } from "../TaskItem/TaskItem";
 import { useDragSession } from "../../hooks/useDragSession";
+import { useForeignDrag } from "../../hooks/useForeignDrag";
 import { DragGhost } from "./DragGhost";
 import { TaskInput } from "../TaskInput/TaskInput";
 import { HeaderMenu } from "../HeaderMenu/HeaderMenu";
@@ -29,6 +30,8 @@ interface Props {
   tasks: Task[];
   /** Reorder within the current list. Index is among top-level active rows. */
   onReorder: (id: string, toIndex: number) => void;
+  /** Take a task dragged in from another note into this window's list. */
+  onAdopt: (taskId: string, fromListId: string, toIndex: number) => void;
   taskLists: TaskList[];
   settings: Settings;
   status: Status;
@@ -192,6 +195,17 @@ export function TaskWidget(props: Props) {
     onCommit: props.onReorder,
   });
 
+  // A task being dragged in from another note. Rendered through the same gap as
+  // a local drag, so the two look identical from the user's side.
+  const foreign = useForeignDrag({
+    resolveIndex,
+    onAdopt: props.onAdopt,
+  });
+
+  // Whichever drag is live owns the indicator; only one can be at a time,
+  // because a local drag never leaves this window's list.
+  const dropIndex = session?.overIndex ?? foreign?.overIndex ?? null;
+
   return (
     <div
       className={`widget${session !== null ? " is-dragging-active" : ""}`}
@@ -280,10 +294,7 @@ export function TaskWidget(props: Props) {
                 // the pointer is.
                 const slot = reorderable.indexOf(task);
                 const showGap =
-                  session !== null &&
-                  session.overIndex !== null &&
-                  slot !== -1 &&
-                  slot === session.overIndex;
+                  dropIndex !== null && slot !== -1 && slot === dropIndex;
 
                 return (
                 <Fragment key={task.id}>
@@ -325,10 +336,9 @@ export function TaskWidget(props: Props) {
                 );
               })}
               {/* A drop past the last row lands here. */}
-              {session !== null &&
-                session.overIndex === reorderable.length && (
-                  <li className="drop-gap" aria-hidden="true" />
-                )}
+              {dropIndex === reorderable.length && (
+                <li className="drop-gap" aria-hidden="true" />
+              )}
             </ul>
 
             {completed.length > 0 && (

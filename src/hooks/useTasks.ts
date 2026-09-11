@@ -498,6 +498,38 @@ export function useTasks(connected: boolean) {
     [readCache, setError],
   );
 
+  /**
+   * Takes a task from another list into this one, at a position.
+   *
+   * The receiving window runs this, not the window the drag started in: it is
+   * the one that knows its own list and where the drop landed, and it is still
+   * open if the source note was closed mid-drag. `move_task` is told the
+   * origin list because that is the collection the task must be moved *out* of.
+   */
+  const adoptTask = useCallback(
+    async (taskId: string, fromListId: string, toIndex: number) => {
+      const listId = currentListRef.current;
+      if (!listId || fromListId === listId) return;
+
+      setError(taskId, null);
+      try {
+        await invoke("move_task", {
+          taskListId: fromListId,
+          taskId,
+          destinationTaskListId: listId,
+          toIndex,
+        });
+        // Rust resyncs the destination, but re-read now so the row appears
+        // without waiting for the event to come back round.
+        await readCache(listId);
+      } catch (err) {
+        await readCache(listId);
+        setError(taskId, String(err));
+      }
+    },
+    [readCache, setError],
+  );
+
   /** Kept as a named intent; the context menu reads better for it. */
   const moveTaskToList = useCallback(
     (id: string, destinationListId: string) =>
@@ -616,6 +648,7 @@ export function useTasks(connected: boolean) {
     openInGoogle,
     moveTask,
     moveTaskToList,
+    adoptTask,
     createList,
     renameList,
     deleteList,
