@@ -265,6 +265,29 @@ behavior — manual verification is faster and more honest there.
 >
 > Do not attempt to engineer around this in the build scripts. It is a security
 > control the user deliberately has on.
+>
+> **2026-09-11 — it now blocks compilation entirely.** The block moved from
+> build scripts and output binaries to the **proc-macro DLLs `rustc` loads**:
+>
+> ```
+> cssparser_macros-...dll: LoadLibraryExW failed:
+> An Application Control policy has blocked this file. (os error 4551) (retried 5 times)
+> ```
+>
+> Every previous workaround is therefore dead. Skipping the bundler, plain
+> `cargo build`, and `tauri dev` all fail the same way, because none of them
+> avoids loading a proc-macro. The last binary built before this
+> (`target/release/sticky-widget.exe`, 2026-09-10) still runs when launched from
+> Explorer, so the app on screen is usable — it just cannot be rebuilt.
+>
+> **Do not run `cargo clean` while this holds.** Cached artifacts are the only
+> reason anything still builds at all; deleting them is unrecoverable until SAC
+> is resolved. Learned the expensive way — a `cargo clean -p tauri …`, intended
+> to fix an unrelated corrupted fingerprint from an interrupted build, removed
+> 236 MB that could not be rebuilt.
+>
+> The decision is the owner's and it is one-way: turn Smart App Control off, or
+> buy a code-signing certificate.
 
 - [ ] `README.md`: what it is, screenshot, install, and an explicit statement
       that it uses OAuth and never sees the Google password.
