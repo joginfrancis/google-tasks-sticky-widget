@@ -96,12 +96,6 @@
   color: var(--text-muted);
   line-height: 1.35;
   cursor: text;
-  /* Two lines is enough to recognise the note; the rest is one click away in
-     the editor, and an unbounded note would push every other task off-screen. */
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
   overflow-wrap: anywhere;
 }
 
@@ -272,4 +266,80 @@
   border-radius: 2px;
   background: var(--accent, currentColor);
   opacity: 0.75;
+}
+
+/* Expanded row ------------------------------------------------------------- */
+
+/* Reads as a card lifted out of the list, so it is obvious which task the
+   notes and actions below belong to. */
+.task-item.is-expanded .task-row {
+  background: var(--surface-hover);
+  padding-bottom: 8px;
+}
+
+.task-item.is-expanded {
+  margin: 3px 0;
+  border-radius: var(--radius-row);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+/* Collapsed notes stay clamped; expanded notes show in full, because the whole
+   point of opening the row is to read them.
+   Two lines is enough to recognise a note in a dense list, and an unbounded one
+   would push every other task off-screen. */
+.task-notes.is-clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.task-item.is-expanded .task-notes {
+  margin-top: 2px;
+  white-space: pre-wrap;
+}
+
+.task-notes.is-placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.task-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+}
+
+.task-action {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.task-action:hover {
+  background: var(--surface-active);
+  color: var(--text);
+}
+
+.task-action.is-danger {
+  color: var(--danger);
+}
+
+.task-action.is-danger:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+/* The options button is always visible on an open row — hover-to-reveal makes
+   sense for a dense list, not for the one row the user is working in. */
+.task-item.is-expanded .task-menu-trigger {
+  opacity: 1;
 }

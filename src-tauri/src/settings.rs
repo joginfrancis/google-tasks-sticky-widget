@@ -49,6 +49,11 @@ pub struct Settings {
     /// to its own position and size rather than a default one.
     #[serde(default)]
     pub open_notes: std::collections::HashMap<String, String>,
+    /// Pin state per window label, so one note can float while another sits
+    /// behind. `window_layer` above is only the default for notes with no
+    /// entry here.
+    #[serde(default)]
+    pub note_layers: std::collections::HashMap<String, String>,
     /// Which Google task list the main note shows. `None` until first sync picks
     /// one, so a fresh install does not guess at a list id that may not exist.
     #[serde(default)]
@@ -66,6 +71,7 @@ impl Default for Settings {
             global_hotkey_enabled: true,
             list_colors: std::collections::HashMap::new(),
             open_notes: std::collections::HashMap::new(),
+            note_layers: std::collections::HashMap::new(),
             selected_task_list_id: None,
         }
     }
@@ -129,6 +135,27 @@ impl Settings {
                 .clone()
                 .unwrap_or_else(|| crate::hotkey::DEFAULT_ACCELERATOR.to_string()),
         )
+    }
+
+    /// This window's pin state, falling back to the global default for a note
+    /// that has never been pinned or unpinned.
+    pub fn layer_for(&self, label: &str) -> WindowLayer {
+        self.note_layers
+            .get(label)
+            .map(String::as_str)
+            .and_then(WindowLayer::parse)
+            .unwrap_or_else(|| self.layer())
+    }
+
+    pub fn set_layer_for(&mut self, label: &str, layer: WindowLayer) {
+        self.note_layers
+            .insert(label.to_string(), layer.as_str().to_string());
+
+        // The main note also moves the global default, so a newly opened note
+        // inherits whatever the user last chose rather than a fixed value.
+        if label == crate::notes::MAIN_LABEL {
+            self.set_layer(layer);
+        }
     }
 
     pub fn set_layer(&mut self, layer: WindowLayer) {

@@ -141,7 +141,7 @@ pub fn run() {
 
             let loaded = settings::load(&handle);
             let start_hidden = loaded.start_hidden;
-            let layer = loaded.layer();
+            let layer = loaded.layer_for(notes::MAIN_LABEL);
             let show_in_taskbar = loaded.show_in_taskbar;
             let selected_list = loaded.selected_task_list_id.clone();
             let hotkey_accelerator = loaded.effective_hotkey();
@@ -171,11 +171,14 @@ pub fn run() {
                 // so this is the moment to sanity-check it.
                 window::ensure_on_screen(&win);
 
+                // The main note has its own pin state like any other.
                 match layer {
                     settings::WindowLayer::Top => {
                         let _ = win.set_always_on_top(true);
                     }
-                    settings::WindowLayer::Normal => {}
+                    settings::WindowLayer::Normal => {
+                        let _ = win.set_always_on_top(false);
+                    }
                     settings::WindowLayer::Bottom => {
                         let _ = win.set_always_on_top(false);
                         let _ = win.set_always_on_bottom(true);

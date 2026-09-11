@@ -62,10 +62,14 @@ function SWATCHES(
       key: "custom",
       // "A colour not on this row" — opens the OS picker rather than being a
       // colour itself.
+      // A colour wheel rather than a "+": the row it sits in is already a set of
+      // colours, so "another one of these" needs no explaining, and the wheel
+      // says *any* colour where a plus only said "more". It can afford to be
+      // vivid here — it only appears once the palette is open, unlike the
+      // trigger, which sits on the note all the time and must stay quiet.
       className: "swatch is-add",
       title: "Custom colour…",
       active: false,
-      content: <span>+</span>,
       onClick: openCustom,
     },
   ];

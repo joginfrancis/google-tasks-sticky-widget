@@ -13,6 +13,7 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
+use crate::settings::{AppState, WindowLayer};
 use crate::window;
 
 /// Whether the shortcut registered at startup, so Settings can explain itself
@@ -20,6 +21,15 @@ use crate::window;
 #[derive(Default)]
 pub struct HotkeyStatus {
     pub error: Mutex<Option<String>>,
+    /// Whether the last press hid the notes.
+    ///
+    /// Remembered rather than inferred from what is currently on screen,
+    /// because a pinned note stays visible through a hide — so "is anything
+    /// visible?" would answer yes and the next press would try to hide again.
+    ///
+    /// Unpinning that note leaves this flag alone, which is what makes the next
+    /// press show everything, as it should.
+    pub hidden: Mutex<bool>,
 }
 
 /// Chosen to be unlikely to collide: Ctrl+Shift+ a letter is rare in system
@@ -68,46 +78,79 @@ pub fn apply(app: &AppHandle, accelerator: Option<&str>) -> Result<(), String> {
     }
 }
 
-/// Shows every note, or hides every note.
+/// Shows every note, or hides every unpinned note.
 ///
 /// Operates on all of them rather than the main window alone: with several notes
 /// on screen, a shortcut that summoned only one would leave the others behind
 /// and make the gesture feel broken.
 ///
-/// The rule is deliberately asymmetric — if *anything* is visible, the press
-/// means "get them out of the way"; only when nothing is showing does it mean
-/// "bring them back". Otherwise a partially-visible set toggles unpredictably.
+/// Two rules, both of which matter:
+///
+/// 1. **Pinned notes are never hidden.** Pinning means "keep this in front", and
+///    a shortcut that hid it anyway would make the pin meaningless.
+/// 2. **The direction is remembered, not inferred.** Asking "is anything
+///    visible?" gives the wrong answer once a pinned note is exempt — it stays
+///    on screen through a hide, so the next press would try to hide again.
+///    Tracking the last action instead means unpinning that note and pressing
+///    the shortcut shows everything, which is what the user expects.
 pub fn on_pressed(app: &AppHandle) {
-    let notes: Vec<_> = app
+    let notes: Vec<(String, tauri::WebviewWindow)> = app
         .webview_windows()
         .into_iter()
         .filter(|(label, _)| crate::notes::is_note_label(label))
-        .map(|(_, win)| win)
         .collect();
 
     if notes.is_empty() {
         return;
     }
 
-    let any_visible = notes.iter().any(|w| w.is_visible().unwrap_or(false));
+    let Some(status) = app.try_state::<HotkeyStatus>() else {
+        return;
+    };
+    let Ok(mut hidden) = status.hidden.lock() else {
+        return;
+    };
 
-    if any_visible {
-        log::info!("hotkey: hiding {} note(s)", notes.len());
-        for win in &notes {
-            window::hide(win);
-        }
-    } else {
+    if *hidden {
         log::info!("hotkey: showing {} note(s)", notes.len());
-        for win in &notes {
+        for (_, win) in &notes {
             let _ = win.show();
             let _ = win.unminimize();
         }
-        // Focus one of them, so the set comes back ready to type into rather
-        // than merely visible.
+        // Focus one, so the set comes back ready to type into rather than
+        // merely visible.
         if let Some(main) = window::main_window(app) {
             let _ = main.set_focus();
-        } else if let Some(first) = notes.first() {
+        } else if let Some((_, first)) = notes.first() {
             let _ = first.set_focus();
         }
+        *hidden = false;
+        return;
     }
+
+    // A pinned note is exempt: pinning says "keep this in front", and a
+    // shortcut that hid it anyway would make the pin meaningless.
+    let pinned: Vec<String> = match app.state::<AppState>().settings.lock() {
+        Ok(settings) => notes
+            .iter()
+            .map(|(label, _)| label.clone())
+            .filter(|label| settings.layer_for(label) == WindowLayer::Top)
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+
+    let mut hidden_count = 0;
+    for (label, win) in &notes {
+        if pinned.contains(label) {
+            continue;
+        }
+        window::hide(win);
+        hidden_count += 1;
+    }
+
+    log::info!(
+        "hotkey: hid {hidden_count} note(s), {} left pinned in front",
+        pinned.len()
+    );
+    *hidden = true;
 }

@@ -53,6 +53,11 @@ interface Props {
 
 export function TaskWidget(props: Props) {
   const [completedOpen, setCompletedOpen] = useState(false);
+  // One row at a time: several open at once would push the rest off a 340px
+  // panel, and the point of expanding is to look at one thing.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const toggleExpand = (id: string) =>
+    setExpandedId((current) => (current === id ? null : id));
 
   const selectedId = props.settings.selectedTaskListId ?? "";
 
@@ -275,6 +280,10 @@ export function TaskWidget(props: Props) {
                   }
                   isSettling={props.settlingIds.has(task.id)}
                   error={props.errors[task.id] ?? null}
+
+                  isExpanded={expandedId === task.id}
+
+                  onToggleExpand={toggleExpand}
                   onToggle={props.onToggle}
                   onDelete={props.onDelete}
                   onEdit={props.onEdit}
@@ -315,6 +324,10 @@ export function TaskWidget(props: Props) {
                         isSubtask={Boolean(task.parentId)}
                         isSettling={false}
                         error={props.errors[task.id] ?? null}
+
+                        isExpanded={expandedId === task.id}
+
+                        onToggleExpand={toggleExpand}
                         onToggle={props.onToggle}
                         onDelete={props.onDelete}
                         onEdit={props.onEdit}

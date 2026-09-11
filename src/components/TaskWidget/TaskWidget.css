@@ -164,22 +164,6 @@
   font-size: var(--font-size-sm);
 }
 
-/* Pin ---------------------------------------------------------------------- */
-
-.pin-button.is-top {
-  color: var(--accent);
-}
-
-.pin-button.is-normal svg {
-  /* Unpinned reads as a pin lying flat rather than a different glyph. */
-  transform: rotate(45deg);
-  opacity: 0.75;
-}
-
-.pin-button.is-bottom {
-  color: var(--text-muted);
-}
-
 /* Undo --------------------------------------------------------------------- */
 
 .undo-strip {
@@ -502,22 +486,18 @@
   box-shadow: inset 0 0 0 1.5px var(--surface);
 }
 
+/* The one place a colour wheel belongs: among the swatches, where it means
+   "any colour you like". It only appears while the palette is open, so it can
+   afford to be vivid -- unlike the trigger, which sits on the note all the time
+   and has to stay quiet. */
 .swatch.is-add {
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border-style: dashed;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1;
+  background: conic-gradient(
+    #f87171, #fbbf24, #a3e635, #34d399, #22d3ee, #818cf8, #e879f9, #f87171
+  );
+  border-color: var(--border-strong);
 }
 
-.swatch.is-add:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-/* Kept in the DOM but out of the way — the blank swatch clicks it. */
+/* Kept in the DOM but out of the way -- the wheel swatch clicks it. */
 .color-input {
   position: absolute;
   width: 0;

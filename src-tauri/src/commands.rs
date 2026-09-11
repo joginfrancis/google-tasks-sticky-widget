@@ -16,8 +16,12 @@ use crate::window;
 /// updates persisted settings, ticks the tray checkbox, and tells the UI. The
 /// tray menu and the IPC command both route through here so the three can never
 /// disagree.
-pub fn apply_layer(app: &AppHandle, layer: WindowLayer) -> Result<(), String> {
-    if let Some(win) = window::main_window(app) {
+pub fn apply_layer_to(
+    app: &AppHandle,
+    label: &str,
+    layer: WindowLayer,
+) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window(label) {
         // Order matters: clearing the opposite flag first avoids a moment where
         // both are set, which Windows resolves unpredictably.
         match layer {
@@ -44,33 +48,47 @@ pub fn apply_layer(app: &AppHandle, layer: WindowLayer) -> Result<(), String> {
             .settings
             .lock()
             .map_err(|_| "settings lock poisoned".to_string())?;
-        settings.set_layer(layer);
+        settings.set_layer_for(label, layer);
         settings::save(app, &settings);
     }
 
-    if let Some(handles) = app.try_state::<TrayHandles>() {
-        let _ = handles
-            .always_on_top
-            .set_checked(layer == WindowLayer::Top);
+    // The tray checkbox speaks for the main note only; it has no way to show
+    // three notes in different states.
+    if label == crate::notes::MAIN_LABEL {
+        if let Some(handles) = app.try_state::<TrayHandles>() {
+            let _ = handles
+                .always_on_top
+                .set_checked(layer == WindowLayer::Top);
+        }
     }
 
-    let _ = app.emit("window:layer", layer.as_str());
+    // Addressed to the one window, not broadcast: every note listens for this,
+    // and a broadcast would make them all redraw their pin to match whichever
+    // one was clicked.
+    let _ = app.emit_to(label, "window:layer", layer.as_str());
     Ok(())
 }
 
 #[tauri::command]
-pub fn set_window_layer(app: AppHandle, layer: String) -> Result<(), String> {
+pub fn set_window_layer(
+    app: AppHandle,
+    window: tauri::Window,
+    layer: String,
+) -> Result<(), String> {
     let parsed = WindowLayer::parse(&layer)
         .ok_or_else(|| format!("unknown window layer: {layer}"))?;
-    apply_layer(&app, parsed)
+    apply_layer_to(&app, window.label(), parsed)
 }
 
 #[tauri::command]
-pub fn get_window_layer(state: tauri::State<'_, AppState>) -> Result<String, String> {
+pub fn get_window_layer(
+    window: tauri::Window,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
     state
         .settings
         .lock()
-        .map(|s| s.layer().as_str().to_string())
+        .map(|s| s.layer_for(window.label()).as_str().to_string())
         .map_err(|_| "settings lock poisoned".to_string())
 }
 
@@ -81,11 +99,12 @@ pub fn toggle_top_from_tray(app: &AppHandle) -> Result<(), String> {
         .state::<AppState>()
         .settings
         .lock()
-        .map(|s| s.layer())
+        .map(|s| s.layer_for(crate::notes::MAIN_LABEL))
         .unwrap_or(WindowLayer::Top);
 
-    apply_layer(
+    apply_layer_to(
         app,
+        crate::notes::MAIN_LABEL,
         if current == WindowLayer::Top {
             WindowLayer::Normal
         } else {

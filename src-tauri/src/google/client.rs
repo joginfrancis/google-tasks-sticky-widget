@@ -233,7 +233,12 @@ impl TasksClient {
         let mut request = self
             .http
             .post(format!("{BASE}/lists/{task_list_id}/tasks/{task_id}/move"))
-            .bearer_auth(&self.access_token);
+            .bearer_auth(&self.access_token)
+            // Everything this call needs is in the query string, but Google
+            // rejects a POST with no `Content-Length` — it answers 411 Length
+            // Required, which surfaced as "Google sent something unexpected".
+            // An empty body makes reqwest send `Content-Length: 0`.
+            .body("");
 
         // Omitted rather than sent empty: an empty `previous` means "first",
         // which is a different instruction from "leave the position alone".

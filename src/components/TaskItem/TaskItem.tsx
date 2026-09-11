@@ -27,6 +27,14 @@ interface Props {
   onDragPress?: (event: React.PointerEvent, row: HTMLElement) => void;
   /** True while this row is the one being dragged; it renders as a gap. */
   isDragging?: boolean;
+  /**
+   * Expanded rows show notes, date and actions inline.
+   *
+   * Held by the list rather than the row so only one can be open at a time —
+   * several expanded rows on a 340px panel push everything else off-screen.
+   */
+  isExpanded: boolean;
+  onToggleExpand: (id: string) => void;
 }
 
 export function TaskItem({
@@ -43,6 +51,8 @@ export function TaskItem({
   otherLists,
   onDragPress,
   isDragging,
+  isExpanded,
+  onToggleExpand,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
@@ -51,6 +61,11 @@ export function TaskItem({
   const [dueOpen, setDueOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const rowRef = useRef<HTMLLIElement>(null);
+  /**
+   * Where the press started, so a drag that ends on the title does not also
+   * register as a click and toggle the row open.
+   */
+  const pressOrigin = useRef<{ x: number; y: number } | null>(null);
 
   const done = task.status === "completed";
   const overdue = !done && isOverdue(task.due);
@@ -84,6 +99,27 @@ export function TaskItem({
     setEditing(null);
   };
 
+  /**
+   * Collapsed, a click opens the row; expanded, it edits the title.
+   *
+   * The same target meaning two things is deliberate — it matches Google Tasks,
+   * and it keeps the most common action (open and look) a single click while
+   * still allowing a rename without a menu.
+   */
+  const handleTitleClick = (event: React.MouseEvent) => {
+    // A drag that happens to finish over the title still fires a click. Ignore
+    // it, or reordering a task would also toggle it open.
+    const origin = pressOrigin.current;
+    if (origin) {
+      const moved =
+        Math.abs(event.clientX - origin.x) + Math.abs(event.clientY - origin.y);
+      if (moved > 4) return;
+    }
+
+    if (isExpanded) beginEdit("title");
+    else onToggleExpand(task.id);
+  };
+
   const handleEditKey = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -106,6 +142,7 @@ export function TaskItem({
         isSubtask ? "is-subtask" : "",
         done ? "is-done" : "",
         isSettling ? "is-settling" : "",
+        isExpanded ? "is-expanded" : "",
         error ? "has-error" : "",
         menuOpen ? "is-menu-open" : "",
       ]
@@ -116,6 +153,7 @@ export function TaskItem({
         setMenuOpen(true);
       }}
       onPointerDown={(event) => {
+        pressOrigin.current = { x: event.clientX, y: event.clientY };
         if (!onDragPress || editing) return;
         // Anything the user can operate keeps its own press. Dragging from a
         // checkbox or a menu button would make those unusable, and a press
@@ -167,8 +205,10 @@ export function TaskItem({
           ) : (
             <span
               className="task-title"
-              onClick={() => beginEdit("title")}
-              title={done ? undefined : "Click to edit"}
+              onClick={handleTitleClick}
+              title={
+                done ? undefined : isExpanded ? "Click to edit" : "Click for details"
+              }
             >
               {task.title}
             </span>
@@ -186,15 +226,23 @@ export function TaskItem({
               onKeyDown={handleEditKey}
               onBlur={commitEdit}
             />
+          ) : isExpanded ? (
+            // Expanded always offers the notes slot, empty or not — "add
+            // details" being invisible until notes exist is the main thing the
+            // collapsed row cannot express.
+            <span
+              className={`task-notes ${task.notes ? "" : "is-placeholder"}`}
+              onClick={() => beginEdit("notes")}
+            >
+              {task.notes || "Add details…"}
+            </span>
           ) : (
             task.notes && (
-              <span className="task-notes" onClick={() => beginEdit("notes")}>
-                {task.notes}
-              </span>
+              <span className="task-notes is-clamped">{task.notes}</span>
             )
           )}
 
-          {task.due && (
+          {task.due ? (
             <DueChip
               label={formatDue(task.due)}
               overdue={overdue}
@@ -208,6 +256,41 @@ export function TaskItem({
                 onSetDue(task.id, next);
               }}
             />
+          ) : (
+            isExpanded &&
+            !done && (
+              <DueChip
+                label="Add date"
+                overdue={false}
+                done={false}
+                open={dueOpen}
+                value={null}
+                onOpen={() => setDueOpen(true)}
+                onClose={() => setDueOpen(false)}
+                onChange={(next) => {
+                  setDueOpen(false);
+                  onSetDue(task.id, next);
+                }}
+              />
+            )
+          )}
+
+          {isExpanded && (
+            <div className="task-actions">
+              <button
+                className="task-action"
+                onClick={() => onOpenInGoogle(task.id)}
+                title="Starring, repeats and attachments live in Google Tasks"
+              >
+                Open in Google
+              </button>
+              <button
+                className="task-action is-danger"
+                onClick={() => onDelete(task.id)}
+              >
+                Delete
+              </button>
+            </div>
           )}
         </div>
 
