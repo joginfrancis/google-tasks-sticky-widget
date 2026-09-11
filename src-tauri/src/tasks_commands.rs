@@ -316,10 +316,19 @@ pub fn move_task(
     let previous = match to_index {
         None => None,
         Some(index) => {
+            // Completed tasks are excluded because the index counts rows the
+            // user can see in the active list, and finished ones are hidden away
+            // under "Completed". They are not merely at the end: `position`
+            // interleaves them among the active tasks, so counting them shifts
+            // every index by however many happen to sit above the drop — which
+            // is why a drop would land several rows short in a list with a long
+            // completed section.
             let siblings: Vec<Task> = store
                 .tasks_for_list(&destination)?
                 .into_iter()
-                .filter(|t| t.parent_id.is_none() && t.id != task_id)
+                .filter(|t| {
+                    t.parent_id.is_none() && t.id != task_id && t.status != "completed"
+                })
                 .collect();
 
             if index == 0 {
