@@ -43,9 +43,12 @@ tauri-plugin-single-instance = "2.4.4"
 # (serve it from the binary). `tauri build` passes this; a plain `cargo build`
 # does not, at any profile — the choice is this feature, not debug/release.
 #
-# We build with `cargo build --release --features custom-protocol` because the
-# full `tauri build` runs a bundler whose freshly-compiled binaries Smart App
-# Control blocks on this machine (BUILD_PLAN Phase 9).
+# We build with `cargo build --release --features custom-protocol`. This began
+# as a way around Smart App Control, which blocked the bundler's freshly
+# compiled binaries; SAC is off as of 2026-09-11, so `tauri build` may work
+# again, but it has not been re-tested and this command is known good. It
+# produces a runnable exe and skips the installer, which a personal tool that
+# never leaves this machine does not need. (BUILD_PLAN Phase 9.)
 custom-protocol = ["tauri/custom-protocol"]
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

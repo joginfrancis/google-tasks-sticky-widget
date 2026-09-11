@@ -205,6 +205,11 @@ directly via `winreg`: no build script, no new binary, less code than the plugin
 needed. Worth remembering for any future dependency — a crate with a build
 script may simply not build here.
 
+> Smart App Control was subsequently turned off anyway (Phase 9), so the
+> constraint that forced this no longer applies. The decision stands regardless:
+> the direct `winreg` write is less code than the plugin it replaced and adds no
+> build script. Keeping it.
+
 Two details that matter more than they look:
 
 - **The registry is the source of truth**, not a cached copy. The user can
@@ -238,7 +243,12 @@ behavior — manual verification is faster and more honest there.
 
 ## Phase 9 — Docs and ship (half day)
 
-> **Blocked on this machine: Smart App Control.**
+> **Both build blockers resolved 2026-09-11.** Kept in full because each cost
+> days, and the second is easy to re-create by accident.
+>
+> ---
+>
+> ### Blocker 1 — Smart App Control (resolved: turned off)
 >
 > Bundling compiles fresh build-script executables, and SAC (enforcing here)
 > refuses to run binaries it has no reputation for. Reproduced three times on
@@ -280,14 +290,68 @@ behavior — manual verification is faster and more honest there.
 > (`target/release/sticky-widget.exe`, 2026-09-10) still runs when launched from
 > Explorer, so the app on screen is usable — it just cannot be rebuilt.
 >
-> **Do not run `cargo clean` while this holds.** Cached artifacts are the only
-> reason anything still builds at all; deleting them is unrecoverable until SAC
-> is resolved. Learned the expensive way — a `cargo clean -p tauri …`, intended
-> to fix an unrelated corrupted fingerprint from an interrupted build, removed
-> 236 MB that could not be rebuilt.
+> While this held, `cargo clean` was unsurvivable: cached artifacts were the
+> only reason anything built at all. Learned the expensive way — a
+> `cargo clean -p tauri …`, meant to fix a corrupted fingerprint from an
+> interrupted build, removed 236 MB that could not be rebuilt.
 >
-> The decision is the owner's and it is one-way: turn Smart App Control off, or
-> buy a code-signing certificate.
+> **Resolved** by turning Smart App Control off (2026-09-11). One-way without
+> reinstalling Windows, so it was the owner's decision and the owner's to
+> execute. Code-signing remains the right answer if the app ever leaves this
+> machine.
+>
+> ---
+>
+> ### Blocker 2 — Controlled Folder Access (resolved: target dir moved out)
+>
+> Turning SAC off uncovered a second, unrelated block underneath it. The
+> project lives under `OneDrive\Documents`, which Windows protects by default
+> and which **cannot be removed from the protected folder list**. Every crate's
+> build script compiles to its own executable inside `target\` and then writes
+> its results there — so each one is an unrecognised process writing to a
+> protected path, and Defender blocks it.
+>
+> **The failure mode is deceptive and cost most of the diagnosis time.** CFA
+> does not report access denied. It reports the file as missing:
+>
+> ```
+> Failed to create ...\build\proc-macro2-13ee5db823cf6b2d\out\probe:
+> The system cannot find the file specified. (os error 2)
+> ```
+>
+> which reads as a corrupted target directory and invites a `cargo clean` that
+> makes things worse. The only reliable way to identify it is Defender's own
+> log — **event ID 1123** (1124 when auditing):
+>
+> ```powershell
+> Get-WinEvent -LogName "Microsoft-Windows-Windows Defender/Operational" |
+>   Where-Object Id -in 1123,1124
+> ```
+>
+> **Per-file exemptions cannot solve this.** There are ~200 build scripts, their
+> paths carry content hashes, and the hashes change. Exempting `cargo.exe`,
+> `rustc.exe` and `node.exe` does nothing, because none of those is the process
+> doing the write.
+>
+> **Fix:** `src-tauri/.cargo/config.toml` points `target-dir` at
+> `C:/cargo-target/sticky-note`. Build scripts then live and write outside the
+> protected folder; the source stays where it is and Documents keeps full
+> protection with no folder-level holes. This also stopped OneDrive from syncing
+> the target directory — it had accumulated **22.8 GB across 19,819 files**,
+> re-uploaded on every compile.
+>
+> `git.exe` needed a separate exemption (all three shims: `mingw64\bin`, `cmd`,
+> `bin`). Without it `.git\` is read-only and commits fail with the same
+> misleading `No such file or directory`. `sh.exe` was deliberately *not*
+> exempted — it is a general-purpose shell and the hole would be far wider than
+> git needs. The cost is that git hooks stay blocked; this repo has none.
+>
+> **One residual gap.** Tauri's own build script writes `src-tauri/gen/schemas`
+> *inside* the project, so that write is still blocked — and **the build still
+> exits 0**. Schemas are correct as of 2026-09-11 (verified by timestamp against
+> `capabilities/default.json`), but after any capability change, check that
+> `gen/schemas/capabilities.json` is newer than the capability file. If it is
+> not, the build has silently kept a stale permission schema.
 
 - [ ] `README.md`: what it is, screenshot, install, and an explicit statement
       that it uses OAuth and never sees the Google password.

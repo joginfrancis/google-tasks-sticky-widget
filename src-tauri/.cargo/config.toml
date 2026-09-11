@@ -1,0 +1,18 @@
+# Build output lives outside the project, for two reasons.
+#
+# 1. Controlled Folder Access. The project sits under OneDrive\Documents,
+#    which Windows protects by default and which cannot be removed from the
+#    protected list. Every crate's build script compiles to its own
+#    executable inside `target\` and then writes its results there — so each
+#    one is an unrecognised process writing to a protected path, and Defender
+#    blocks it (event 1123). There are ~200 of them and their hashed paths
+#    change on every clean, so per-file exemptions can never keep up. Writing
+#    somewhere unprotected sidesteps it; Documents keeps full protection.
+#
+# 2. OneDrive was syncing the entire target directory — thousands of files and
+#    gigabytes of intermediates, re-uploaded on every compile.
+#
+# Absolute and machine-specific on purpose: this is a personal tool that is
+# only ever built here.
+[build]
+target-dir = "C:/cargo-target/sticky-note"
