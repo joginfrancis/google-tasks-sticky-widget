@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveDrop, type DropRow } from "./dropTarget";
+import { applyDrop, resolveDrop, type DropRow } from "./dropTarget";
 
 /** `a`, `b` with children `b1`/`b2`, then `c` — the list as drawn. */
 const rows: DropRow[] = [
@@ -152,6 +152,71 @@ describe("resolveDrop — edges", () => {
           const target = resolveDrop(rows, row.id, slot, asChild);
           expect(target?.previous).not.toBe(row.id);
           expect(target?.parent).not.toBe(row.id);
+        }
+      }
+    }
+  });
+});
+
+/** `id:parent` for each row, so a wrong nesting is visible in the failure. */
+const shape = (list: DropRow[]) =>
+  list.map((r) => `${r.id}:${r.parentId ?? "-"}`);
+
+describe("applyDrop", () => {
+  it("moves a task to the top", () => {
+    expect(shape(applyDrop(rows, "c", { parent: null, previous: null }))).toEqual(
+      ["c:-", "a:-", "b:-", "b1:b", "b2:b"],
+    );
+  });
+
+  it("nests a task, giving it its new parent", () => {
+    expect(shape(applyDrop(rows, "c", { parent: "b", previous: "b2" }))).toEqual(
+      ["a:-", "b:-", "b1:b", "b2:b", "c:b"],
+    );
+  });
+
+  // Promoted to top level after `b`, it has to clear b's remaining children:
+  // they still belong to b, so a top-level row cannot sit among them.
+  it("promotes a subtask out of its parent", () => {
+    expect(shape(applyDrop(rows, "b1", { parent: null, previous: "b" }))).toEqual(
+      ["a:-", "b:-", "b2:b", "b1:-", "c:-"],
+    );
+  });
+
+  // Landing after `a` at top level must clear a's children, not split them.
+  it("lands past the previous task's children, not among them", () => {
+    const withKids: DropRow[] = [
+      { id: "a", parentId: null },
+      { id: "a1", parentId: "a" },
+      { id: "z", parentId: null },
+    ];
+    expect(
+      shape(applyDrop(withKids, "z", { parent: null, previous: "a" })),
+    ).toEqual(["a:-", "a1:a", "z:-"]);
+  });
+
+  it("carries children along with their parent", () => {
+    expect(shape(applyDrop(rows, "b", { parent: null, previous: "c" }))).toEqual(
+      ["a:-", "c:-", "b:-", "b1:b", "b2:b"],
+    );
+  });
+
+  it("leaves the list alone for a task it does not contain", () => {
+    expect(applyDrop(rows, "nope", { parent: null, previous: null })).toBe(rows);
+  });
+
+  // The optimistic view must never invent or lose a task, whatever the drop.
+  it("keeps every row, for every drop the resolver can produce", () => {
+    for (const row of rows) {
+      for (let slot = 0; slot <= rows.length; slot += 1) {
+        for (const asChild of [false, true]) {
+          const target = resolveDrop(rows, row.id, slot, asChild);
+          if (!target) continue;
+          const after = applyDrop(rows, row.id, target);
+          expect(after).toHaveLength(rows.length);
+          expect(new Set(after.map((r) => r.id))).toEqual(
+            new Set(rows.map((r) => r.id)),
+          );
         }
       }
     }

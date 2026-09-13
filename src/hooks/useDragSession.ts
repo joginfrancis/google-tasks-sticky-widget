@@ -277,13 +277,15 @@ export function useDragSession(options: {
         return;
       }
 
-      // A drop on no valid target, or back where it started, is a cancel — not
-      // a write. Reordering to the same place would still cost a network call.
-      if (
-        current.overIndex !== null &&
-        current.overListId !== null &&
-        current.overIndex !== current.fromIndex
-      ) {
+      // A drop on no valid target is a cancel.
+      //
+      // Whether it is a *move* is no longer a question this hook can answer.
+      // Nesting and promoting are horizontal gestures: the row keeps its slot,
+      // so comparing indices here — as this did — discarded every one of them
+      // silently. The caller resolves the destination and skips a write that
+      // would change nothing, which is the same intent judged where the
+      // information actually is.
+      if (current.overIndex !== null && current.overListId !== null) {
         // The slot is passed exactly as measured: an insertion point in the
         // list *as drawn*, which still contains the row being dragged. Adjusting
         // for that here would be the third place in this codebase to hold an

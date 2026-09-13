@@ -4,7 +4,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import type { SyncStatus, Task, TaskList } from "../types";
 import { isMainNote } from "../lib/window";
 import type { OutlineEntry } from "../lib/outline";
-import type { DropTarget } from "../lib/dropTarget";
+import { applyDrop, type DropTarget } from "../lib/dropTarget";
 
 /**
  * How long a deleted task can be brought back. Long enough to notice the strip
@@ -619,6 +619,13 @@ export function useTasks(connected: boolean) {
       if (!listId) return;
 
       setError(taskId, null);
+
+      // Land it before the network, for the same reason the index path does:
+      // a drag that waits on Google reads as a drag that failed. Rust upserts
+      // only the moved task and corrects sibling order in the background, so
+      // without this a nest sits unchanged on screen for a beat and then jumps.
+      setTasks((prev) => applyDrop(prev, taskId, target));
+
       try {
         await invoke("move_task_to", {
           taskListId: listId,

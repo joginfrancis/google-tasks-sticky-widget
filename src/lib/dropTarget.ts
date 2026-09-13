@@ -83,6 +83,50 @@ export function resolveDrop(
   return { parent, previous };
 }
 
+/**
+ * Applies a resolved drop to a list, so the row lands before the network does.
+ *
+ * The index path has done this since a drag that waits on Google reads as a
+ * failed one; nesting needs the same. Generic over the row shape so the hook
+ * can pass its own tasks through without a translation step.
+ *
+ * Children follow their parent. A task moved under a new parent brings nothing
+ * with it — it can only have children if it was top level, and a task with
+ * children is never given a parent.
+ */
+export function applyDrop<T extends DropRow>(
+  rows: T[],
+  taskId: string,
+  target: DropTarget,
+): T[] {
+  const moving = rows.find((r) => r.id === taskId);
+  if (!moving) return rows;
+
+  const children = rows.filter((r) => r.parentId === taskId);
+  const rest = rows.filter((r) => r.id !== taskId && r.parentId !== taskId);
+  const moved = { ...moving, parentId: target.parent } as T;
+
+  if (target.previous === null) {
+    // First within its parent: ahead of that parent's existing children, or at
+    // the top of the list when it has none.
+    if (target.parent === null) return [moved, ...children, ...rest];
+    const at = rest.findIndex((r) => r.id === target.parent);
+    if (at === -1) return [moved, ...children, ...rest];
+    return [...rest.slice(0, at + 1), moved, ...children, ...rest.slice(at + 1)];
+  }
+
+  const after = rest.findIndex((r) => r.id === target.previous);
+  if (after === -1) return [...rest, moved, ...children];
+
+  // Past the previous task *and* anything nested under it, or the row would
+  // land in the middle of another parent's children.
+  let insert = after + 1;
+  while (insert < rest.length && rest[insert].parentId === target.previous) {
+    insert += 1;
+  }
+  return [...rest.slice(0, insert), moved, ...children, ...rest.slice(insert)];
+}
+
 function chooseParent(args: {
   before: DropRow;
   after: DropRow | null;

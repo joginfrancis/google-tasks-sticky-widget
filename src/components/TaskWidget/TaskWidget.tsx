@@ -223,13 +223,34 @@ export function TaskWidget(props: Props) {
     // subtasks in play the same slot can mean "last child here" or "next task
     // after this one", and only the pointer's indent tells them apart.
     onCommit: (taskId, slot) => {
-      const target = resolveDrop(
-        reorderable.map((t) => ({ id: t.id, parentId: t.parentId ?? null })),
-        taskId,
-        slot,
-        wantsNestRef.current,
-      );
-      if (target) props.onMoveTo(taskId, target);
+      const rows = reorderable.map((t) => ({
+        id: t.id,
+        parentId: t.parentId ?? null,
+      }));
+      const target = resolveDrop(rows, taskId, slot, wantsNestRef.current);
+      if (!target) return;
+
+      // Skip a write that would change nothing. Judged on where the task ends
+      // up, not on which slot it was dropped in: a nest keeps its slot and
+      // would otherwise look like a no-op, and a drop back on its own position
+      // resolves to the parent and previous it already has.
+      const index = rows.findIndex((r) => r.id === taskId);
+      const currentParent = rows[index]?.parentId ?? null;
+      let currentPrevious: string | null = null;
+      for (let i = index - 1; i >= 0; i -= 1) {
+        if (rows[i].parentId === currentParent) {
+          currentPrevious = rows[i].id;
+          break;
+        }
+      }
+      if (
+        target.parent === currentParent &&
+        target.previous === currentPrevious
+      ) {
+        return;
+      }
+
+      props.onMoveTo(taskId, target);
     },
     onDepart: props.onDepart,
   });
@@ -237,8 +258,22 @@ export function TaskWidget(props: Props) {
   // A task being dragged in from another note. Rendered through the same gap as
   // a local drag, so the two look identical from the user's side.
   const foreign = useForeignDrag({
+    // The visible slot, so the gap is drawn in the same frame as a local drag.
     resolveIndex,
-    onAdopt: props.onAdopt,
+    onAdopt: (taskId, fromListId, slot) => {
+      // Converted to a top-level index before it leaves.
+      //
+      // A task arriving from another note goes through `move_task`, which
+      // resolves an index against top-level siblings alone. The visible slot
+      // now counts subtasks too, since they became draggable, so passing it
+      // straight through would shift the drop down one row for every subtask
+      // above it. A task cannot be dropped *into* a parent from another note,
+      // so counting only top-level rows loses nothing.
+      const topLevel = reorderable
+        .slice(0, slot)
+        .filter((t) => !t.parentId).length;
+      props.onAdopt(taskId, fromListId, topLevel);
+    },
   });
 
   // Whichever drag is live owns the indicator; only one can be at a time,
