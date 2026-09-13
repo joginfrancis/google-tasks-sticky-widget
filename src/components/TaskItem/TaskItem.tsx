@@ -81,6 +81,11 @@ export function TaskItem({
 
   const done = task.status === "completed";
   const overdue = !done && isOverdue(task.due);
+  /**
+   * Written locally but not yet confirmed by Google. The id is the tell: a real
+   * one comes from the API, so a `pending-` prefix can only be ours.
+   */
+  const pending = task.id.startsWith("pending-");
 
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -223,6 +228,7 @@ export function TaskItem({
       ref={rowRef}
       className={[
         "task-item",
+        pending ? "is-pending" : "",
         isDragging ? "is-dragging" : "",
         isSubtask ? "is-subtask" : "",
         done ? "is-done" : "",

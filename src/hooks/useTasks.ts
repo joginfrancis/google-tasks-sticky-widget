@@ -641,16 +641,45 @@ export function useTasks(connected: boolean) {
   /**
    * Creates a pasted outline in one go.
    *
-   * No optimistic rows: the whole point of the indentation is the structure,
-   * and guessing at it locally would show a shape that then visibly corrected
-   * itself. Rust announces the list when it is done, which is what fills the
-   * view in.
+   * The rows appear straight away, marked pending. Each line is a separate
+   * insert that has to wait for the one before it — they position against each
+   * other — so a long paste takes seconds, and without this the widget looks
+   * like it ignored the paste entirely.
+   *
+   * Showing the parsed structure is safe here in a way that guessing at order
+   * usually is not: this same structure is what Rust is told to build, so the
+   * real rows arrive in the shape the placeholders already have. Only failures
+   * differ, and those are reported.
    */
   const addOutline = useCallback(
     async (entries: OutlineEntry[]): Promise<string | null> => {
       const listId = currentListRef.current;
       if (!listId) return "No task list selected.";
       if (entries.length === 0) return null;
+
+      const stamp = new Date().toISOString();
+      const placeholders: Task[] = [];
+      let lastTopId: string | null = null;
+
+      for (const entry of entries) {
+        const id = `pending-${crypto.randomUUID()}`;
+        const nested = entry.depth > 0 && lastTopId !== null;
+        if (!nested) lastTopId = id;
+        placeholders.push({
+          id,
+          parentId: nested ? lastTopId : null,
+          title: entry.title,
+          notes: null,
+          due: null,
+          status: "needsAction",
+          position: "",
+          updated: stamp,
+        });
+      }
+
+      // Prepended because that is where they land: the first insert has nothing
+      // to follow, so Google puts it at the top and the rest queue behind it.
+      setTasks((prev) => [...placeholders, ...prev]);
 
       try {
         await invoke<Task[]>("create_outline", {
@@ -659,8 +688,9 @@ export function useTasks(connected: boolean) {
         });
         return null;
       } catch (err) {
-        // Rust creates what it can and reports the rest, so the list may have
-        // changed even on failure.
+        // Rust creates what it can and reports the rest, so the list has
+        // probably changed even though this failed. Drop the placeholders and
+        // let the cache say what actually exists.
         await readCache(listId);
         return String(err);
       }

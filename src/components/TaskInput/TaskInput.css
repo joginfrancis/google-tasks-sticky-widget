@@ -73,3 +73,40 @@
   color: var(--danger);
   line-height: 1.4;
 }
+
+/* A paste is one insert per line, each waiting on the one before it, so a long
+   list takes seconds. Without this it reads as the paste having been ignored. */
+.add-progress {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 6px 12px 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.add-spinner {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: add-spin 0.7s linear infinite;
+}
+
+@keyframes add-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Honour a stated preference for less motion; the text still says what is
+   happening, so nothing is lost by holding the spinner still. */
+@media (prefers-reduced-motion: reduce) {
+  .add-spinner {
+    animation: none;
+  }
+}

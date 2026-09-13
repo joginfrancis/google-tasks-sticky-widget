@@ -301,6 +301,18 @@
   margin-top: 0;
 }
 
+/* Written locally, not yet confirmed by Google. Muted rather than animated:
+   a whole pasted list pulsing at once is a lot of movement, and the progress
+   line in the add field already says work is happening. */
+.task-item.is-pending {
+  opacity: 0.55;
+}
+
+.task-item.is-pending .checkbox,
+.task-item.is-pending .task-menu-trigger {
+  visibility: hidden;
+}
+
 /* A row is grabbable, so say so before the drag starts. */
 .task-item .task-title {
   cursor: default;

@@ -36,6 +36,8 @@ export function TaskInput({ onSubmit, onSubmitOutline }: Props) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** How many tasks a paste in progress is creating; 0 when none is. */
+  const [pasting, setPasting] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -114,9 +116,11 @@ export function TaskInput({ onSubmit, onSubmitOutline }: Props) {
     const entries = parseOutline(text);
 
     setBusy(true);
+    setPasting(entries.length);
     setError(null);
     void onSubmitOutline(entries).then((failure) => {
       setBusy(false);
+      setPasting(0);
       if (failure) setError(failure);
       else setValue("");
       inputRef.current?.focus();
@@ -149,6 +153,12 @@ export function TaskInput({ onSubmit, onSubmitOutline }: Props) {
   return (
     <div className="add-wrap">
       {error && <p className="add-error">{error}</p>}
+      {pasting > 0 && (
+        <p className="add-progress" role="status">
+          <span className="add-spinner" aria-hidden="true" />
+          Adding {pasting} task{pasting === 1 ? "" : "s"}…
+        </p>
+      )}
       <div className="add-field">
         <span className="add-plus">+</span>
         <textarea
