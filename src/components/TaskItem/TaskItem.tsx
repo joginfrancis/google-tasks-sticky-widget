@@ -76,6 +76,8 @@ export function TaskItem({
    */
   const pressOrigin = useRef<{ x: number; y: number } | null>(null);
   const expandTimer = useRef<number | null>(null);
+  /** Tab's next stop after the description. */
+  const dueButtonRef = useRef<HTMLButtonElement>(null);
 
   const done = task.status === "completed";
   const overdue = !done && isOverdue(task.due);
@@ -179,10 +181,40 @@ export function TaskItem({
       setEditing(null);
       return;
     }
-    // Enter commits; Shift+Enter adds a line, which only makes sense in notes.
-    if (event.key === "Enter" && !event.shiftKey) {
+
+    // Tab walks the row: title → description → date, then out. Each step
+    // commits what is open, so moving on never silently drops an edit.
+    if (event.key === "Tab" && !event.shiftKey) {
       event.preventDefault();
       commitEdit();
+      if (editing === "title") beginEdit("notes");
+      else setTimeout(() => dueButtonRef.current?.focus(), 0);
+      return;
+    }
+    if (event.key === "Tab" && event.shiftKey && editing === "notes") {
+      event.preventDefault();
+      commitEdit();
+      beginEdit("title");
+      return;
+    }
+
+    if (event.key === "Enter") {
+      // In a description Enter is a line break, because a description is prose
+      // and breaking it is the common intent. Committing needs Ctrl+Enter —
+      // and blurring or Escape still work, as everywhere else.
+      if (editing === "notes") {
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          commitEdit();
+        }
+        return;
+      }
+      // A title is a label, so Enter finishes it. Shift+Enter is left alone
+      // rather than inserting a break nothing downstream would render.
+      if (!event.shiftKey) {
+        event.preventDefault();
+        commitEdit();
+      }
     }
   };
 
@@ -270,6 +302,7 @@ export function TaskItem({
                   collapsed row is one line tall whatever it carries. */}
               {task.due && (
                 <DueChip
+                  triggerRef={dueButtonRef}
                   label={formatDue(task.due)}
                   overdue={overdue}
                   done={done}
@@ -318,6 +351,7 @@ export function TaskItem({
               and the chip above covers the case where one is already set. */}
           {isExpanded && !task.due && !done && (
             <DueChip
+              triggerRef={dueButtonRef}
               label="Add date"
               overdue={false}
               done={false}

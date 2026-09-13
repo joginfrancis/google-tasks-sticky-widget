@@ -18,6 +18,8 @@ interface Props {
   onChange: (due: string | null) => void;
   /** Used when the picker is opened from the menu and there is no chip yet. */
   hideTrigger?: boolean;
+  /** Lets the row put keyboard focus here when Tab reaches the date. */
+  triggerRef?: React.Ref<HTMLButtonElement>;
 }
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -91,6 +93,7 @@ export function DueChip(props: Props) {
     <span className="due-wrap" ref={wrapRef}>
       {!props.hideTrigger && (
         <button
+          ref={props.triggerRef}
           className={`due-chip ${props.overdue ? "is-overdue" : ""} ${props.done ? "is-done" : ""}`}
           onClick={(e) => {
             e.stopPropagation();

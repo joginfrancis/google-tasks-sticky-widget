@@ -3,11 +3,27 @@ import "./TaskInput.css";
 
 interface Props {
   /** Resolves to an error message on failure, or null on success. */
-  onSubmit: (title: string) => Promise<string | null>;
+  onSubmit: (title: string, notes?: string) => Promise<string | null>;
 }
 
 /**
- * Quick-add. Collapsed to a hint until clicked; Enter commits, Escape cancels.
+ * Splits what was typed into a task.
+ *
+ * Enter commits and Shift+Enter adds a line, so anything past the first line is
+ * description rather than title — a title is a label, and a two-line one reads
+ * badly everywhere it is shown.
+ */
+function splitEntry(text: string): { title: string; notes: string } {
+  const [first, ...rest] = text.split("\n");
+  return { title: first.trim(), notes: rest.join("\n").trim() };
+}
+
+/**
+ * Quick-add. Collapsed to a hint until clicked.
+ *
+ * Enter commits and leaves the field open and focused, because adding one task
+ * almost always means adding another — typing out a list should never need a
+ * reach for the mouse between entries.
  *
  * SPEC §3.3: a failed add must never silently discard what was typed. On
  * failure the text stays in the field rather than vanishing.
@@ -17,18 +33,27 @@ export function TaskInput({ onSubmit }: Props) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open]);
+
+  // Grows with its content, so a Shift+Enter line is visible rather than
+  // scrolled out of sight in a one-line box.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value, open]);
 
   // Ctrl+A from anywhere in the widget focuses this field.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.ctrlKey && event.key.toLowerCase() === "a" && !open) {
         const target = event.target as HTMLElement;
-        if (target.tagName !== "INPUT") {
+        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
           event.preventDefault();
           setOpen(true);
         }
@@ -39,7 +64,7 @@ export function TaskInput({ onSubmit }: Props) {
   }, [open]);
 
   const commit = async () => {
-    const title = value.trim();
+    const { title, notes } = splitEntry(value);
     if (!title || busy) {
       if (!title) {
         setOpen(false);
@@ -51,13 +76,14 @@ export function TaskInput({ onSubmit }: Props) {
 
     setBusy(true);
     // Clear optimistically so a fast success feels instant; the text comes
-    // straight back if the write fails.
+    // straight back, in full, if the write fails.
+    const typed = value;
     setValue("");
-    const failure = await onSubmit(title);
+    const failure = await onSubmit(title, notes || undefined);
     setBusy(false);
 
     if (failure) {
-      setValue(title);
+      setValue(typed);
       setError(failure);
     } else {
       setError(null);
@@ -66,8 +92,10 @@ export function TaskInput({ onSubmit }: Props) {
     inputRef.current?.focus();
   };
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter commits and moves on to the next task; Shift+Enter breaks the line
+    // inside this one, and everything after the break becomes its description.
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void commit();
     } else if (event.key === "Escape") {
@@ -92,8 +120,10 @@ export function TaskInput({ onSubmit }: Props) {
       {error && <p className="add-error">{error}</p>}
       <div className="add-field">
         <span className="add-plus">+</span>
-        <input
+        <textarea
           ref={inputRef}
+          className="add-input"
+          rows={1}
           value={value}
           placeholder="What needs doing?"
           disabled={busy}

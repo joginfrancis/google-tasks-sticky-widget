@@ -29,16 +29,26 @@
   color: var(--text-muted);
 }
 
-.add-field input {
+/* A textarea rather than an input, so Shift+Enter can break a line. Its height
+   is set from script to fit its content, so it must never show a scrollbar or a
+   resize grip — it should read as a one-line field that happens to grow. */
+.add-field input,
+.add-field .add-input {
   flex: 1 1 auto;
   min-width: 0;
   border: none;
   background: transparent;
   color: var(--text);
   outline: none;
+  font: inherit;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.4;
+  padding: 0;
 }
 
-.add-field input::placeholder {
+.add-field input::placeholder,
+.add-field .add-input::placeholder {
   color: var(--text-muted);
 }
 
@@ -46,7 +56,8 @@
   color: var(--accent);
 }
 
-.add-field input:disabled {
+.add-field input:disabled,
+.add-field .add-input:disabled {
   opacity: 0.6;
 }
 

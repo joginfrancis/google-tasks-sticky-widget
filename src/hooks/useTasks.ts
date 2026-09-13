@@ -701,7 +701,7 @@ export function useTasks(connected: boolean) {
    * can hand the text back rather than losing what was typed (SPEC §3.3).
    */
   const addTask = useCallback(
-    async (title: string): Promise<string | null> => {
+    async (title: string, notes?: string): Promise<string | null> => {
       const listId = currentListRef.current;
       if (!listId) return "No task list selected.";
 
@@ -710,7 +710,7 @@ export function useTasks(connected: boolean) {
         id: tempId,
         parentId: null,
         title,
-        notes: null,
+        notes: notes ?? null,
         due: null,
         status: "needsAction",
         position: "",
@@ -722,6 +722,7 @@ export function useTasks(connected: boolean) {
         const created = await invoke<Task>("create_task", {
           taskListId: listId,
           title,
+          notes: notes ?? null,
         });
         setTasks((prev) => prev.map((t) => (t.id === tempId ? created : t)));
         return null;

@@ -206,14 +206,17 @@ pub fn create_task(
     app: AppHandle,
     task_list_id: String,
     title: String,
+    notes: Option<String>,
 ) -> Result<Task, String> {
     let title = title.trim().to_string();
     if title.is_empty() {
         return Err("A task needs a title.".into());
     }
 
+    let notes = notes.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
+
     let created = client(&app)?
-        .insert_task(&task_list_id, &title)
+        .insert_task(&task_list_id, &title, notes.as_deref())
         .map_err(|err| {
             if err == ApiError::Unauthorized {
                 on_auth_lost(&app);

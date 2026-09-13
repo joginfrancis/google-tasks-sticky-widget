@@ -165,12 +165,25 @@ impl TasksClient {
 
     /* -- Writes ----------------------------------------------------------- */
 
-    pub fn insert_task(&self, task_list_id: &str, title: &str) -> Result<Task, ApiError> {
+    /// `notes` is sent only when there are some. An empty string is a value
+    /// like any other to the API, so writing one would give every quick-added
+    /// task an empty description rather than no description.
+    pub fn insert_task(
+        &self,
+        task_list_id: &str,
+        title: &str,
+        notes: Option<&str>,
+    ) -> Result<Task, ApiError> {
+        let mut body = serde_json::json!({ "title": title });
+        if let Some(notes) = notes.filter(|n| !n.is_empty()) {
+            body["notes"] = serde_json::Value::String(notes.to_string());
+        }
+
         let request = self
             .http
             .post(format!("{BASE}/lists/{task_list_id}/tasks"))
             .bearer_auth(&self.access_token)
-            .json(&serde_json::json!({ "title": title }));
+            .json(&body);
 
         let created: ApiTask = self.send(request)?;
         Ok(Task::from_api(created, task_list_id))
