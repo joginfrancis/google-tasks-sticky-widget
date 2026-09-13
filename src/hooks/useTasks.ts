@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import type { SyncStatus, Task, TaskList } from "../types";
 import { isMainNote } from "../lib/window";
+import type { OutlineEntry } from "../lib/outline";
 
 /**
  * How long a deleted task can be brought back. Long enough to notice the strip
@@ -637,6 +638,36 @@ export function useTasks(connected: boolean) {
     [moveTask],
   );
 
+  /**
+   * Creates a pasted outline in one go.
+   *
+   * No optimistic rows: the whole point of the indentation is the structure,
+   * and guessing at it locally would show a shape that then visibly corrected
+   * itself. Rust announces the list when it is done, which is what fills the
+   * view in.
+   */
+  const addOutline = useCallback(
+    async (entries: OutlineEntry[]): Promise<string | null> => {
+      const listId = currentListRef.current;
+      if (!listId) return "No task list selected.";
+      if (entries.length === 0) return null;
+
+      try {
+        await invoke<Task[]>("create_outline", {
+          taskListId: listId,
+          entries,
+        });
+        return null;
+      } catch (err) {
+        // Rust creates what it can and reports the rest, so the list may have
+        // changed even on failure.
+        await readCache(listId);
+        return String(err);
+      }
+    },
+    [readCache],
+  );
+
   const createList = useCallback(
     async (title: string): Promise<string | null> => {
       try {
@@ -745,6 +776,7 @@ export function useTasks(connected: boolean) {
     toggleTask,
     deleteTask,
     addTask,
+    addOutline,
     editTask,
     openInGoogle,
     moveTask,

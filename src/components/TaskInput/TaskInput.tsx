@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { isOutlinePaste, parseOutline, type OutlineEntry } from "../../lib/outline";
 import "./TaskInput.css";
 
 interface Props {
   /** Resolves to an error message on failure, or null on success. */
   onSubmit: (title: string, notes?: string) => Promise<string | null>;
+  /** Creates several tasks at once, from pasted text. */
+  onSubmitOutline: (entries: OutlineEntry[]) => Promise<string | null>;
 }
 
 /**
@@ -28,7 +31,7 @@ function splitEntry(text: string): { title: string; notes: string } {
  * SPEC §3.3: a failed add must never silently discard what was typed. On
  * failure the text stays in the field rather than vanishing.
  */
-export function TaskInput({ onSubmit }: Props) {
+export function TaskInput({ onSubmit, onSubmitOutline }: Props) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +95,34 @@ export function TaskInput({ onSubmit }: Props) {
     inputRef.current?.focus();
   };
 
+  /**
+   * Multi-line paste becomes multiple tasks, indentation becoming subtasks.
+   *
+   * Only when there is more than one line in it: a single-line paste is someone
+   * pasting a task's title, and hijacking that would make it impossible to
+   * paste text into the field at all.
+   *
+   * Typed newlines still mean a description (Shift+Enter), which is the
+   * opposite reading of the same character — deliberate, because a pasted list
+   * is a list and a typed line break is an elaboration on what is being typed.
+   */
+  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const text = event.clipboardData.getData("text/plain");
+    if (!text || !isOutlinePaste(text) || busy) return;
+
+    event.preventDefault();
+    const entries = parseOutline(text);
+
+    setBusy(true);
+    setError(null);
+    void onSubmitOutline(entries).then((failure) => {
+      setBusy(false);
+      if (failure) setError(failure);
+      else setValue("");
+      inputRef.current?.focus();
+    });
+  };
+
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter commits and moves on to the next task; Shift+Enter breaks the line
     // inside this one, and everything after the break becomes its description.
@@ -132,6 +163,7 @@ export function TaskInput({ onSubmit }: Props) {
             if (error) setError(null);
           }}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           onBlur={() => {
             if (!value.trim() && !error) setOpen(false);
           }}

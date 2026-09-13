@@ -411,6 +411,7 @@ export default function App() {
       onRenameList={tasks.renameList}
       onDeleteList={tasks.deleteList}
       onAdd={tasks.addTask}
+      onAddOutline={tasks.addOutline}
       onSelectList={tasks.selectList}
       onDuplicateNote={duplicateNote}
       color={tasks.selectedListId ? (listColors[tasks.selectedListId] ?? null) : null}

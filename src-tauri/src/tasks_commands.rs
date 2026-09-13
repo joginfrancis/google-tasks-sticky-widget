@@ -201,6 +201,92 @@ pub fn sync_now(app: AppHandle, task_list_id: String) -> Result<(), String> {
 
 /* -- Writes --------------------------------------------------------------- */
 
+/// One line of a pasted outline.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutlineEntry {
+    pub title: String,
+    /// 0 for a top-level task, 1 for a subtask of the last top-level one.
+    pub depth: u8,
+}
+
+/// Creates a pasted outline, in order, as one operation.
+///
+/// Sequential on purpose: each insert needs the id of the task it follows, so
+/// they cannot be issued in parallel without losing the order. A whole paste is
+/// one command rather than one per line so a twenty-line list is a single IPC
+/// call and a single announcement, instead of twenty re-renders.
+///
+/// A line that fails does not abandon the rest. Pasting twelve tasks and
+/// getting four, with no indication of which failed, is worse than getting
+/// eleven and a message — so failures are counted and reported at the end.
+#[tauri::command]
+pub fn create_outline(
+    app: AppHandle,
+    task_list_id: String,
+    entries: Vec<OutlineEntry>,
+) -> Result<Vec<Task>, String> {
+    let client = client(&app)?;
+    let store = app.state::<Store>();
+
+    let mut created: Vec<Task> = Vec::new();
+    // The last task at each level, to hang the next one from.
+    let mut last_top: Option<String> = None;
+    let mut last_child: Option<String> = None;
+    let mut failures = 0usize;
+
+    for entry in entries {
+        let title = entry.title.trim();
+        if title.is_empty() {
+            continue;
+        }
+
+        // A subtask with nothing above it has no parent to join, so it becomes
+        // a top-level task rather than being dropped.
+        let nest = entry.depth > 0 && last_top.is_some();
+        let (parent, previous) = if nest {
+            (last_top.as_deref(), last_child.as_deref())
+        } else {
+            (None, last_top.as_deref())
+        };
+
+        match client.insert_task(&task_list_id, title, None, parent, previous) {
+            Ok(task) => {
+                if nest {
+                    last_child = Some(task.id.clone());
+                } else {
+                    last_top = Some(task.id.clone());
+                    // A new top-level task starts a fresh run of children.
+                    last_child = None;
+                }
+                let _ = store.upsert_tasks(std::slice::from_ref(&task));
+                created.push(task);
+            }
+            Err(err) => {
+                if err == ApiError::Unauthorized {
+                    on_auth_lost(&app);
+                    announce(&app, &task_list_id);
+                    return Err(err.user_message());
+                }
+                log::warn!("paste: could not create {title:?}: {err:?}");
+                failures += 1;
+            }
+        }
+    }
+
+    announce(&app, &task_list_id);
+
+    if failures > 0 {
+        return Err(format!(
+            "Added {} of {}. {failures} couldn't be created.",
+            created.len(),
+            created.len() + failures
+        ));
+    }
+
+    Ok(created)
+}
+
 #[tauri::command]
 pub fn create_task(
     app: AppHandle,
@@ -216,7 +302,8 @@ pub fn create_task(
     let notes = notes.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
 
     let created = client(&app)?
-        .insert_task(&task_list_id, &title, notes.as_deref())
+        // Quick-add always makes a top-level task at the default position.
+        .insert_task(&task_list_id, &title, notes.as_deref(), None, None)
         .map_err(|err| {
             if err == ApiError::Unauthorized {
                 on_auth_lost(&app);

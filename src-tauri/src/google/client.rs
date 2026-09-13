@@ -168,22 +168,38 @@ impl TasksClient {
     /// `notes` is sent only when there are some. An empty string is a value
     /// like any other to the API, so writing one would give every quick-added
     /// task an empty description rather than no description.
+    /// `parent` and `previous` are query parameters, not body fields — setting
+    /// them in the body is accepted and silently ignored, which looks like the
+    /// API refusing to nest anything.
+    ///
+    /// `previous` is what makes a run of inserts keep its order: without it
+    /// every new task goes to the top of its level, so pasting a list would
+    /// reverse it.
     pub fn insert_task(
         &self,
         task_list_id: &str,
         title: &str,
         notes: Option<&str>,
+        parent: Option<&str>,
+        previous: Option<&str>,
     ) -> Result<Task, ApiError> {
         let mut body = serde_json::json!({ "title": title });
         if let Some(notes) = notes.filter(|n| !n.is_empty()) {
             body["notes"] = serde_json::Value::String(notes.to_string());
         }
 
-        let request = self
+        let mut request = self
             .http
             .post(format!("{BASE}/lists/{task_list_id}/tasks"))
             .bearer_auth(&self.access_token)
             .json(&body);
+
+        if let Some(parent) = parent {
+            request = request.query(&[("parent", parent)]);
+        }
+        if let Some(previous) = previous {
+            request = request.query(&[("previous", previous)]);
+        }
 
         let created: ApiTask = self.send(request)?;
         Ok(Task::from_api(created, task_list_id))

@@ -16,6 +16,7 @@ import type {
 import { TaskItem } from "../TaskItem/TaskItem";
 import { useDragSession } from "../../hooks/useDragSession";
 import { useForeignDrag } from "../../hooks/useForeignDrag";
+import type { OutlineEntry } from "../../lib/outline";
 import { DragGhost } from "./DragGhost";
 import { TaskInput } from "../TaskInput/TaskInput";
 import { HeaderMenu } from "../HeaderMenu/HeaderMenu";
@@ -52,7 +53,9 @@ interface Props {
   onCreateList: (title: string) => Promise<string | null>;
   onRenameList: (id: string, title: string) => Promise<string | null>;
   onDeleteList: (id: string) => Promise<string | null>;
-  onAdd: (title: string) => Promise<string | null>;
+  onAdd: (title: string, notes?: string) => Promise<string | null>;
+  /** Pasted multi-line text, as tasks and subtasks. */
+  onAddOutline: (entries: OutlineEntry[]) => Promise<string | null>;
   onSelectList: (id: string) => void;
   onDuplicateNote: () => void;
   onChangeLayer: (layer: WindowLayer) => void;
@@ -278,7 +281,10 @@ export function TaskWidget(props: Props) {
       {/* Add-task sits directly under the heading, as in Google Tasks — capture
           is the most frequent action and should not need a scroll to reach. */}
       <div className="widget-add">
-        <TaskInput onSubmit={props.onAdd} />
+        <TaskInput
+          onSubmit={props.onAdd}
+          onSubmitOutline={props.onAddOutline}
+        />
       </div>
 
       <div className="widget-body scroll-area">

@@ -93,6 +93,7 @@ pub fn run() {
             tasks_commands::refresh_task_lists,
             tasks_commands::sync_now,
             tasks_commands::create_task,
+            tasks_commands::create_outline,
             tasks_commands::set_task_completed,
             tasks_commands::update_task,
             tasks_commands::open_task_in_google,
