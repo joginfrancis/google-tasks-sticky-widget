@@ -201,6 +201,72 @@ pub fn sync_now(app: AppHandle, task_list_id: String) -> Result<(), String> {
 
 /* -- Writes --------------------------------------------------------------- */
 
+/// Moves a task to an exact `parent`/`previous`, as the API expresses position.
+///
+/// Separate from `move_task`, which resolves an index against the cache. Once
+/// subtasks are draggable the index alone is not enough — the same slot can
+/// mean "last child of this parent" or "next task after it" — so the frontend
+/// resolves both from the rows it is actually drawing (see lib/dropTarget.ts,
+/// which is tested) and sends the answer rather than a number to re-derive.
+///
+/// `parent` names the task to nest under. `clear_parent` means "top level",
+/// which is not the same as having no opinion — serde cannot tell those apart
+/// from one nullable field, and without the distinction a subtask could never
+/// be dragged out.
+#[tauri::command]
+pub fn move_task_to(
+    app: AppHandle,
+    task_list_id: String,
+    task_id: String,
+    parent: Option<String>,
+    previous: Option<String>,
+    clear_parent: bool,
+) -> Result<(), String> {
+    let store = app.state::<Store>();
+
+    let parent_arg: Option<Option<&str>> = match (&parent, clear_parent) {
+        (Some(id), _) => Some(Some(id.as_str())),
+        (None, true) => Some(None),
+        (None, false) => None,
+    };
+
+    let moved = client(&app)?
+        .move_task(
+            &task_list_id,
+            &task_id,
+            previous.as_deref(),
+            None,
+            parent_arg,
+        )
+        .map_err(|err| {
+            if err == ApiError::Unauthorized {
+                on_auth_lost(&app);
+            }
+            match err {
+                ApiError::Forbidden | ApiError::Malformed(_) => {
+                    "That task couldn't be moved there.".to_string()
+                }
+                other => other.user_message(),
+            }
+        })?;
+
+    store.upsert_tasks(std::slice::from_ref(&moved))?;
+    announce(&app, &task_list_id);
+
+    // Re-nesting renumbers siblings on both levels and the response describes
+    // only the moved task, so the rest of the order is corrected in the
+    // background rather than making the drag wait for a full fetch.
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        if let Err(err) = sync_list(&handle, &task_list_id, true) {
+            log::warn!("post-move resync failed, order may be stale: {err:?}");
+        }
+        announce(&handle, &task_list_id);
+    });
+
+    Ok(())
+}
+
 /// One line of a pasted outline.
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -466,6 +532,8 @@ pub fn move_task(
             &task_id,
             previous.as_deref(),
             is_cross_list.then_some(destination.as_str()),
+            // Index-based moves are top-level only, so nesting is left alone.
+            None,
         )
         .map_err(|err| {
             if err == ApiError::Unauthorized {

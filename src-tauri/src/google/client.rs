@@ -252,12 +252,17 @@ impl TasksClient {
     /// Google's docs note that recurrent tasks cannot be moved between lists;
     /// that surfaces as an API error rather than something we can pre-empt,
     /// since recurrence is invisible to us.
+    /// `parent`: `None` leaves nesting alone, `Some(None)` promotes to top
+    /// level, `Some(Some(id))` nests under that task. The first two are
+    /// different instructions, and collapsing them would leave no way to say
+    /// "take this out of its parent".
     pub fn move_task(
         &self,
         task_list_id: &str,
         task_id: &str,
         previous: Option<&str>,
         destination: Option<&str>,
+        parent: Option<Option<&str>>,
     ) -> Result<Task, ApiError> {
         let mut request = self
             .http
@@ -276,6 +281,13 @@ impl TasksClient {
         }
         if let Some(destination) = destination {
             request = request.query(&[("destinationTasklist", destination)]);
+        }
+
+        // Promotion to top level is an explicit empty `parent`. Omitting the
+        // parameter keeps whatever nesting the task already had, so there would
+        // otherwise be no way to say "take this out of its parent".
+        if let Some(parent) = parent {
+            request = request.query(&[("parent", parent.unwrap_or(""))]);
         }
 
         let moved: ApiTask = self.send(request)?;

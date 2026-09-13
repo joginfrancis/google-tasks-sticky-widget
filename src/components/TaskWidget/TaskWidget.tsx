@@ -17,6 +17,7 @@ import { TaskItem } from "../TaskItem/TaskItem";
 import { useDragSession } from "../../hooks/useDragSession";
 import { useForeignDrag } from "../../hooks/useForeignDrag";
 import type { OutlineEntry } from "../../lib/outline";
+import { resolveDrop, type DropTarget } from "../../lib/dropTarget";
 import { DragGhost } from "./DragGhost";
 import { TaskInput } from "../TaskInput/TaskInput";
 import { HeaderMenu } from "../HeaderMenu/HeaderMenu";
@@ -30,7 +31,8 @@ import "./TaskWidget.css";
 interface Props {
   tasks: Task[];
   /** Reorder within the current list. Index is among top-level active rows. */
-  onReorder: (id: string, toIndex: number) => void;
+  /** Move a task to an exact parent and position within this list. */
+  onMoveTo: (taskId: string, target: DropTarget) => void;
   /** The task was dropped into another note; drop it from this view. */
   onDepart: (taskId: string) => void;
   /** Take a task dragged in from another note into this window's list. */
@@ -150,12 +152,11 @@ export function TaskWidget(props: Props) {
     };
   }, [props.tasks, props.settlingIds]);
 
-  // Only top-level, incomplete rows can be reordered: the move API positions
-  // tasks among their siblings, and a subtask's position is owned by its parent.
-  const reorderable = useMemo(
-    () => active.filter((t) => !t.parentId),
-    [active],
-  );
+  // Every incomplete row is draggable now, subtasks included — nesting is
+  // expressed by `parent`, which resolveDrop works out from where the drop
+  // landed. The visible order is what the pointer was measured against, so it
+  // is also what gets handed to the resolver.
+  const reorderable = useMemo(() => active, [active]);
 
   const listRef = useRef<HTMLUListElement>(null);
 
@@ -183,7 +184,7 @@ export function TaskWidget(props: Props) {
       }
 
       const rows = Array.from(
-        list.querySelectorAll<HTMLElement>("li.task-item:not(.is-subtask)"),
+        list.querySelectorAll<HTMLElement>("li.task-item"),
       );
       for (let i = 0; i < rows.length; i += 1) {
         const rect = rows[i].getBoundingClientRect();
@@ -195,9 +196,38 @@ export function TaskWidget(props: Props) {
     [],
   );
 
+  /**
+   * How far right the pointer has to be to mean "make this a subtask".
+   *
+   * Matches the indent a subtask is drawn at, so the gesture is literally
+   * "line it up with the children" rather than a hidden threshold.
+   */
+  const NEST_INDENT_PX = 28;
+
+  /** Whether the pointer is far enough right to be asking for nesting. */
+  const wantsNestRef = useRef(false);
+
   const { session, beginPress } = useDragSession({
-    resolveIndex,
-    onCommit: props.onReorder,
+    resolveIndex: (client) => {
+      const list = listRef.current;
+      if (list) {
+        const bounds = list.getBoundingClientRect();
+        wantsNestRef.current = client.x - bounds.left >= NEST_INDENT_PX;
+      }
+      return resolveIndex(client);
+    },
+    // Drags resolve to a parent and a position rather than an index: with
+    // subtasks in play the same slot can mean "last child here" or "next task
+    // after this one", and only the pointer's indent tells them apart.
+    onCommit: (taskId, slot) => {
+      const target = resolveDrop(
+        reorderable.map((t) => ({ id: t.id, parentId: t.parentId ?? null })),
+        taskId,
+        slot,
+        wantsNestRef.current,
+      );
+      if (target) props.onMoveTo(taskId, target);
+    },
     onDepart: props.onDepart,
   });
 
@@ -211,6 +241,19 @@ export function TaskWidget(props: Props) {
   // Whichever drag is live owns the indicator; only one can be at a time,
   // because a local drag never leaves this window's list.
   const dropIndex = session?.overIndex ?? foreign?.overIndex ?? null;
+
+  // Whether the indicator should show this drop nesting. Asked of the same
+  // resolver that will perform the move, so the hint cannot promise something
+  // the drop then does not do.
+  const nestingHint =
+    session !== null &&
+    dropIndex !== null &&
+    resolveDrop(
+      reorderable.map((t) => ({ id: t.id, parentId: t.parentId ?? null })),
+      session.taskId,
+      dropIndex,
+      wantsNestRef.current,
+    )?.parent !== null;
 
   return (
     <div
@@ -308,16 +351,21 @@ export function TaskWidget(props: Props) {
                 return (
                 <Fragment key={task.id}>
                 {showGap && (
-                  <li className="drop-gap" aria-hidden="true" />
+                  // Indented when the drop would nest, so the gesture shows its
+                  // own result rather than being a hidden mode.
+                  <li
+                    className={`drop-gap${nestingHint ? " is-nesting" : ""}`}
+                    aria-hidden="true"
+                  />
                 )}
                 <TaskItem
                   task={task}
                   isSubtask={Boolean(task.parentId)}
                   isDragging={session?.taskId === task.id}
                   onDragPress={
-                    task.parentId
-                      ? undefined
-                      : (event, row) =>
+                    // Subtasks drag too now; where a drop lands decides whether
+                    // it stays nested, and resolveDrop works that out.
+                    (event, row) =>
                           beginPress({
                             taskId: task.id,
                             fromListId: selectedId ?? "",

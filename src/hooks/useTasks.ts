@@ -4,6 +4,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import type { SyncStatus, Task, TaskList } from "../types";
 import { isMainNote } from "../lib/window";
 import type { OutlineEntry } from "../lib/outline";
+import type { DropTarget } from "../lib/dropTarget";
 
 /**
  * How long a deleted task can be brought back. Long enough to notice the strip
@@ -605,6 +606,38 @@ export function useTasks(connected: boolean) {
   );
 
   /**
+   * Moves a task to an exact parent and position, as the API expresses it.
+   *
+   * Used by drag once subtasks are in play, where an index alone is ambiguous:
+   * the same slot can mean "last child of this parent" or "next task after it".
+   * `lib/dropTarget.ts` resolves that from the rows actually on screen, so this
+   * only has to carry the answer.
+   */
+  const moveTaskTo = useCallback(
+    async (taskId: string, target: DropTarget) => {
+      const listId = currentListRef.current;
+      if (!listId) return;
+
+      setError(taskId, null);
+      try {
+        await invoke("move_task_to", {
+          taskListId: listId,
+          taskId,
+          parent: target.parent,
+          previous: target.previous,
+          // Explicit, because IPC folds undefined and null together and "top
+          // level" has to be distinguishable from "leave nesting alone".
+          clearParent: target.parent === null,
+        });
+      } catch (err) {
+        await readCache(listId);
+        setError(taskId, String(err));
+      }
+    },
+    [readCache, setError],
+  );
+
+  /**
    * The task has been dropped into another note; take it off this one now.
    *
    * Without this the row springs back to full brightness the instant the
@@ -810,6 +843,7 @@ export function useTasks(connected: boolean) {
     editTask,
     openInGoogle,
     moveTask,
+    moveTaskTo,
     moveTaskToList,
     adoptTask,
     departTask,

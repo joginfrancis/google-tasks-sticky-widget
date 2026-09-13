@@ -99,6 +99,7 @@ pub fn run() {
             tasks_commands::open_task_in_google,
             tasks_commands::delete_task,
             tasks_commands::move_task,
+            tasks_commands::move_task_to,
             tasks_commands::create_task_list,
             tasks_commands::rename_task_list,
             tasks_commands::delete_task_list,

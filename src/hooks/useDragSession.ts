@@ -60,7 +60,11 @@ interface StartArgs {
  */
 export function useDragSession(options: {
   resolveIndex: (client: { x: number; y: number }) => number | null;
-  onCommit: (taskId: string, toIndex: number) => void;
+  /**
+   * The drop landed. `slot` is an insertion point in the list *as drawn*,
+   * still containing the dragged row — see the note where it is called.
+   */
+  onCommit: (taskId: string, slot: number) => void;
   /**
    * The task was dropped into another note and is leaving this one.
    *
@@ -280,15 +284,12 @@ export function useDragSession(options: {
         current.overListId !== null &&
         current.overIndex !== current.fromIndex
       ) {
-        // `resolveIndex` counts slots in the list *as drawn*, which still holds
-        // the row being dragged. The move API positions a task among siblings
-        // with itself removed, and pulling the row out shifts everything below
-        // it up by one — so a downward drop is one slot too high in that frame.
-        const toIndex =
-          current.overIndex > current.fromIndex
-            ? current.overIndex - 1
-            : current.overIndex;
-        optionsRef.current.onCommit(current.taskId, toIndex);
+        // The slot is passed exactly as measured: an insertion point in the
+        // list *as drawn*, which still contains the row being dragged. Adjusting
+        // for that here would be the third place in this codebase to hold an
+        // opinion about which frame an index is in; resolveDrop takes the
+        // visible frame by contract and converts it once, under test.
+        optionsRef.current.onCommit(current.taskId, current.overIndex);
       }
       setSession(null);
     };

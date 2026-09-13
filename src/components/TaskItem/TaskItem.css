@@ -266,6 +266,13 @@
   border-radius: 2px;
   background: var(--accent, currentColor);
   opacity: 0.75;
+  transition: margin-left 90ms ease-out;
+}
+
+/* Indented to where the task would sit as a subtask, so the drop shows its own
+   result while the pointer is still moving rather than being a hidden mode. */
+.drop-gap.is-nesting {
+  margin-left: 34px;
 }
 
 /* Title and date share one line, so a collapsed row is exactly one line tall
