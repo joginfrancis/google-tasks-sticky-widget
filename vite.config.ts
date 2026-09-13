@@ -8,6 +8,17 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(() => ({
   plugins: [react()],
 
+  // Component tests need a DOM. The pure-function tests in src/lib are
+  // indifferent to the environment, so one config covers both suites.
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./src/test/setup.ts"],
+    // Component CSS is imported for its side effect only; parsing it would
+    // slow every run without changing a single assertion.
+    css: false,
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

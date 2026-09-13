@@ -316,10 +316,16 @@ pub fn set_selected_task_list(app: AppHandle, task_list_id: String) -> Result<()
     settings::save(&app, &settings);
     drop(settings);
 
-    // The scheduler polls one list; switching without telling it would leave it
-    // refreshing the list the user just left.
-    app.state::<crate::sync::SyncManager>()
-        .set_list(Some(task_list_id));
+    // Derive the polling set from the notes that are actually open, rather than
+    // setting it to this one list.
+    //
+    // `set_list` *replaces* the set, so switching the main window's list used to
+    // stop every other note syncing until it happened to re-register. The note
+    // registry is the only thing that knows the full set, and refresh_lists
+    // reads it.
+    let sync = app.state::<crate::sync::SyncManager>();
+    sync.refresh_lists(&app);
+    sync.wake();
     Ok(())
 }
 

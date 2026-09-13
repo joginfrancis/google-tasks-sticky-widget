@@ -80,9 +80,13 @@ impl NoteRegistry {
 
     /// Records that a note came to the front.
     pub fn note_focused(&self, label: &str) {
+        // `fetch_add` returns the value *before* the add, so the first note ever
+        // focused would be stored as 0 — indistinguishable from never having
+        // been focused, and it would lose the tie it just earned.
         let tick = self
             .focus_clock
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1;
         if let Ok(mut seq) = self.focus_seq.lock() {
             seq.insert(label.to_string(), tick);
         }

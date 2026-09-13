@@ -299,7 +299,12 @@ export function TaskItem({
               <span
                 className="task-title"
                 onDoubleClick={() => handleTextDoubleClick("title")}
-                title={done ? undefined : "Double-click to edit"}
+                // The full title, not a hint about editing. A one-line row
+                // ellipsises at roughly 24 characters once a date chip is
+                // present, and hover was the only way left to read the rest —
+                // spending it on a tip the user needs once left the most common
+                // row state unreadable.
+                title={task.title}
               >
                 {task.title}
               </span>

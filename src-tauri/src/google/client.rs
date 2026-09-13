@@ -80,7 +80,19 @@ impl TasksClient {
 
         if !status.is_success() {
             let error = ApiError::from_status(status.as_u16(), &body, retry_after);
-            log::warn!("tasks api {} -> {error:?}", status.as_u16());
+            // Google's `error.message` says *why* it refused — "Invalid Value",
+            // "Missing task ID" and so on. It is generated text about the
+            // request, not the user's task content, so it is safe to keep and it
+            // is the difference between a diagnosable failure and "unexpected
+            // status 400". Only this one field; the rest of the body can echo
+            // what was sent.
+            let reason = serde_json::from_str::<serde_json::Value>(&body)
+                .ok()
+                .and_then(|v| {
+                    v.get("error")?.get("message")?.as_str().map(str::to_owned)
+                })
+                .unwrap_or_else(|| "no message".into());
+            log::warn!("tasks api {} -> {error:?} ({reason})", status.as_u16());
             return Err(error);
         }
 
@@ -283,11 +295,16 @@ impl TasksClient {
             request = request.query(&[("destinationTasklist", destination)]);
         }
 
-        // Promotion to top level is an explicit empty `parent`. Omitting the
-        // parameter keeps whatever nesting the task already had, so there would
-        // otherwise be no way to say "take this out of its parent".
-        if let Some(parent) = parent {
-            request = request.query(&[("parent", parent.unwrap_or(""))]);
+        // Top level is the *absence* of `parent`, not an empty one.
+        //
+        // Sending `parent=` is rejected outright with a 400 — which is what
+        // "that task couldn't be moved there" was, every time a subtask was
+        // dragged out. The API reads a missing `parent` as "move to top level",
+        // so `Some(None)` and `None` both omit it; keeping a task nested where
+        // it is means naming its current parent explicitly, which is what the
+        // caller does.
+        if let Some(Some(parent)) = parent {
+            request = request.query(&[("parent", parent)]);
         }
 
         let moved: ApiTask = self.send(request)?;
