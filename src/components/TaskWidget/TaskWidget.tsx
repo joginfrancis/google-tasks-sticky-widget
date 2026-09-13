@@ -199,21 +199,24 @@ export function TaskWidget(props: Props) {
   /**
    * How far right the pointer has to be to mean "make this a subtask".
    *
-   * Matches the indent a subtask is drawn at, so the gesture is literally
-   * "line it up with the children" rather than a hidden threshold.
+   * How far right the pointer must travel *from where the drag began* to mean
+   * "make this a subtask".
+   *
+   * Relative, not absolute. Measuring against the list's left edge instead
+   * meant that grabbing a row anywhere but its first few pixels already
+   * counted as a nesting request, so every drag tried to nest and plain
+   * reordering was effectively unreachable.
    */
   const NEST_INDENT_PX = 28;
 
-  /** Whether the pointer is far enough right to be asking for nesting. */
+  /** Where the drag began, so nesting can be judged as movement from it. */
+  const dragStartXRef = useRef(0);
+  /** Whether the pointer has travelled far enough right to be asking to nest. */
   const wantsNestRef = useRef(false);
 
   const { session, beginPress } = useDragSession({
     resolveIndex: (client) => {
-      const list = listRef.current;
-      if (list) {
-        const bounds = list.getBoundingClientRect();
-        wantsNestRef.current = client.x - bounds.left >= NEST_INDENT_PX;
-      }
+      wantsNestRef.current = client.x - dragStartXRef.current >= NEST_INDENT_PX;
       return resolveIndex(client);
     },
     // Drags resolve to a parent and a position rather than an index: with
@@ -365,7 +368,8 @@ export function TaskWidget(props: Props) {
                   onDragPress={
                     // Subtasks drag too now; where a drop lands decides whether
                     // it stays nested, and resolveDrop works that out.
-                    (event, row) =>
+                    (event, row) => {
+                          dragStartXRef.current = event.clientX;
                           beginPress({
                             taskId: task.id,
                             fromListId: selectedId ?? "",
@@ -373,7 +377,8 @@ export function TaskWidget(props: Props) {
                             title: task.title,
                             row,
                             event,
-                          })
+                          });
+                    }
                   }
                   isSettling={props.settlingIds.has(task.id)}
                   error={props.errors[task.id] ?? null}
