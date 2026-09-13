@@ -29,7 +29,27 @@ fn cursor_key(task_list_id: &str) -> String {
 ///
 /// Every mutation ends with a call to this, and any new one must too.
 fn announce(app: &AppHandle, task_list_id: &str) {
+    // Every local write already ends here, which makes this the one place a
+    // write can be counted without a new rule for future code to forget.
+    bump_write_epoch();
     let _ = app.emit("tasks:updated", task_list_id.to_string());
+}
+
+/// Counts local writes, so a slow fetch can tell whether it has been overtaken.
+///
+/// A full sync replaces a whole list, which is only safe while the snapshot it
+/// fetched is still current. Two drags in quick succession would otherwise have
+/// the first drag's background resync land *after* the second drag's write and
+/// replace the list with a view from before it — undoing the second drag on
+/// screen until another sync finished.
+static WRITE_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn write_epoch() -> u64 {
+    WRITE_EPOCH.load(std::sync::atomic::Ordering::Acquire)
+}
+
+fn bump_write_epoch() {
+    WRITE_EPOCH.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
 }
 
 fn client(app: &AppHandle) -> Result<TasksClient, String> {
@@ -91,6 +111,9 @@ pub fn sync_list(app: &AppHandle, task_list_id: &str, full: bool) -> Result<(), 
     let client = client(app).map_err(|_| ApiError::Unauthorized)?;
     let store = app.state::<Store>();
 
+    // Read before the fetch, compared after it: see the write below.
+    let epoch_at_start = write_epoch();
+
     // Lists are cheap and change rarely, but a renamed list showing its old
     // name is the kind of small wrongness that erodes trust in the whole panel.
     match client.list_task_lists() {
@@ -129,11 +152,21 @@ pub fn sync_list(app: &AppHandle, task_list_id: &str, full: bool) -> Result<(), 
     // merges: a task Google has already purged appears in no response at all,
     // and merging can only ever add and update. A delta must merge, because it
     // deliberately returns only what changed.
-    if cursor.is_none() {
+    //
+    // Unless a local write landed while this was in flight. Replacing then would
+    // put the list back as it looked before that write — visibly undoing a drag
+    // the user had already seen succeed. Merging is the safe half of the
+    // operation: it still applies everything the fetch found, it just cannot
+    // remove rows, so a purged task lingers until the next uncontended sync.
+    let overtaken = cursor.is_none() && write_epoch() != epoch_at_start;
+    if cursor.is_none() && !overtaken {
         store
             .replace_tasks_for_list(task_list_id, &tasks)
             .map_err(|e| ApiError::Malformed(e))?;
     } else {
+        if overtaken {
+            log::info!("sync: a local write overtook this full fetch; merging");
+        }
         store
             .upsert_tasks(&tasks)
             .map_err(|e| ApiError::Malformed(e))?;

@@ -166,3 +166,121 @@ lives only in OneDrive. Worth `git init` before more accumulates — and Phase 8
 Wave 1 removes a way to lose data and closes the two worst control gaps. The
 gates after it are short and protect everything built so far. Waves 3–5 are then
 free to run in any order the owner prefers.
+
+---
+
+# Bug register
+
+Findings from the review of 2026-09-14, after multi-window drag, subtask nesting
+and outline paste shipped. Four parallel audits: frontend logic, the Rust core,
+UI/UX, and a component-test pass. Recorded here rather than only in commit
+messages, so the open ones stay visible.
+
+**One theme is worth stating on its own.** Nine of these are the same mistake:
+*two pieces of code counting the same list differently.* The dragged row included
+or excluded; completed tasks interleaved by `position` rather than appended;
+subtasks counted on one side and not the other; a slot compared vertically when
+the gesture was horizontal. Any new code turning a position into an index should
+go through `lib/dropTarget.ts`, which is pure and tested, rather than growing a
+tenth opinion.
+
+## Fixed
+
+| # | Bug | Where |
+|---|---|---|
+| 1 | Drop resolved against a frame that still contained the dragged row | `useDragSession` |
+| 2 | `previous` resolution counted completed tasks, which `position` interleaves | `tasks_commands.rs` |
+| 3 | Reorder waited on the network before the row moved — read as a failed drag | `useTasks` |
+| 4 | Nesting measured from the list's left edge, so every drag tried to nest | `TaskWidget` |
+| 5 | Commit gated on the vertical slot, so no horizontal nest ever fired | `useDragSession` |
+| 6 | Cross-note drop index counted subtasks; Rust counted top-level only | `TaskWidget` |
+| 7 | Promoting to top level sent `parent=`; Google answers 400 | `google/client.rs` |
+| 8 | A 400 logged only its status, leaving the cause undiagnosable | `google/client.rs` |
+| 9 | `set_selected_task_list` replaced the poll set, stopping every other note | `commands.rs` |
+| 10 | `note_focused` stored `fetch_add`'s pre-increment value; first focus ranked 0 | `notes.rs` |
+| 11 | A sync inside the undo window resurrected a pending delete | `useTasks` |
+| 12 | A full sync merged instead of replacing, so purged tasks cached forever | `store` |
+| 13 | Only `move_task` announced; four other mutations changed the cache silently | `tasks_commands.rs` |
+| 14 | A move announced nothing until two full fetches ran — 3–4s of apparent nothing | `tasks_commands.rs` |
+| 15 | A pending delete stayed visible in other notes until the window expired | `useTasks` |
+| 16 | Drag between two notes on the same list dropped the row and moved nothing | `TaskWidget` |
+| 17 | A sync landing mid-create or mid-paste wiped the optimistic rows | `useTasks` |
+| 18 | A slow full resync could land after a newer drag and undo it | `tasks_commands.rs` |
+| 19 | Overlapping notes resolved a drop by `HashMap` order, which Rust randomises | `notes.rs` |
+| 20 | The truncated one-line title had no way to be read; hover held an edit hint | `TaskItem` |
+
+## Open — correctness
+
+- **A settling completed task counts as an active sibling.** For `SETTLE_MS`
+  after ticking a task it stays in `active`, so it enters both drag frames.
+  `resolveDrop` can name a completed task as `previous`, and the cross-note index
+  gains one per settling row. Drag within 700ms of completing something and it
+  lands a slot off. Build the frames from `needsAction` alone and keep
+  `settlingIds` purely a render concern.
+- **`foreignTargetRef` survives a drag.** Cleared on cancel, on a foreign drop
+  and on a successful hit-test, but not on a local commit — so a drag that
+  hovered another note and came back leaves the target set, and a fast second
+  drag released outside the list can drop into a note the pointer never touched.
+- **The pending-delete timer races its own commit.** A window handles its own
+  broadcast — the payload has no origin filter, unlike `dragBus` — arming an 8s
+  lift against a 6s commit, so the round-trip has a 2s budget. Related: delete →
+  undo → delete the same task inside 8s and the first timer lifts the second
+  suppression. Timers are keyed by task id with no notion of episode.
+- **`departTask` hides a row with no suppression**, so any re-read inside its
+  2.5s window puts it back — the flash it exists to prevent.
+- **List-level mutations announce nothing.** Create, rename and delete list all
+  skip `announce`, so another note shows a stale name, or an entry for a list
+  that no longer exists.
+- **Deleting a list leaves notes polling it.** The registry still maps those
+  windows to it, so the scheduler 404s every tick and pins the status at error.
+- **A truncated full fetch replaces the list.** `MAX_PAGES` exhaustion returns
+  `Ok` with partial data, which replaces and then advances the cursor — the cache
+  stays wrong indefinitely while reporting synced. Needs a `truncated` signal
+  that can never reach `replace_tasks_for_list`.
+- **Background resyncs are unbounded** — one detached thread per move, each 2+
+  requests, outside the scheduler and therefore outside `Backoff` entirely.
+- **`Wake` bypasses backoff**, so focusing a note re-hits a rate-limited server.
+- **The scheduler reads its list snapshot before its wait**, so a newly opened
+  note waits two intervals for data.
+- **A failed outline paste discards the pasted text.** SPEC §3.3 is honoured for
+  a single task and not for a paste.
+
+## Open — UI, UX and accessibility
+
+- **`--text-muted` fails WCAG AA in both themes** (3.3:1 light, 4.5:1 dark) and
+  carries every task description at 11.5px. Needs roughly `#6f6f79` / `#9a9aa4`.
+- **Rows are not focusable** — no `tabIndex`, `role` or key handling — so expand,
+  and everything reachable only while expanded, is pointer-only.
+- **Drag has no keyboard path at all.** Move up/down and indent/outdent in the
+  row menu would give every gesture an equivalent, and double as the
+  discoverability fix for nesting.
+- **Escape closes nothing.** Every menu, the calendar and the delete
+  confirmation dismiss only by scrim click. The delete dialog carries `role`
+  but no `aria-modal`, no labelling and no focus management — for the one
+  irreversible action in the app.
+- **Escape discards a dirty description while blur commits it** — opposite
+  outcomes for the same keystrokes, with no signal which one applies.
+- **The note-colour override is incomplete.** `--surface-hover`, `--danger` and
+  the dot colours are not re-derived, so hover can vanish on a custom colour and
+  error text is unprotected against the chosen background.
+- **Dark-mode popovers have no edge** — every shadow is black on dark, leaving
+  about 1.2:1 of border.
+- **The checkbox is a 16px target** (14px on subtasks), the most-clicked control
+  in the product, below the 24px minimum.
+- **22px of every row is reserved for an invisible menu button**, roughly 8% of
+  the title's width.
+- **The end-of-list drop gap never shows the nesting hint**, so it can promise a
+  reorder and then perform a nest.
+- **The undo strip has no countdown**, though the entire feature is a timer.
+- **Nesting is announced nowhere** — no cursor change, no handle, no hint.
+- **Drag is silent to assistive tech** — ghost and gap are `aria-hidden`, with no
+  live region.
+
+## What the tests cannot reach
+
+66 frontend tests and 61 Rust tests now run from `npm test` and `cargo test`.
+What they cannot cover: **real pointer gestures and anything cross-window.**
+Three of the four bugs in the subtask-drag round lived exactly there — in the
+handler feeding the tested resolver, not in the resolver, which was correct
+throughout. Closing that gap needs a WebDriver / `tauri-driver` harness, which is
+its own project; until then those paths are verified by hand.

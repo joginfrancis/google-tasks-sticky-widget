@@ -146,14 +146,27 @@ export function useTasks(connected: boolean) {
     if (currentListRef.current !== listId) return;
 
     const hidden = suppressedRef.current;
-    setTasks(
+    const visible =
       hidden.size === 0
         ? cached
         : cached.filter(
             (t) =>
               !hidden.has(t.id) && !(t.parentId && hidden.has(t.parentId)),
-          ),
-    );
+          );
+
+    setTasks((prev) => {
+      // Rows written locally and not yet confirmed survive a re-read.
+      //
+      // The cache cannot know about them yet, so replacing the array outright
+      // dropped them — and a background poll landing during a create, or during
+      // the seconds a pasted outline takes, made the new tasks vanish. Worse
+      // for a create: the row is gone, so the id swap when it resolves matches
+      // nothing and the task stays invisible until the next poll.
+      //
+      // They are removed by whoever created them, on success or on failure.
+      const optimistic = prev.filter((t) => t.id.startsWith("pending-"));
+      return optimistic.length === 0 ? visible : [...optimistic, ...visible];
+    });
   }, []);
 
   /* -- Startup ------------------------------------------------------------ */
@@ -721,13 +734,23 @@ export function useTasks(connected: boolean) {
       // to follow, so Google puts it at the top and the rest queue behind it.
       setTasks((prev) => [...placeholders, ...prev]);
 
+      const placeholderIds = new Set(placeholders.map((p) => p.id));
+      const clearPlaceholders = () =>
+        setTasks((prev) => prev.filter((t) => !placeholderIds.has(t.id)));
+
       try {
         await invoke<Task[]>("create_outline", {
           taskListId: listId,
           entries,
         });
+        // Rust announced the list as it finished, so the real rows are already
+        // in the cache. These have to go explicitly now that a re-read leaves
+        // optimistic rows alone, or the paste would show twice.
+        clearPlaceholders();
+        await readCache(listId);
         return null;
       } catch (err) {
+        clearPlaceholders();
         // Rust creates what it can and reports the rest, so the list has
         // probably changed even though this failed. Drop the placeholders and
         // let the cache say what actually exists.
@@ -825,7 +848,15 @@ export function useTasks(connected: boolean) {
           title,
           notes: notes ?? null,
         });
-        setTasks((prev) => prev.map((t) => (t.id === tempId ? created : t)));
+        setTasks((prev) => {
+          // A re-read may already have brought the real row in, now that
+          // optimistic rows survive one. Swap, or drop the placeholder if the
+          // task is there twice over.
+          const without = prev.filter((t) => t.id !== tempId);
+          return without.some((t) => t.id === created.id)
+            ? without
+            : [created, ...without];
+        });
         return null;
       } catch (err) {
         setTasks((prev) => prev.filter((t) => t.id !== tempId));

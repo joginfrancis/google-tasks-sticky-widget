@@ -261,6 +261,21 @@ export function TaskWidget(props: Props) {
     // The visible slot, so the gap is drawn in the same frame as a local drag.
     resolveIndex,
     onAdopt: (taskId, fromListId, slot) => {
+      // Two notes can show the same list — the `+` button exists to make that
+      // happen — and a drag between them is a reorder, not a hand-off. The
+      // cross-list path refuses it (there is no list to move to), so without
+      // this the row left the source note, arrived nowhere, and reappeared
+      // unmoved 2.5s later.
+      if (fromListId === selectedId) {
+        const rows = reorderable.map((t) => ({
+          id: t.id,
+          parentId: t.parentId ?? null,
+        }));
+        const target = resolveDrop(rows, taskId, slot, false);
+        if (target) props.onMoveTo(taskId, target);
+        return;
+      }
+
       // Converted to a top-level index before it leaves.
       //
       // A task arriving from another note goes through `move_task`, which
