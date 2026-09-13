@@ -102,12 +102,22 @@ pub fn open_note_labelled(
 
     log::info!("open_note: requested list={list_id} label={label} from={near:?}");
 
-    let layer = app
-        .state::<AppState>()
-        .settings
-        .lock()
-        .map(|s| s.layer())
-        .unwrap_or(WindowLayer::Top);
+    // A new note starts at whatever the user last chose, then owns that setting
+    // outright. Recording it now rather than leaving the entry empty is what
+    // makes it independent: an unrecorded note falls back to the global default,
+    // so pinning the main note would silently drag every never-pinned note with
+    // it.
+    let layer = {
+        let state = app.state::<AppState>();
+        let mut settings = match state.settings.lock() {
+            Ok(settings) => settings,
+            Err(_) => return Err("settings lock poisoned".to_string()),
+        };
+        let layer = settings.layer_for(&label);
+        settings.set_layer_for(&label, layer);
+        crate::settings::save(app, &settings);
+        layer
+    };
 
     let mut builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html".into()))
         .title("Sticky Widget")

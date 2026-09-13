@@ -149,7 +149,10 @@ pub struct WindowSettings {
 }
 
 #[tauri::command]
-pub fn get_window_settings(app: AppHandle) -> Result<WindowSettings, String> {
+pub fn get_window_settings(
+    app: AppHandle,
+    window: tauri::Window,
+) -> Result<WindowSettings, String> {
     let state = app.state::<AppState>();
     let settings = state
         .settings
@@ -157,7 +160,11 @@ pub fn get_window_settings(app: AppHandle) -> Result<WindowSettings, String> {
         .map_err(|_| "settings lock poisoned".to_string())?;
 
     Ok(WindowSettings {
-        window_layer: settings.layer().as_str().to_string(),
+        // This window's own pin state, not the global default. Every other
+        // field here really is app-wide; pinning is the one that belongs to a
+        // single note, and returning the default made every note's pin control
+        // show — and appear to follow — whatever was last chosen in any of them.
+        window_layer: settings.layer_for(window.label()).as_str().to_string(),
         show_in_taskbar: settings.show_in_taskbar,
         global_hotkey: settings
             .global_hotkey
