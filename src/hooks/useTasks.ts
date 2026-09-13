@@ -21,6 +21,13 @@ const UNDO_WINDOW_MS = 6000;
 const DEPART_RECONCILE_MS = 2500;
 
 /**
+ * Slack on top of the undo window before a listening note lifts a suppression
+ * it was told about. Long enough for the delete to commit and announce first,
+ * so the row does not flicker back into view on its way out.
+ */
+const SUPPRESSION_GRACE_MS = 2000;
+
+/**
  * Moves `id` to `toIndex` among its top-level active siblings.
  *
  * `toIndex` is in the frame the move API uses: siblings with the moved task
@@ -274,11 +281,24 @@ export function useTasks(connected: boolean) {
 
     const hide = listen<Pending>("task:pending-delete", (event) => {
       const { taskId, listId } = event.payload;
-      if (listId !== currentListRef.current) return;
+      if (listId === null || listId !== currentListRef.current) return;
       suppressedRef.current.add(taskId);
       setTasks((prev) =>
         prev.filter((t) => t.id !== taskId && t.parentId !== taskId),
       );
+
+      // Lift it on our own schedule rather than waiting to be told.
+      //
+      // Commit, undo and failure all happen in the note that started the
+      // delete, so this window has no path back if that note is closed inside
+      // its undo window — the row would stay hidden here until the app
+      // restarted, with the cache and Google both perfectly fine. Re-reading
+      // afterwards settles it either way: the task is gone from the cache if
+      // the delete went through, and still there if it never did.
+      window.setTimeout(() => {
+        if (!suppressedRef.current.delete(taskId)) return;
+        if (currentListRef.current === listId) void readCache(listId);
+      }, UNDO_WINDOW_MS + SUPPRESSION_GRACE_MS);
     });
 
     const restore = listen<Pending>("task:pending-restore", (event) => {

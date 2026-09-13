@@ -244,6 +244,9 @@ pub fn run() {
             // pinning the widget at the fast cadence forever.
             WindowEvent::Focused(true) => {
                 win.state::<sync::SyncManager>().set_visible(true);
+                // Stands in for z-order when a drag has to choose between two
+                // overlapping notes; see notes::note_window_at.
+                win.state::<notes::NoteRegistry>().note_focused(win.label());
             }
             _ => {}
         })

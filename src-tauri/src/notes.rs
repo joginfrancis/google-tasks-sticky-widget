@@ -34,6 +34,13 @@ const NOTE_PREFIX: &str = "note-";
 pub struct NoteRegistry {
     by_label: Mutex<HashMap<String, String>>,
     next_id: std::sync::atomic::AtomicU32,
+    /// When each note was last focused, as a monotonic tick.
+    ///
+    /// Stands in for z-order, which Tauri does not expose. It is only consulted
+    /// where notes overlap, and there the note you touched most recently is
+    /// almost always the one actually on top.
+    focus_seq: Mutex<HashMap<String, u64>>,
+    focus_clock: std::sync::atomic::AtomicU64,
 }
 
 impl NoteRegistry {
@@ -69,6 +76,25 @@ impl NoteRegistry {
             .lock()
             .map(|m| m.keys().cloned().collect())
             .unwrap_or_default()
+    }
+
+    /// Records that a note came to the front.
+    pub fn note_focused(&self, label: &str) {
+        let tick = self
+            .focus_clock
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if let Ok(mut seq) = self.focus_seq.lock() {
+            seq.insert(label.to_string(), tick);
+        }
+    }
+
+    /// How recently a note was focused; never focused sorts oldest.
+    fn focus_rank(&self, label: &str) -> u64 {
+        self.focus_seq
+            .lock()
+            .ok()
+            .and_then(|seq| seq.get(label).copied())
+            .unwrap_or(0)
     }
 }
 
@@ -386,31 +412,53 @@ pub fn register_note_list(
 /// written for them.
 ///
 /// Hit-testing by bounds rather than by Win32 `WindowFromPoint`: it needs no
-/// native dependency, and notes are normally laid out side by side. The
-/// difference shows only where two notes overlap, where this reports whichever
-/// the registry lists first rather than whichever is on top.
+/// native dependency, which matters on a machine where Smart App Control
+/// already blocks unsigned build scripts.
+///
+/// Bounds alone cannot say which of two overlapping notes is in front, and the
+/// registry is a `HashMap` whose iteration order Rust deliberately randomises —
+/// so taking the first match would send the same drag to a different note each
+/// time. Where several notes contain the point, the most recently focused one
+/// wins: that is not the true z-order, but it is stable, and the note you
+/// touched last is almost always the one on top.
 #[tauri::command]
 pub fn note_window_at(app: AppHandle, x: i32, y: i32) -> Option<String> {
-    let mut labels = app.state::<NoteRegistry>().labels();
+    let registry = app.state::<NoteRegistry>();
+    let mut labels = registry.labels();
     labels.push(MAIN_LABEL.to_string());
 
-    labels.into_iter().find(|label| {
-        let Some(window) = app.get_webview_window(label) else {
-            return false;
-        };
-        // A hidden note is not a drop target, and `main` in particular hides
-        // rather than closes.
-        if !window.is_visible().unwrap_or(false) {
-            return false;
-        }
-        let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) else {
-            return false;
-        };
-        x >= pos.x
-            && x < pos.x + size.width as i32
-            && y >= pos.y
-            && y < pos.y + size.height as i32
-    })
+    let mut hits: Vec<String> = labels
+        .into_iter()
+        .filter(|label| {
+            let Some(window) = app.get_webview_window(label) else {
+                return false;
+            };
+            // A hidden note is not a drop target, and `main` in particular
+            // hides rather than closes.
+            if !window.is_visible().unwrap_or(false) {
+                return false;
+            }
+            let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size())
+            else {
+                return false;
+            };
+            x >= pos.x
+                && x < pos.x + size.width as i32
+                && y >= pos.y
+                && y < pos.y + size.height as i32
+        })
+        .collect();
+
+    // Most recently focused first, then by label so the result never depends on
+    // hash order even for two notes that have never been focused.
+    hits.sort_by(|a, b| {
+        registry
+            .focus_rank(b)
+            .cmp(&registry.focus_rank(a))
+            .then_with(|| a.cmp(b))
+    });
+
+    hits.into_iter().next()
 }
 
 /// Where a note window sits and how its pixels are scaled.
