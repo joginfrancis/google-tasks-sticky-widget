@@ -30,6 +30,16 @@ const DEPART_RECONCILE_MS = 2500;
 const SUPPRESSION_GRACE_MS = 2000;
 
 /**
+ * Longest a list will hold its local order while waiting for the resync.
+ *
+ * Generous, because the resync is two network round-trips and the alternative
+ * to waiting is a visible double-jump. It only matters when the resync never
+ * arrives — offline, or a thread that died — and then the list simply resumes
+ * following the cache.
+ */
+const ORDER_HOLD_MAX_MS = 8000;
+
+/**
  * Moves `id` to `toIndex` among its top-level active siblings.
  *
  * `toIndex` is in the frame the move API uses: siblings with the moved task
@@ -127,6 +137,29 @@ export function useTasks(connected: boolean) {
    * window often enough that Delete looked like it simply did not work.
    */
   const suppressedRef = useRef<Set<string>>(new Set());
+
+  /**
+   * Lists whose local order is being held against re-reads.
+   *
+   * A move writes only the moved task, so its new `position` is real while every
+   * sibling's is still the one from before Google renumbered them. Re-reading
+   * then sorts by a mixture of new and stale positions and produces an order
+   * that is neither the one dropped nor the one Google now holds — the row lands
+   * correctly, jumps somewhere wrong, then jumps again when the background
+   * resync lands. Holding the optimistic order until that resync removes both
+   * jumps; `tasks:reordered` is how Rust says the positions are all real now.
+   */
+  const heldOrderRef = useRef<Set<string>>(new Set());
+  const holdTimersRef = useRef<Map<string, number>>(new Map());
+
+  const releaseOrderHold = useCallback((listId: string) => {
+    heldOrderRef.current.delete(listId);
+    const timer = holdTimersRef.current.get(listId);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      holdTimersRef.current.delete(listId);
+    }
+  }, []);
 
   /**
    * Other notes showing this list have their own copy of it, and nothing has
@@ -280,13 +313,25 @@ export function useTasks(connected: boolean) {
 
   // Rust emits this after any successful sync, background polling included.
   useEffect(() => {
-    const unlisten = listen<string>("tasks:updated", (event) => {
+    const updated = listen<string>("tasks:updated", (event) => {
+      if (event.payload !== currentListRef.current) return;
+      // Held while a move of ours is still settling: re-reading now would sort
+      // by a mixture of new and stale positions.
+      if (heldOrderRef.current.has(event.payload)) return;
+      void readCache(event.payload);
+    });
+
+    // Every sibling's position has been fetched, so the cache can be trusted.
+    const reordered = listen<string>("tasks:reordered", (event) => {
+      releaseOrderHold(event.payload);
       if (event.payload === currentListRef.current) void readCache(event.payload);
     });
+
     return () => {
-      unlisten.then((fn) => fn());
+      void updated.then((fn) => fn());
+      void reordered.then((fn) => fn());
     };
-  }, [readCache]);
+  }, [readCache, releaseOrderHold]);
 
   // A delete waiting out its undo window in another note. Nothing has been
   // deleted yet, so this is purely about the two views agreeing: hide the row
@@ -634,10 +679,19 @@ export function useTasks(connected: boolean) {
       setError(taskId, null);
 
       // Land it before the network, for the same reason the index path does:
-      // a drag that waits on Google reads as a drag that failed. Rust upserts
-      // only the moved task and corrects sibling order in the background, so
-      // without this a nest sits unchanged on screen for a beat and then jumps.
+      // a drag that waits on Google reads as a drag that failed.
       setTasks((prev) => applyDrop(prev, taskId, target));
+
+      // And hold that order until the resync makes the cache authoritative,
+      // so the row does not visibly bounce through an intermediate sort.
+      heldOrderRef.current.add(listId);
+      const stale = holdTimersRef.current.get(listId);
+      if (stale !== undefined) window.clearTimeout(stale);
+      holdTimersRef.current.set(
+        listId,
+        // A resync that never arrives must not freeze the list for good.
+        window.setTimeout(() => releaseOrderHold(listId), ORDER_HOLD_MAX_MS),
+      );
 
       try {
         await invoke("move_task_to", {

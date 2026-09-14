@@ -295,6 +295,11 @@ pub fn move_task_to(
             log::warn!("post-move resync failed, order may be stale: {err:?}");
         }
         announce(&handle, &task_list_id);
+        // Distinct from `tasks:updated` because it means something stronger:
+        // every sibling's position has now been fetched, so the cached order is
+        // finally authoritative. The window that performed the drag holds its
+        // own order until it sees this.
+        let _ = handle.emit("tasks:reordered", task_list_id.to_string());
     });
 
     Ok(())
