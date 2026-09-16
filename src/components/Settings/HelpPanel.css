@@ -12,8 +12,8 @@
 .help-head {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 7px 8px;
+  gap: 6px;
+  padding: 7px 7px 7px 8px;
   background: var(--surface-header);
   border-bottom: 1px solid var(--border);
 }
@@ -24,11 +24,18 @@
 
 .help-body {
   flex: 1;
-  padding: 4px 10px 16px;
+  padding: 2px 8px 18px;
 }
 
+/* Vertical padding only: the divider between sections should span the panel,
+   as it does in Settings, so the horizontal inset lives on the content. */
 .help-section {
-  padding: 10px 0;
+  padding: 11px 0 7px;
+}
+
+.help-section > * {
+  padding-left: 8px;
+  padding-right: 4px;
 }
 
 .help-section + .help-section {
@@ -37,10 +44,10 @@
 
 .help h2 {
   margin: 0 0 6px;
-  font-size: var(--font-size-sm);
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.6px;
   color: var(--text-muted);
 }
 
@@ -136,7 +143,9 @@
 
 .help-future {
   margin: 0 0 8px;
-  padding-left: 18px;
+  /* The section's 8px inset plus the list's own bullet indent, so the
+     text lines up with the paragraphs above it rather than the bullets. */
+  padding-left: 26px;
   font-size: var(--font-size-sm);
   line-height: 1.5;
   color: var(--text-secondary);

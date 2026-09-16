@@ -5,11 +5,13 @@
   background: var(--surface);
 }
 
+/* Matches the note header's metrics, so moving between the two does not shift
+   the chrome — it is one window wearing a different page, not another app. */
 .settings-head {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 7px 8px;
+  gap: 6px;
+  padding: 7px 7px 7px 8px;
   background: var(--surface-header);
   border-bottom: 1px solid var(--border);
 }
@@ -20,36 +22,43 @@
 
 .settings-body {
   flex: 1;
-  padding: 4px 10px 12px;
+  padding: 2px 8px 14px;
 }
 
 .settings section {
-  padding: 8px 0;
+  padding: 9px 0 5px;
 }
 
 .settings section + section {
   border-top: 1px solid var(--border);
 }
 
+/* Small and quiet: these are signposts between groups, not content. Aligned to
+   the rows below them rather than to the panel edge. */
 .settings h2 {
-  margin: 0 0 4px;
-  font-size: var(--font-size-sm);
+  margin: 0 0 3px;
+  padding: 0 8px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.6px;
   color: var(--text-muted);
 }
 
+/* Deliberately the same shape as .task-row — same padding, radius and hover.
+   A settings row and a task row are the same object in different moments, and
+   the eye should not have to relearn the list. */
 .settings-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   width: 100%;
-  padding: 6px 4px;
+  min-height: 30px;
+  padding: 5px 4px 5px 8px;
   border: none;
   background: transparent;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-row);
   text-align: left;
   color: inherit;
 }
@@ -75,13 +84,16 @@
 
 /* Switch ------------------------------------------------------------------ */
 
+/* Sized and weighted like the task checkbox — 1.5px border, accent only when
+   on. The checkbox is the note's one accent-filled control, so a switch that
+   matches it reads as the same family rather than a second visual language. */
 .switch {
   flex: 0 0 auto;
   position: relative;
-  width: 34px;
-  height: 18px;
-  border: 1px solid var(--border-strong);
-  border-radius: 9px;
+  width: 28px;
+  height: 16px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 8px;
   background: transparent;
   transition: background var(--duration) var(--ease),
     border-color var(--duration) var(--ease);
@@ -94,18 +106,18 @@
 
 .switch-knob {
   position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 10px;
-  height: 10px;
+  top: 2px;
+  left: 2px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background: var(--text-secondary);
+  background: var(--text-muted);
   transition: transform var(--duration) var(--ease),
     background var(--duration) var(--ease);
 }
 
 .switch.is-on .switch-knob {
-  transform: translateX(16px);
+  transform: translateX(12px);
   background: var(--text-on-accent);
 }
 
@@ -118,21 +130,23 @@
   border-radius: var(--radius-control);
   background: var(--surface-raised);
   color: var(--text);
+  /* Shorthand first: it resets size, so setting one before it has no effect. */
   font: inherit;
+  font-size: var(--font-size-sm);
   cursor: pointer;
 }
 
 .settings-actions {
   display: flex;
   gap: 6px;
-  padding: 6px 4px 0;
+  padding: 8px 4px 2px 8px;
 }
 
 .settings-button {
   flex: 1;
   padding: 5px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-row);
   background: transparent;
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease);
@@ -146,19 +160,26 @@
   color: var(--danger);
 }
 
+/* A sunken track with the selected option raised out of it, rather than a
+   block of accent.
+
+   Filling the active half with accent made this the loudest thing in the
+   panel — louder than any task, for a preference set once and then forgotten.
+   Raised-versus-recessed says "this one" just as clearly and lets the accent
+   go back to meaning "done". */
 .segmented {
   display: flex;
   gap: 2px;
   padding: 2px;
-  margin: 2px 4px;
-  border: 1px solid var(--border);
+  margin: 2px 4px 2px 8px;
   border-radius: 7px;
+  background: var(--surface-hover);
 }
 
 .segment {
   flex: 1;
   padding: 4px;
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius-control);
   background: transparent;
   cursor: pointer;
@@ -167,17 +188,19 @@
     color var(--duration-fast) var(--ease);
 }
 
-.segment:hover {
-  background: var(--surface-hover);
+.segment:hover:not(.is-active) {
+  color: var(--text);
 }
 
 .segment.is-active {
-  background: var(--accent);
-  color: var(--text-on-accent);
+  background: var(--surface-raised);
+  border-color: var(--border);
+  color: var(--text);
+  font-weight: 600;
 }
 
 .settings-error {
-  margin: 8px 4px 0;
+  margin: 8px 8px 0;
   padding: 7px 9px;
   border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--danger) 10%, transparent);
@@ -187,14 +210,14 @@
 }
 
 .settings-hint {
-  margin: -2px 4px 4px;
+  margin: -1px 8px 4px;
   font-size: var(--font-size-sm);
   color: var(--text-muted);
   line-height: 1.35;
 }
 
 .settings-note {
-  margin: 6px 4px 0;
+  margin: 6px 8px 0;
   font-size: var(--font-size-sm);
   color: var(--text-muted);
   line-height: 1.45;
@@ -203,10 +226,10 @@
 /* Hotkey recorder ---------------------------------------------------------- */
 
 .hotkey-recorder {
-  width: calc(100% - 8px);
-  margin: 2px 4px 0;
-  padding: 6px 8px;
-  border: 1px solid var(--border-strong);
+  width: calc(100% - 12px);
+  margin: 2px 4px 0 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   background: var(--surface);
   color: var(--text);
@@ -228,7 +251,7 @@
 }
 
 .settings-warning {
-  margin: 6px 4px 0;
+  margin: 6px 8px 0;
   padding: 6px 8px;
   border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--warning) 12%, transparent);
