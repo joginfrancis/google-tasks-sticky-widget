@@ -23,6 +23,7 @@ interface Props {
   onChange: (patch: Partial<Settings>) => void;
   onDisconnect: () => void;
   onSyncNow: () => void;
+  onOpenHelp: () => void;
   onClose: () => void;
 }
 
@@ -196,6 +197,18 @@ export function SettingsPanel(props: Props) {
 
         <section>
           <h2>About</h2>
+          {/* Above Version, because it is the row someone actually came looking
+              for: most of what this widget can do is a gesture with no
+              affordance, and Help is the only place that says so. */}
+          <button
+            className="settings-row is-clickable"
+            onClick={props.onOpenHelp}
+          >
+            <span className="settings-label">Help &amp; shortcuts</span>
+            <span className="settings-value" aria-hidden="true">
+              ›
+            </span>
+          </button>
           <div className="settings-row">
             <span className="settings-label">Version</span>
             <span className="settings-value">0.1.0</span>

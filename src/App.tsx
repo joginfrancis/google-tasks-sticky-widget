@@ -7,6 +7,7 @@ import { useTasks } from "./hooks/useTasks";
 import { uiLog } from "./lib/log";
 import { TaskWidget } from "./components/TaskWidget/TaskWidget";
 import { SettingsPanel } from "./components/Settings/SettingsPanel";
+import { HelpPanel } from "./components/Settings/HelpPanel";
 import { Onboarding } from "./components/Onboarding/Onboarding";
 
 import "./styles/tokens.css";
@@ -17,7 +18,7 @@ const SETTLE_MS = 700;
 
 const THEME_KEY = "theme-preference";
 
-type View = "widget" | "settings";
+type View = "widget" | "settings" | "help";
 
 /** Mirrors `commands::AccountStatus` in Rust. No email — see SettingsPanel. */
 interface AccountStatus {
@@ -231,8 +232,10 @@ export default function App() {
       } else if (event.ctrlKey && event.key === ",") {
         event.preventDefault();
         setView((v) => (v === "settings" ? "widget" : "settings"));
-      } else if (event.key === "Escape" && view === "settings") {
-        setView("widget");
+      } else if (event.key === "Escape" && view !== "widget") {
+        // Help was opened from Settings, so Escape steps back to it rather
+        // than dropping the user all the way out to the note.
+        setView(view === "help" ? "settings" : "widget");
       }
     };
     window.addEventListener("keydown", onKey);
@@ -312,9 +315,20 @@ export default function App() {
     selectedTaskListId: tasks.selectedListId,
   };
 
+  if (view === "help") {
+    return (
+      <HelpPanel
+        globalHotkey={globalHotkey}
+        globalHotkeyEnabled={globalHotkeyEnabled}
+        onClose={() => setView("settings")}
+      />
+    );
+  }
+
   if (view === "settings") {
     return (
       <SettingsPanel
+        onOpenHelp={() => setView("help")}
         settings={settings}
         taskLists={tasks.taskLists}
         connected={account.connected}
