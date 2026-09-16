@@ -3,6 +3,16 @@
   flex-direction: column;
   height: 100%;
   background: var(--surface);
+  color: var(--text);
+  /* The same frame as .widget. The window is frameless and transparent, so
+     without these the panel renders as a hard-edged rectangle sitting on the
+     desktop while the note it came from has rounded corners and a shadow.
+     `overflow: hidden` is what actually clips the scrolling body to the
+     radius — the border-radius alone would be painted over by it. */
+  border: 1px solid var(--border);
+  border-radius: var(--radius-window);
+  overflow: hidden;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2);
 }
 
 /* Matches the note header's metrics, so moving between the two does not shift

@@ -58,7 +58,20 @@ export function SettingsPanel(props: Props) {
           aria-label="Back"
           title="Back"
         >
-          ‹
+          {/* A real arrow, not a chevron glyph. "‹" is a typographic quote
+              mark: it renders light, sits off the optical centre and changes
+              shape with the font. This is the same 1.5px round-capped stroke
+              as every other icon in the app. */}
+          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+            <path
+              d="M12.5 8H4M7.5 4L3.5 8l4 4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </button>
         <span className="settings-title">Settings</span>
       </header>
