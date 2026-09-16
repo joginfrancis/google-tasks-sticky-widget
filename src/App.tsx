@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { Settings, ThemePreference, WindowLayer } from "./types";
 import { useTasks } from "./hooks/useTasks";
 import { uiLog } from "./lib/log";
+import { windowLabel } from "./lib/window";
 import { TaskWidget } from "./components/TaskWidget/TaskWidget";
 import { SettingsPanel } from "./components/Settings/SettingsPanel";
 import { HelpPanel } from "./components/Settings/HelpPanel";
@@ -141,8 +142,15 @@ export default function App() {
       .catch(console.error);
 
     // The tray menu changes this too, so mirror it rather than assume.
-    const unlisten = listen<WindowLayer>("window:layer", (event) =>
-      setWindowLayer(event.payload),
+    // Only this window's own pin change. The event is addressed to one window,
+    // but `listen` hears it whatever window it was sent to, so the label is
+    // what actually keeps one note's pin from redrawing every other note's.
+    const unlisten = listen<{ label: string; layer: WindowLayer }>(
+      "window:layer",
+      (event) => {
+        if (event.payload.label !== windowLabel()) return;
+        setWindowLayer(event.payload.layer);
+      },
     );
     const openSettings = listen("ui:open-settings", () => setView("settings"));
 

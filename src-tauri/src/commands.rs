@@ -62,10 +62,18 @@ pub fn apply_layer_to(
         }
     }
 
-    // Addressed to the one window, not broadcast: every note listens for this,
-    // and a broadcast would make them all redraw their pin to match whichever
-    // one was clicked.
-    let _ = app.emit_to(label, "window:layer", layer.as_str());
+    // Addressed to the one window *and* stamped with its label.
+    //
+    // `emit_to` alone was not enough. A listener registered through the plain
+    // `listen()` helper fires for the event whatever window it was addressed
+    // to, so every note redrew its pin to match whichever one had been
+    // clicked. The label lets a receiver drop what is not its own — the same
+    // thing dragBus does with `originLabel`.
+    let _ = app.emit_to(
+        label,
+        "window:layer",
+        serde_json::json!({ "label": label, "layer": layer.as_str() }),
+    );
     Ok(())
 }
 
