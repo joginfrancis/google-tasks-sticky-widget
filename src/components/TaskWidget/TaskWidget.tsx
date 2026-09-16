@@ -94,6 +94,8 @@ export function TaskWidget(props: Props) {
   const [selection, setSelection] = useState<Selection>(emptySelection);
   /** Brief "Copied" confirmation on the selection bar, since a copy is silent. */
   const [copied, setCopied] = useState(false);
+  /** Deleting a selection asks first; the bar holds the question. */
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // Clicking anywhere that is not a task closes the open one. Without this the
   // only way to put a row away is to find and click it again, which is an odd
@@ -197,16 +199,42 @@ export function TaskWidget(props: Props) {
     [selectableOrder],
   );
 
-  const clearSelection = useCallback(() => setSelection(emptySelection), []);
+  const clearSelection = useCallback(() => {
+    setConfirmingDelete(false);
+    setSelection(emptySelection);
+  }, []);
 
   const completeSelected = () => {
     for (const id of selectedIds) props.onToggle(id);
     clearSelection();
   };
 
-  const deleteSelected = () => {
+  /**
+   * Asks before deleting a selection. A single delete does not: it is one row,
+   * in plain sight, with Undo. A selection can reach rows scrolled out of view,
+   * and a stray Delete key would take all of them at once — Undo still stands
+   * behind it, but it should not have to be the only safeguard.
+   */
+  const deleteSelected = () => setConfirmingDelete(true);
+
+  const confirmDeleteSelected = () => {
     props.onDeleteMany([...selectedIds]);
     clearSelection();
+  };
+
+  // Subtasks go with a selected parent, so the question should say so.
+  const subtasksGoing = active.filter(
+    (t) => t.parentId !== null && selectedIds.has(t.parentId) && !selectedIds.has(t.id),
+  ).length;
+
+  /**
+   * Ticking one selected task ticks the selection. With several rows picked,
+   * the checkbox under the cursor is the obvious place to finish them, and
+   * making someone find the bar instead is one detour too many.
+   */
+  const toggleRow = (id: string) => {
+    if (selectedIds.size > 1 && selectedIds.has(id)) completeSelected();
+    else props.onToggle(id);
   };
 
   const copySelected = () => {
@@ -224,8 +252,27 @@ export function TaskWidget(props: Props) {
   useEffect(() => {
     if (!selecting) return;
     const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement;
-      if (target.closest("input, textarea, [contenteditable='true']")) return;
+      // Not every key event comes from an element — one dispatched on the
+      // window has the window as its target, which has no `closest`.
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest("input, textarea, [contenteditable='true']")
+      ) {
+        return;
+      }
+      if (confirmingDelete) {
+        // While asking: Escape backs out of the question but keeps the
+        // selection; Enter or Delete again confirms.
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setConfirmingDelete(false);
+        } else if (event.key === "Enter" || event.key === "Delete") {
+          event.preventDefault();
+          confirmDeleteSelected();
+        }
+        return;
+      }
       if (event.key === "Escape") {
         event.preventDefault();
         clearSelection();
@@ -535,7 +582,7 @@ export function TaskWidget(props: Props) {
                   onToggleExpand={toggleExpand}
                   isSelected={selectedIds.has(task.id)}
                   onSelect={onSelect}
-                  onToggle={props.onToggle}
+                  onToggle={toggleRow}
                   onDelete={props.onDelete}
                   onEdit={props.onEdit}
                   onSetDue={props.onSetDue}
@@ -597,6 +644,34 @@ export function TaskWidget(props: Props) {
 
       {selecting && (
         <div className="selection-bar" role="toolbar" aria-label="Selected tasks">
+          {confirmingDelete ? (
+            <>
+              <span className="selection-count" role="alert">
+                Delete {selectedIds.size} task{selectedIds.size === 1 ? "" : "s"}
+                {subtasksGoing > 0 &&
+                  ` and ${subtasksGoing} subtask${subtasksGoing === 1 ? "" : "s"}`}
+                ?
+              </span>
+              <div className="selection-actions">
+                <button
+                  className="selection-action"
+                  onClick={() => setConfirmingDelete(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="selection-action is-danger is-strong"
+                  onClick={confirmDeleteSelected}
+                  // Focused, so Enter confirms from the keyboard as the
+                  // Delete key started it.
+                  autoFocus
+                >
+                  Delete
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
           <span className="selection-count">{selectedIds.size} selected</span>
           <div className="selection-actions">
             <button className="selection-action" onClick={completeSelected}>
@@ -628,6 +703,8 @@ export function TaskWidget(props: Props) {
               </svg>
             </button>
           </div>
+            </>
+          )}
         </div>
       )}
 

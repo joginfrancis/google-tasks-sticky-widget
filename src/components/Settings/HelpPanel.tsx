@@ -94,7 +94,10 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
             <dt>
               <kbd>Delete</kbd>
             </dt>
-            <dd>Delete the selected tasks — Undo brings them all back</dd>
+            <dd>
+              Delete the selected tasks. It asks first — Enter to confirm, Esc to
+              back out — and Undo still brings them all back
+            </dd>
           </dl>
 
           <h3>Adding tasks</h3>
@@ -175,6 +178,9 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
 
             <dt>Shift + click</dt>
             <dd>Selects every task between the last one picked and this one</dd>
+
+            <dt>Tick a selected task</dt>
+            <dd>Ticks every selected task at once</dd>
 
             <dt>Right-click</dt>
             <dd>Menu: date, move to another list, open in Google, delete</dd>

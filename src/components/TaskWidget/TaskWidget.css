@@ -250,6 +250,19 @@
   color: var(--danger);
 }
 
+/* The button that actually deletes, once asked. Filled, so the two answers to
+   the question do not look equally weighted. */
+.selection-action.is-strong {
+  background: var(--danger);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+
+.selection-action.is-strong:hover {
+  background: color-mix(in srgb, var(--danger) 85%, black);
+  color: var(--text-on-accent);
+}
+
 /* Footer ------------------------------------------------------------------- */
 
 .widget-footer {
