@@ -65,6 +65,7 @@ interface Props {
   onUndoDelete: () => void;
   onSyncNow: () => void;
   onOpenSettings: () => void;
+  onOpenHelp: () => void;
   onHide: () => void;
   onQuit: () => void;
 }
@@ -353,6 +354,7 @@ export function TaskWidget(props: Props) {
             taskLists={props.taskLists}
             selectedListId={selectedId}
             onOpenSettings={props.onOpenSettings}
+            onOpenHelp={props.onOpenHelp}
             onQuit={props.onQuit}
             onDeleteList={props.onDeleteList}
           />

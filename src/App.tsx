@@ -29,6 +29,17 @@ interface AccountStatus {
 
 export default function App() {
   const [view, setView] = useState<View>("widget");
+  /**
+   * Where Help was opened from, so Back and Escape return there. Help is
+   * reachable from the note's menu and from Settings; always going back to
+   * Settings would strand someone who came straight from the note in a page
+   * they never asked for.
+   */
+  const [helpReturn, setHelpReturn] = useState<"widget" | "settings">("widget");
+  const openHelp = (from: "widget" | "settings") => {
+    setHelpReturn(from);
+    setView("help");
+  };
   const [settlingIds, setSettlingIds] = useState<Set<string>>(new Set());
 
   // `null` means "not asked yet", which is distinct from "not connected" —
@@ -243,12 +254,12 @@ export default function App() {
       } else if (event.key === "Escape" && view !== "widget") {
         // Help was opened from Settings, so Escape steps back to it rather
         // than dropping the user all the way out to the note.
-        setView(view === "help" ? "settings" : "widget");
+        setView(view === "help" ? helpReturn : "widget");
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [tasks, view]);
+  }, [tasks, view, helpReturn]);
 
   /* -- Render -------------------------------------------------------------- */
 
@@ -328,7 +339,7 @@ export default function App() {
       <HelpPanel
         globalHotkey={globalHotkey}
         globalHotkeyEnabled={globalHotkeyEnabled}
-        onClose={() => setView("settings")}
+        onClose={() => setView(helpReturn)}
       />
     );
   }
@@ -336,7 +347,7 @@ export default function App() {
   if (view === "settings") {
     return (
       <SettingsPanel
-        onOpenHelp={() => setView("help")}
+        onOpenHelp={() => openHelp("settings")}
         settings={settings}
         taskLists={tasks.taskLists}
         connected={account.connected}
@@ -444,6 +455,7 @@ export default function App() {
       onUndoDelete={tasks.undoDelete}
       onSyncNow={() => void tasks.syncNow()}
       onOpenSettings={() => setView("settings")}
+      onOpenHelp={() => openHelp("widget")}
       onHide={hide}
       onQuit={quit}
     />

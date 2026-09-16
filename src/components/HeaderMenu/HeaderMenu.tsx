@@ -6,6 +6,7 @@ interface Props {
   taskLists: TaskList[];
   selectedListId: string;
   onOpenSettings: () => void;
+  onOpenHelp: () => void;
   onQuit: () => void;
   onDeleteList: (id: string) => Promise<string | null>;
 }
@@ -72,6 +73,13 @@ export function HeaderMenu(props: Props) {
             <button className="dropdown-item" onClick={run(props.onOpenSettings)}>
               <span className="check-slot" />
               Settings
+            </button>
+            {/* Here as well as inside Settings. Help exists to make hidden
+                gestures findable, so it cannot itself sit at the bottom of a
+                scrolling page nobody opens to look for it. */}
+            <button className="dropdown-item" onClick={run(props.onOpenHelp)}>
+              <span className="check-slot" />
+              Help &amp; shortcuts
             </button>
 
             <div className="dropdown-sep" />
