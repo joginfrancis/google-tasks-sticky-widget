@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Task } from "../../types";
-import { formatDue, isOverdue } from "../../lib/date";
+import { dueDateInDays, formatDue, isOverdue } from "../../lib/date";
 import { DueChip } from "./DueChip";
 import "./TaskItem.css";
 
@@ -86,6 +86,14 @@ export function TaskItem({
    * one comes from the API, so a `pending-` prefix can only be ours.
    */
   const pending = task.id.startsWith("pending-");
+  /**
+   * Whether a date chip is already rendered, and so already owns the calendar.
+   *
+   * One for a task that has a date, another offering "Add date" on an open row;
+   * both draw the calendar when `dueOpen` is set, so anything else that might
+   * draw one has to check first.
+   */
+  const hasVisibleDueChip = Boolean(task.due) || (isExpanded && !done);
 
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -383,21 +391,70 @@ export function TaskItem({
 
           {/* Only offered when open — a collapsed row with no date stays clean,
               and the chip above covers the case where one is already set. */}
-          {isExpanded && !task.due && !done && (
-            <DueChip
-              triggerRef={dueButtonRef}
-              label="Add date"
-              overdue={false}
-              done={false}
-              open={dueOpen}
-              value={null}
-              onOpen={() => setDueOpen(true)}
-              onClose={() => setDueOpen(false)}
-              onChange={(next) => {
-                setDueOpen(false);
-                onSetDue(task.id, next);
-              }}
-            />
+          {isExpanded && !done && (
+            <div className="task-date-row">
+              {/* The calendar is for a date you have to look up. Today and
+                  tomorrow are most of what a sticky note ever needs, and
+                  putting them here spends one click on what used to cost
+                  three — open the calendar, find the row, click the day. */}
+              {!task.due && (
+                <DueChip
+                  triggerRef={dueButtonRef}
+                  label="Add date"
+                  overdue={false}
+                  done={false}
+                  open={dueOpen}
+                  value={null}
+                  onOpen={() => setDueOpen(true)}
+                  onClose={() => setDueOpen(false)}
+                  onChange={(next) => {
+                    setDueOpen(false);
+                    onSetDue(task.id, next);
+                  }}
+                />
+              )}
+
+              <button
+                className="task-quick-date"
+                onClick={() => onSetDue(task.id, dueDateInDays(0))}
+              >
+                Today
+              </button>
+              <button
+                className="task-quick-date"
+                onClick={() => onSetDue(task.id, dueDateInDays(1))}
+              >
+                Tomorrow
+              </button>
+
+              {/* Pushed to the right end of the same line: repeat belongs with
+                  the date it repeats on, but it is a rarer choice than either
+                  quick pick and should not sit between them. */}
+              <button
+                className="task-repeat"
+                onClick={() => onOpenInGoogle(task.id)}
+                aria-label="Repeat"
+                title="Repeating tasks are set in Google Tasks"
+              >
+                <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+                  <path
+                    d="M3 8a5 5 0 0 1 8.5-3.5M13 8a5 5 0 0 1-8.5 3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M11.5 2v2.6H9M4.5 14v-2.6H7"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            </div>
           )}
 
           {isExpanded && (
@@ -543,8 +600,14 @@ export function TaskItem({
         </>
       )}
 
-      {/* Opened from the menu when the task has no date to click yet. */}
-      {dueOpen && !task.due && (
+      {/* The menu's fallback calendar, for when there is no chip on screen to
+          hang one off — a collapsed row with no date set.
+          
+          Gated on there being no visible chip, not just on having no date: an
+          open row already shows "Add date", and that chip renders its own
+          calendar from the same `dueOpen` flag. Without this the two appeared
+          together, one behind the other. */}
+      {dueOpen && !hasVisibleDueChip && (
         <DueChip
           label=""
           overdue={false}

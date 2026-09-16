@@ -335,6 +335,61 @@
   visibility: hidden;
 }
 
+/* Date controls on one line: "Add date", the two quick picks, then repeat
+   pushed to the far end. */
+.task-date-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+}
+
+/* Quieter than the date chip beside them — that chip states a fact, these two
+   offer an action, and a row of three equally-weighted pills would read as
+   three states to choose between. */
+.task-quick-date {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.task-quick-date:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.task-repeat {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* The far end of the line, whatever sits to its left. */
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.task-repeat:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
 /* A row is grabbable, so say so before the drag starts. */
 .task-item .task-title {
   cursor: default;

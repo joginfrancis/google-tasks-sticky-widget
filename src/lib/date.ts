@@ -12,6 +12,22 @@ function startOfLocalDay(date: Date): Date {
   return d;
 }
 
+/**
+ * A due date `days` from today, in the form the API wants: midnight UTC.
+ *
+ * Built from the local year, month and day rather than by converting a local
+ * timestamp — a plain toISOString() would shift the date back by one in any
+ * timezone behind UTC, so "tomorrow" would arrive as today.
+ */
+export function dueDateInDays(days: number): string {
+  const d = startOfLocalDay(new Date());
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}T00:00:00.000Z`;
+}
+
 /** Whole days from today. Negative is in the past. */
 export function daysFromToday(due: string): number {
   const dueDay = startOfLocalDay(new Date(due));
