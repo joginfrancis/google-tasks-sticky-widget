@@ -144,8 +144,14 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
             <dt>Click a task</dt>
             <dd>Opens it. Click again to close it</dd>
 
-            <dt>Double-click the text</dt>
+            <dt>Double-click a title</dt>
             <dd>Edits it, open or closed</dd>
+
+            <dt>Click a description</dt>
+            <dd>
+              Edits it. One click is enough here — it is only on screen while
+              the task is open
+            </dd>
 
             <dt>Drag up or down</dt>
             <dd>Reorders</dd>
@@ -171,6 +177,12 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
             <strong>Paste a list and you get a list.</strong> Copy several lines
             from anywhere and paste into the add field — one task per line.
             Indented lines become subtasks. Bullets and numbering are stripped.
+          </p>
+
+          <p>
+            <strong>Lines beside a task mean it has a description.</strong>{" "}
+            Descriptions stay hidden while a task is closed, so every row is one
+            line tall — the mark is how a task with more to say says so.
           </p>
 
           <p>

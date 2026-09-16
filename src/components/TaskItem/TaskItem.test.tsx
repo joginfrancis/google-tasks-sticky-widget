@@ -156,6 +156,23 @@ describe("TaskItem notes visibility", () => {
     expect(screen.getByText("Add details…")).toBeInTheDocument();
   });
 
+  // Hiding the notes is what makes every row one line tall; the mark is what
+  // stops that hiding them completely. The pair only works together.
+  it("marks a collapsed row that has a description", () => {
+    setup();
+    expect(screen.getByTitle("Has details")).toBeInTheDocument();
+  });
+
+  it("does not mark a collapsed row with no description", () => {
+    setup({ task: { ...task, notes: null } });
+    expect(screen.queryByTitle("Has details")).not.toBeInTheDocument();
+  });
+
+  it("drops the mark once open, where the description speaks for itself", () => {
+    setup({ isExpanded: true });
+    expect(screen.queryByTitle("Has details")).not.toBeInTheDocument();
+  });
+
   function cleanupAndRender() {
     document.body.innerHTML = "";
     setup({ isExpanded: true, task: { ...task, notes: null } });
@@ -216,7 +233,8 @@ describe("TaskItem editing", () => {
     // opposite of a title where Enter means "done".
     const user = userEvent.setup();
     setup({ isExpanded: true });
-    await user.dblClick(screen.getByText("The big one by the window"));
+    // The description opens on a single click now; only the title needs two.
+    await user.click(screen.getByText("The big one by the window"));
 
     const editor = screen.getByRole("textbox") as HTMLTextAreaElement;
     await user.clear(editor);
@@ -248,7 +266,8 @@ describe("TaskItem editing", () => {
   it("walks Shift+Tab from the notes editor back to the title editor", async () => {
     const user = userEvent.setup();
     setup({ isExpanded: true });
-    await user.dblClick(screen.getByText("The big one by the window"));
+    // The description opens on a single click now; only the title needs two.
+    await user.click(screen.getByText("The big one by the window"));
 
     await user.tab({ shift: true });
     expect(screen.getByRole("textbox")).toHaveValue("Water the plants");

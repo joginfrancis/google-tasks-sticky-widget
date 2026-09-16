@@ -147,7 +147,7 @@ export function TaskItem({
     // row as well would make pressing one feel like it did two things.
     if (
       (event.target as HTMLElement).closest(
-        "button, input, textarea, select, a, [role='button'], .due-chip, .task-menu",
+        "button, input, textarea, select, a, [role='button'], .due-chip, .task-menu, .task-notes",
       )
     ) {
       return;
@@ -309,6 +309,25 @@ export function TaskItem({
                 {task.title}
               </span>
 
+              {/* Says there is something behind this row worth opening it
+                  for. Notes are hidden when collapsed so every row stays one
+                  line tall, which otherwise leaves a task with a description
+                  looking exactly like one without — and nothing to suggest
+                  opening it. Only when collapsed: once open, the description
+                  is right there and a mark pointing at it is noise. */}
+              {task.notes && !isExpanded && (
+                <span className="task-has-notes" title="Has details">
+                  <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+                    <path
+                      d="M3.5 5h9M3.5 8h9M3.5 11h5.5"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </span>
+              )}
+
               {/* The date sits on the title line rather than under it, so a
                   collapsed row is one line tall whatever it carries. */}
               {task.due && (
@@ -346,10 +365,14 @@ export function TaskItem({
             // Expanded always offers the notes slot, empty or not — "add
             // details" being invisible until notes exist is the main thing the
             // collapsed row cannot express.
+            /* One click, not two. The description is only on screen while
+               the row is open, so a click here cannot be confused with the
+               click that closes the row — the ambiguity that makes the title
+               need a double click does not exist down here. */
             <span
               className={`task-notes ${task.notes ? "" : "is-placeholder"}`}
-              onDoubleClick={() => handleTextDoubleClick("notes")}
-              title="Double-click to edit"
+              onClick={() => beginEdit("notes")}
+              title="Click to edit"
             >
               {task.notes || "Add details…"}
             </span>

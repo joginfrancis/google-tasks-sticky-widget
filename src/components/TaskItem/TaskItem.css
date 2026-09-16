@@ -299,6 +299,21 @@
   overflow: visible;
 }
 
+/* Sits between the title and the date, so it is the first thing after the text
+   rather than competing with the chip for the right edge. Muted and small: it
+   is a hint that there is more, not a status worth reading. */
+.task-has-notes {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-self: center;
+  color: var(--text-muted);
+  opacity: 0.75;
+}
+
+.task-item.is-done .task-has-notes {
+  opacity: 0.4;
+}
+
 .task-line .due-wrap {
   flex: 0 0 auto;
   align-self: center;
