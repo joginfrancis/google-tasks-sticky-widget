@@ -91,3 +91,31 @@ export function parseOutline(text: string): OutlineEntry[] {
 export function isOutlinePaste(text: string): boolean {
   return parseOutline(text).length > 1;
 }
+
+/** The least a task needs to be written out as a line of an outline. */
+export interface OutlineTask {
+  id: string;
+  title: string;
+  parentId: string | null;
+}
+
+/**
+ * Writes tasks out as indented text — the inverse of `parseOutline`.
+ *
+ * Copying a selection and pasting it back into a note rebuilds the same tasks
+ * with the same nesting, so the two functions are tested as a pair. Tasks come
+ * in the order they are shown, which is the order they should be pasted.
+ *
+ * A selected parent brings its subtasks with it, as it would in a drag. A
+ * subtask selected without its parent is written at the top level: indenting it
+ * would make it a subtask of whatever line happens to precede it on paste.
+ */
+export function formatOutline(tasks: OutlineTask[], selectedIds: Set<string>): string {
+  const lines: string[] = [];
+  for (const task of tasks) {
+    const parentSelected = task.parentId !== null && selectedIds.has(task.parentId);
+    if (!selectedIds.has(task.id) && !parentSelected) continue;
+    lines.push(parentSelected ? `  ${task.title}` : task.title);
+  }
+  return lines.join("\n");
+}

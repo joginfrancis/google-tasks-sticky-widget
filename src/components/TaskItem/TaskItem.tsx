@@ -44,6 +44,13 @@ interface Props {
    */
   isExpanded: boolean;
   onToggleExpand: (id: string) => void;
+  /** Part of a multi-selection. */
+  isSelected?: boolean;
+  /**
+   * A Ctrl- or Shift-click. Supplied only where selection is offered, so its
+   * absence leaves those clicks behaving as plain ones.
+   */
+  onSelect?: (id: string, mode: { toggle: boolean; range: boolean }) => void;
 }
 
 export function TaskItem({
@@ -62,6 +69,8 @@ export function TaskItem({
   isDragging,
   isExpanded,
   onToggleExpand,
+  isSelected,
+  onSelect,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
@@ -161,6 +170,18 @@ export function TaskItem({
       return;
     }
 
+    // Ctrl or Shift makes the click a selection instead of an open, the same
+    // as in a file manager. Checked after the controls above, so Ctrl+clicking
+    // the checkbox still completes the task rather than selecting it.
+    if (onSelect && (event.ctrlKey || event.metaKey || event.shiftKey)) {
+      cancelPendingExpand();
+      onSelect(task.id, {
+        toggle: event.ctrlKey || event.metaKey,
+        range: event.shiftKey,
+      });
+      return;
+    }
+
     // A drag that happens to finish over the row still fires a click. Ignore
     // it, or reordering a task would toggle it open as well.
     const origin = pressOrigin.current;
@@ -242,6 +263,7 @@ export function TaskItem({
         done ? "is-done" : "",
         isSettling ? "is-settling" : "",
         isExpanded ? "is-expanded" : "",
+        isSelected ? "is-selected" : "",
         error ? "has-error" : "",
         menuOpen ? "is-menu-open" : "",
       ]
@@ -252,6 +274,12 @@ export function TaskItem({
         setMenuOpen(true);
       }}
       onClick={handleRowClick}
+      onMouseDown={(event) => {
+        // Shift+mousedown extends the browser's text selection across every
+        // row between the last click and this one, which is not what a
+        // Shift+click on a task means here.
+        if (onSelect && event.shiftKey) event.preventDefault();
+      }}
       onPointerDown={(event) => {
         pressOrigin.current = { x: event.clientX, y: event.clientY };
         if (!onDragPress || editing) return;

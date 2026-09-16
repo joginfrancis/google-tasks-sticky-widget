@@ -431,6 +431,7 @@ export default function App() {
       errors={tasks.errors}
       onToggle={handleToggle}
       onDelete={(id) => void tasks.deleteTask(id)}
+      onDeleteMany={(ids) => void tasks.deleteTasks(ids)}
       onEdit={(id, patch) => void tasks.editTask(id, patch)}
       onSetDue={(id, due) => void tasks.editTask(id, { due })}
       onOpenInGoogle={tasks.openInGoogle}

@@ -281,3 +281,41 @@ describe("TaskItem editing", () => {
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 });
+
+describe("TaskItem selection clicks", () => {
+  // Ctrl and Shift turn a click into a selection, as in a file manager. The
+  // expand is on a timer, so the check is that it never fires, not just that
+  // it has not fired yet.
+  it("selects on Ctrl+click instead of opening", () => {
+    vi.useFakeTimers();
+    const onSelect = vi.fn();
+    setup({ onSelect });
+    fireEvent.click(screen.getByText(task.title), { ctrlKey: true, detail: 1 });
+    vi.advanceTimersByTime(500);
+
+    expect(onSelect).toHaveBeenCalledWith(task.id, { toggle: true, range: false });
+    expect(handlers.onToggleExpand).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("selects a range on Shift+click instead of opening", () => {
+    vi.useFakeTimers();
+    const onSelect = vi.fn();
+    setup({ onSelect });
+    fireEvent.click(screen.getByText(task.title), { shiftKey: true, detail: 1 });
+    vi.advanceTimersByTime(500);
+
+    expect(onSelect).toHaveBeenCalledWith(task.id, { toggle: false, range: true });
+    expect(handlers.onToggleExpand).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("still completes the task on Ctrl+clicking its checkbox", () => {
+    const onSelect = vi.fn();
+    setup({ onSelect });
+    fireEvent.click(screen.getByRole("checkbox"), { ctrlKey: true });
+
+    expect(handlers.onToggle).toHaveBeenCalledWith(task.id);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+});

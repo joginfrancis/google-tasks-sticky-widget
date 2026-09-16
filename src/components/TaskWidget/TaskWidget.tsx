@@ -18,6 +18,13 @@ import { useDragSession } from "../../hooks/useDragSession";
 import { useForeignDrag } from "../../hooks/useForeignDrag";
 import type { OutlineEntry } from "../../lib/outline";
 import { resolveDrop, type DropTarget } from "../../lib/dropTarget";
+import { formatOutline } from "../../lib/outline";
+import {
+  applySelectClick,
+  emptySelection,
+  pruneSelection,
+  type Selection,
+} from "../../lib/selection";
 import { DragGhost } from "./DragGhost";
 import { TaskInput } from "../TaskInput/TaskInput";
 import { HeaderMenu } from "../HeaderMenu/HeaderMenu";
@@ -45,9 +52,11 @@ interface Props {
   /** Local-only note colour for the current list, or null for the default. */
   color: string | null;
   widgetError: string | null;
-  pendingDelete: { title: string; extra: number } | null;
+  pendingDelete: { title: string; extra: number; count: number } | null;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
+  /** Several tasks behind one Undo. */
+  onDeleteMany: (ids: string[]) => void;
   onEdit: (id: string, patch: { title?: string; notes?: string }) => void;
   onSetDue: (id: string, due: string | null) => void;
   onOpenInGoogle: (id: string) => void;
@@ -75,8 +84,16 @@ export function TaskWidget(props: Props) {
   // One row at a time: several open at once would push the rest off a 340px
   // panel, and the point of expanding is to look at one thing.
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const toggleExpand = (id: string) =>
+  const toggleExpand = (id: string) => {
+    // A plain click on a task is a return to normal use, so it ends any
+    // selection — the same as clicking a file without Ctrl or Shift.
+    setSelection(emptySelection);
     setExpandedId((current) => (current === id ? null : id));
+  };
+
+  const [selection, setSelection] = useState<Selection>(emptySelection);
+  /** Brief "Copied" confirmation on the selection bar, since a copy is silent. */
+  const [copied, setCopied] = useState(false);
 
   // Clicking anywhere that is not a task closes the open one. Without this the
   // only way to put a row away is to find and click it again, which is an odd
@@ -152,6 +169,86 @@ export function TaskWidget(props: Props) {
       completed: order(props.tasks.filter((t) => !isActive(t))),
     };
   }, [props.tasks, props.settlingIds]);
+
+  /* -- Multi-select -------------------------------------------------------- */
+
+  // Only open tasks can be selected; completed ones sit in their own section.
+  const selectableOrder = useMemo(() => active.map((t) => t.id), [active]);
+
+  // Tasks leave the list — completed, deleted, synced away — and a selection of
+  // things no longer shown would act on rows the user cannot see.
+  useEffect(() => {
+    setSelection((current) => pruneSelection(current, selectableOrder));
+  }, [selectableOrder]);
+
+  // A selection belongs to the list it was made in.
+  useEffect(() => {
+    setSelection(emptySelection);
+  }, [props.settings.selectedTaskListId]);
+
+  const selectedIds = selection.ids;
+  const selecting = selectedIds.size > 0;
+
+  const onSelect = useCallback(
+    (id: string, mode: { toggle: boolean; range: boolean }) => {
+      setExpandedId(null);
+      setSelection((current) => applySelectClick(current, selectableOrder, id, mode));
+    },
+    [selectableOrder],
+  );
+
+  const clearSelection = useCallback(() => setSelection(emptySelection), []);
+
+  const completeSelected = () => {
+    for (const id of selectedIds) props.onToggle(id);
+    clearSelection();
+  };
+
+  const deleteSelected = () => {
+    props.onDeleteMany([...selectedIds]);
+    clearSelection();
+  };
+
+  const copySelected = () => {
+    // Indented the same way a paste is read, so copying tasks and pasting
+    // them into any note rebuilds them, nesting and all.
+    const text = formatOutline(active, selectedIds);
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    });
+  };
+
+  // Escape ends a selection and Delete acts on it — but never while typing,
+  // where both keys already mean something to the text.
+  useEffect(() => {
+    if (!selecting) return;
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest("input, textarea, [contenteditable='true']")) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        clearSelection();
+      } else if (event.key === "Delete") {
+        event.preventDefault();
+        deleteSelected();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  // Clicking anywhere that is neither a task nor the selection bar ends it.
+  useEffect(() => {
+    if (!selecting) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("li.task-item, .selection-bar")) return;
+      clearSelection();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [selecting, clearSelection]);
 
   // Every incomplete row is draggable now, subtasks included — nesting is
   // expressed by `parent`, which resolveDrop works out from where the drop
@@ -434,10 +531,10 @@ export function TaskWidget(props: Props) {
                   }
                   isSettling={props.settlingIds.has(task.id)}
                   error={props.errors[task.id] ?? null}
-
                   isExpanded={expandedId === task.id}
-
                   onToggleExpand={toggleExpand}
+                  isSelected={selectedIds.has(task.id)}
+                  onSelect={onSelect}
                   onToggle={props.onToggle}
                   onDelete={props.onDelete}
                   onEdit={props.onEdit}
@@ -477,9 +574,7 @@ export function TaskWidget(props: Props) {
                         isSubtask={Boolean(task.parentId)}
                         isSettling={false}
                         error={props.errors[task.id] ?? null}
-
                         isExpanded={expandedId === task.id}
-
                         onToggleExpand={toggleExpand}
                         onToggle={props.onToggle}
                         onDelete={props.onDelete}
@@ -500,10 +595,47 @@ export function TaskWidget(props: Props) {
 
       {props.widgetError && <p className="widget-error">{props.widgetError}</p>}
 
+      {selecting && (
+        <div className="selection-bar" role="toolbar" aria-label="Selected tasks">
+          <span className="selection-count">{selectedIds.size} selected</span>
+          <div className="selection-actions">
+            <button className="selection-action" onClick={completeSelected}>
+              Complete
+            </button>
+            <button
+              className="selection-action"
+              onClick={copySelected}
+              title="Copy as indented text — paste it into any note to recreate these tasks"
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+            <button className="selection-action is-danger" onClick={deleteSelected}>
+              Delete
+            </button>
+            <button
+              className="icon-button"
+              onClick={clearSelection}
+              aria-label="Clear selection"
+              title="Clear selection (Esc)"
+            >
+              <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+                <path
+                  d="M3 3l10 10M13 3L3 13"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {props.pendingDelete && (
         <UndoStrip
           title={props.pendingDelete.title}
           extra={props.pendingDelete.extra}
+          count={props.pendingDelete.count}
           onUndo={props.onUndoDelete}
         />
       )}

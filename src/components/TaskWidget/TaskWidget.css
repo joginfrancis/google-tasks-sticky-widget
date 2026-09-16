@@ -201,6 +201,55 @@
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+/* Selection bar ------------------------------------------------------------ */
+
+/* Same place and frame as the undo strip, because it is the same kind of thing:
+   a temporary bar about what just happened to some rows. */
+.selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 5px 5px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-header);
+}
+
+.selection-count {
+  flex: 0 0 auto;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.selection-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.selection-action {
+  padding: 3px 8px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.selection-action:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.selection-action.is-danger {
+  color: var(--danger);
+}
+
 /* Footer ------------------------------------------------------------------- */
 
 .widget-footer {

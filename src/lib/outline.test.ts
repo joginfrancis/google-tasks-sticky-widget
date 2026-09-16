@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isOutlinePaste, parseOutline } from "./outline";
+import { formatOutline, isOutlinePaste, parseOutline } from "./outline";
 
 describe("parseOutline", () => {
   it("makes one task per line", () => {
@@ -116,5 +116,44 @@ describe("isOutlinePaste", () => {
 
   it("is true once there is more than one task in it", () => {
     expect(isOutlinePaste("a\nb")).toBe(true);
+  });
+});
+
+describe("formatOutline", () => {
+  const tasks = [
+    { id: "a", title: "shopping", parentId: null },
+    { id: "a1", title: "milk", parentId: "a" },
+    { id: "a2", title: "eggs", parentId: "a" },
+    { id: "b", title: "bank", parentId: null },
+  ];
+
+  it("writes a selected parent with its subtasks indented beneath it", () => {
+    expect(formatOutline(tasks, new Set(["a"]))).toBe("shopping\n  milk\n  eggs");
+  });
+
+  it("writes a lone subtask at the top level", () => {
+    // Indented, it would become a subtask of whatever preceded it on paste.
+    expect(formatOutline(tasks, new Set(["a2", "b"]))).toBe("eggs\nbank");
+  });
+
+  it("keeps the order tasks are shown in", () => {
+    expect(formatOutline(tasks, new Set(["b", "a"]))).toBe(
+      "shopping\n  milk\n  eggs\nbank",
+    );
+  });
+
+  it("is empty when nothing is selected", () => {
+    expect(formatOutline(tasks, new Set())).toBe("");
+  });
+
+  // The property that matters: copy, paste, and you have what you copied.
+  it("round-trips through parseOutline", () => {
+    const text = formatOutline(tasks, new Set(["a", "b"]));
+    expect(parseOutline(text)).toEqual([
+      { title: "shopping", depth: 0 },
+      { title: "milk", depth: 1 },
+      { title: "eggs", depth: 1 },
+      { title: "bank", depth: 0 },
+    ]);
   });
 });

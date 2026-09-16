@@ -390,6 +390,16 @@
   color: var(--text);
 }
 
+/* Selected rows are tinted with the accent, but faintly: a selection should be
+   unmistakable across several rows at a glance without turning the list into
+   a block of colour. The inset edge keeps it readable on a custom note colour,
+   where a tint alone can vanish. */
+.task-item.is-selected,
+.task-item.is-selected:hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
 /* A row is grabbable, so say so before the drag starts. */
 .task-item .task-title {
   cursor: default;

@@ -89,7 +89,12 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
             <dt>
               <kbd>Esc</kbd>
             </dt>
-            <dd>Close what is open — an editor, a menu, this page</dd>
+            <dd>Close what is open — an editor, a menu, this page, a selection</dd>
+
+            <dt>
+              <kbd>Delete</kbd>
+            </dt>
+            <dd>Delete the selected tasks — Undo brings them all back</dd>
           </dl>
 
           <h3>Adding tasks</h3>
@@ -165,6 +170,12 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
             <dt>Drag onto another note</dt>
             <dd>Moves it to that note&rsquo;s list</dd>
 
+            <dt>Ctrl + click</dt>
+            <dd>Selects a task, or unselects it. Keep going to pick several</dd>
+
+            <dt>Shift + click</dt>
+            <dd>Selects every task between the last one picked and this one</dd>
+
             <dt>Right-click</dt>
             <dd>Menu: date, move to another list, open in Google, delete</dd>
           </dl>
@@ -183,6 +194,12 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
             <strong>Lines beside a task mean it has a description.</strong>{" "}
             Descriptions stay hidden while a task is closed, so every row is one
             line tall — the mark is how a task with more to say says so.
+          </p>
+
+          <p>
+            <strong>Copy is a round trip.</strong> Select tasks and choose Copy,
+            and you get them as indented text. Paste that into any note and you
+            get the same tasks back, subtasks and all.
           </p>
 
           <p>
@@ -225,9 +242,6 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
             <dt>Several lists in one note</dt>
             <dd>One note shows one list. Open another note for another list</dd>
 
-            <dt>Selecting several tasks</dt>
-            <dd>One at a time for now</dd>
-
             <dt>Keyboard reordering</dt>
             <dd>Moving and nesting are drag-only</dd>
 
@@ -240,8 +254,7 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
           <h2>Maybe later</h2>
           <ul className="help-future">
             <li>Arrow keys through tasks, and nesting without the mouse</li>
-            <li>Select several tasks to complete, move or delete together</li>
-            <li>Copy tasks back out as indented text</li>
+            <li>Move a selection into another task or list in one go</li>
             <li>Queue changes made offline and send them when you reconnect</li>
             <li>A countdown on the Undo strip, so its window is visible</li>
           </ul>

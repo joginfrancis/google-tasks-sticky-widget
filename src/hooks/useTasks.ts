@@ -101,13 +101,16 @@ export function useTasks(connected: boolean) {
   /** The delete waiting out its undo window, if any. */
   const pendingRef = useRef<{
     listId: string;
-    taskId: string;
+    /** Every task in the pending delete — one, or a whole selection. */
+    taskIds: string[];
     timer: number;
   } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{
     title: string;
-    /** Subtasks going with it, so the strip can say so. */
+    /** Subtasks going with it. */
     extra: number;
+    /** Tasks deleted together; above one, the strip names the count. */
+    count: number;
   } | null>(null);
 
   const setError = useCallback((id: string, message: string | null) => {
@@ -463,22 +466,26 @@ export function useTasks(connected: boolean) {
    * fail.
    */
   const commitDelete = useCallback(
-    async (listId: string, taskId: string) => {
+    async (listId: string, taskIds: string[]) => {
       pendingRef.current = null;
       setPendingDelete(null);
 
-      try {
-        await invoke("delete_task", { taskListId: listId, taskId });
-        // Gone from Google and from the cache, so nothing is left to hide.
+      // One at a time: each is its own API call, and a failure part-way through
+      // should cost only the task that failed, not the rest of the selection.
+      let failed = false;
+      for (const taskId of taskIds) {
+        try {
+          await invoke("delete_task", { taskListId: listId, taskId });
+        } catch (err) {
+          failed = true;
+          setError(taskId, String(err));
+        }
+        // Gone from Google and the cache on success; on failure the row is
+        // still cached, so lifting the suppression is what brings it back
+        // rather than leaving it deleted on screen but alive in Google.
         suppressedRef.current.delete(taskId);
-      } catch (err) {
-        // The row is still in the cache, so lifting the suppression and
-        // re-reading brings it back rather than leaving it deleted on screen
-        // but alive in Google.
-        suppressedRef.current.delete(taskId);
-        await readCache(listId);
-        setError(taskId, String(err));
       }
+      if (failed) await readCache(listId);
     },
     [readCache, setError],
   );
@@ -488,39 +495,70 @@ export function useTasks(connected: boolean) {
     const pending = pendingRef.current;
     if (!pending) return;
     window.clearTimeout(pending.timer);
-    void commitDelete(pending.listId, pending.taskId);
+    void commitDelete(pending.listId, pending.taskIds);
   }, [commitDelete]);
 
-  const deleteTask = useCallback(
-    async (id: string) => {
+  /**
+   * Deletes several tasks behind a single Undo.
+   *
+   * A selection deleted as one action is undone as one action. Deleting each in
+   * turn would work too, but every delete commits the one before it, so only the
+   * last task of the selection would still be recoverable.
+   */
+  const deleteTasks = useCallback(
+    async (ids: string[]) => {
       const listId = currentListRef.current;
       if (!listId) return;
 
-      const doomed = tasks.filter((t) => t.id === id || t.parentId === id);
-      if (doomed.length === 0) return;
+      // A subtask whose parent is also going is deleted by deleting the parent;
+      // sending both would fail on the second with a task that no longer exists.
+      const idSet = new Set(ids);
+      const roots = ids.filter((id) => {
+        const task = tasks.find((t) => t.id === id);
+        return task && !(task.parentId && idSet.has(task.parentId));
+      });
+      if (roots.length === 0) return;
+
+      const rootSet = new Set(roots);
+      const doomed = tasks.filter(
+        (t) => rootSet.has(t.id) || (t.parentId !== null && rootSet.has(t.parentId)),
+      );
 
       // A second delete commits the first rather than queueing — one pending
       // undo is comprehensible, a stack of them is not.
       flushPendingDelete();
 
-      // Hide it from re-reads too, not just from the current render: a sync
-      // landing inside the undo window would otherwise put the row straight
+      // Hide them from re-reads too, not just from the current render: a sync
+      // landing inside the undo window would otherwise put the rows straight
       // back, which is what made Delete look like it had done nothing.
-      suppressedRef.current.add(id);
-      setTasks((prev) => prev.filter((t) => t.id !== id && t.parentId !== id));
-      broadcastPending("task:pending-delete", id);
+      for (const id of roots) {
+        suppressedRef.current.add(id);
+        broadcastPending("task:pending-delete", id);
+      }
+      setTasks((prev) =>
+        prev.filter(
+          (t) => !rootSet.has(t.id) && !(t.parentId !== null && rootSet.has(t.parentId)),
+        ),
+      );
 
       const timer = window.setTimeout(() => {
-        void commitDelete(listId, id);
+        void commitDelete(listId, roots);
       }, UNDO_WINDOW_MS);
 
-      pendingRef.current = { listId, taskId: id, timer };
+      pendingRef.current = { listId, taskIds: roots, timer };
+      const first = tasks.find((t) => t.id === roots[0]);
       setPendingDelete({
-        title: doomed[0].title,
-        extra: doomed.length - 1,
+        title: first?.title ?? "",
+        extra: doomed.length - roots.length,
+        count: roots.length,
       });
     },
     [tasks, flushPendingDelete, commitDelete],
+  );
+
+  const deleteTask = useCallback(
+    (id: string) => deleteTasks([id]),
+    [deleteTasks],
   );
 
   const undoDelete = useCallback(() => {
@@ -532,8 +570,10 @@ export function useTasks(connected: boolean) {
     setPendingDelete(null);
     // Nothing was deleted anywhere, so lifting the suppression and re-reading
     // is the whole of undo.
-    suppressedRef.current.delete(pending.taskId);
-    broadcastPending("task:pending-restore", pending.taskId);
+    for (const taskId of pending.taskIds) {
+      suppressedRef.current.delete(taskId);
+      broadcastPending("task:pending-restore", taskId);
+    }
     void readCache(pending.listId);
   }, [readCache]);
 
@@ -930,6 +970,7 @@ export function useTasks(connected: boolean) {
     syncNow: () => selectedListId && sync(selectedListId),
     toggleTask,
     deleteTask,
+    deleteTasks,
     addTask,
     addOutline,
     editTask,
