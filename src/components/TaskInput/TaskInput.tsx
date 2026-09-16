@@ -70,14 +70,11 @@ export function TaskInput({ onSubmit, onSubmitOutline }: Props) {
 
   const commit = async () => {
     const { title, notes } = splitEntry(value);
-    if (!title || busy) {
-      if (!title) {
-        setOpen(false);
-        setValue("");
-        setError(null);
-      }
-      return;
-    }
+    // An empty Enter keeps the field open and waiting. Pressing Enter again
+    // after adding a task means "ready for the next one", not "done" — closing
+    // here turned typing a list into type, Enter, click back in, repeat.
+    // Escape is how the field closes.
+    if (!title || busy) return;
 
     setBusy(true);
     // Clear optimistically so a fast success feels instant; the text comes
@@ -167,7 +164,10 @@ export function TaskInput({ onSubmit, onSubmitOutline }: Props) {
           rows={1}
           value={value}
           placeholder="What needs doing?"
-          disabled={busy}
+          // Not disabled while saving, deliberately. Disabling a focused
+          // field throws focus out of it, which fired onBlur with the field
+          // just cleared — and closed the whole add box after every Enter.
+          aria-busy={busy}
           onChange={(e) => {
             setValue(e.target.value);
             if (error) setError(null);

@@ -178,7 +178,9 @@ describe("TaskInput", () => {
     await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
   });
 
-  it("ignores a whitespace-only entry and just closes", async () => {
+  it("stays open on an empty Enter, ready for the next task", async () => {
+    // Enter again after adding a task means "next", not "done". Closing here
+    // turned typing a list into type, Enter, click back in, repeat.
     const user = userEvent.setup();
     setup();
     const input = await open(user);
@@ -186,6 +188,44 @@ describe("TaskInput", () => {
     await user.type(input, "   {Enter}");
 
     expect(onSubmit).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: /add task/i })).toBeInTheDocument();
+    expect(input).toBeInTheDocument();
+    expect(input).toHaveFocus();
+  });
+
+  it("keeps the field open and focused across a slow save, for a whole list", async () => {
+    // The bug this guards: the field was disabled while a save was in flight.
+    // Disabling a focused field throws focus out, which ran onBlur against the
+    // just-cleared value and closed the box after every Enter. An instantly
+    // resolving save never held the field disabled long enough to show it, so
+    // this one resolves only when told to.
+    let finishSave: (value: string | null) => void = () => {};
+    onSubmit = vi.fn(
+      () => new Promise<string | null>((resolve) => (finishSave = resolve)),
+    );
+
+    const user = userEvent.setup();
+    setup();
+    const input = await open(user);
+
+    await user.type(input, "Buy milk{Enter}");
+    // Still saving. The field must not be disabled: in a real webview that
+    // throws focus out and closes the box. jsdom does not move focus off a
+    // disabled field, so checking focus alone passed with the bug in place —
+    // this assertion is the one that actually guards it.
+    expect(input).not.toBeDisabled();
+    expect(input).toBeInTheDocument();
+    expect(input).toHaveFocus();
+
+    finishSave(null);
+    await waitFor(() => expect(input).toHaveValue(""));
+
+    // An extra Enter in between, as someone typing quickly would press.
+    await user.type(input, "{Enter}Buy eggs{Enter}");
+    finishSave(null);
+
+    expect(onSubmit).toHaveBeenCalledTimes(2);
+    expect(onSubmit).toHaveBeenLastCalledWith("Buy eggs", undefined);
+    await waitFor(() => expect(input).toHaveValue(""));
+    expect(input).toHaveFocus();
   });
 });
