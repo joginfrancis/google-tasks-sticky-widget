@@ -193,9 +193,9 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
 
           <p>
             <strong>Each note is its own window.</strong> The <strong>+</strong>{" "}
-            button opens another — on the same list or a different one. Pin,
-            position, size and colour all belong to that note alone, and they
-            come back the way you left them.
+            button opens another — on the same list or a different one. Its pin
+            and colour belong to that note alone, and the notes you had open
+            reopen next time.
           </p>
 
           <p>
@@ -211,8 +211,9 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
           <dl className="help-keys help-gaps">
             <dt>Starring, repeats, attachments</dt>
             <dd>
-              Google keeps these but does not offer them to apps. Use{" "}
-              <em>Open in Google</em> on any task
+              Google keeps these but does not offer them to apps. The repeat
+              button on an open task takes you straight there; for the rest, use{" "}
+              <em>Open in Google</em>
             </dd>
 
             <dt>Working offline</dt>
