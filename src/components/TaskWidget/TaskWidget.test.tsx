@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(null) }));
 vi.mock("@tauri-apps/api/event", () => ({
@@ -72,6 +72,7 @@ beforeEach(() => {
     onDeleteList: noopAsync,
     onAdd: noopAsync,
     onAddSubtask: noopAsync,
+    onAddBelow: vi.fn().mockResolvedValue({ id: "new-1" }),
     onAddOutline: noopAsync,
     onSelectList: noop,
     onDuplicateNote: noop,
@@ -157,5 +158,69 @@ describe("TaskWidget multi-tick", () => {
 
     expect(props.onToggle).toHaveBeenCalledTimes(1);
     expect(props.onToggle).toHaveBeenCalledWith("a");
+  });
+});
+
+describe("TaskWidget add below", () => {
+  it("adds below the hovered task and moves the field onto the new one", async () => {
+    const { rerender } = render(<TaskWidget {...props} />);
+    const plus = screen.getAllByRole("button", { name: "Add a task below" });
+    // Rows: Alpha, Alpha child, Bravo, Charlie — the third is Bravo.
+    fireEvent.click(plus[2]);
+
+    const field = screen.getByPlaceholderText("New task…");
+    fireEvent.change(field, { target: { value: "Between" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    expect(props.onAddBelow).toHaveBeenCalledWith("b", "Between");
+    await screen.findByPlaceholderText("New task…");
+
+    // Once the new task is in the list, the field follows it down.
+    rerender(
+      <TaskWidget
+        {...props}
+        tasks={[...tasks.slice(0, 3), task("new-1", "Between"), tasks[3]]}
+      />,
+    );
+    const rows = screen.getAllByRole("listitem");
+    const newRow = rows.find((r) => r.textContent?.includes("Between"))!;
+    expect(newRow.querySelector("input[placeholder='New task…']")).not.toBeNull();
+  });
+
+  it("puts the field for a parent below its subtasks", () => {
+    render(<TaskWidget {...props} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Add a task below" })[0]);
+    const host = screen.getByPlaceholderText("New task…").closest("li")!;
+    expect(host.textContent).toContain("Alpha child");
+  });
+
+  it("adds at the end from the empty space under the list", () => {
+    render(<TaskWidget {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "+ Add task" }));
+    const field = screen.getByPlaceholderText("New task…");
+    fireEvent.change(field, { target: { value: "Last" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(props.onAddBelow).toHaveBeenCalledWith("c", "Last");
+  });
+
+  it("Escape closes the field", () => {
+    render(<TaskWidget {...props} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Add a task below" })[3]);
+    fireEvent.keyDown(screen.getByPlaceholderText("New task…"), { key: "Escape" });
+    expect(screen.queryByPlaceholderText("New task…")).toBeNull();
+  });
+});
+
+describe("TaskWidget Escape", () => {
+  it("folds away an open task", () => {
+    vi.useFakeTimers();
+    render(<TaskWidget {...props} />);
+    fireEvent.click(screen.getByText("Bravo"), { detail: 1 });
+    act(() => vi.runAllTimers());
+    expect(screen.getByText("Bravo").closest("li")).toHaveClass("is-expanded");
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.getByText("Bravo").closest("li")).not.toHaveClass("is-expanded");
+    vi.useRealTimers();
   });
 });

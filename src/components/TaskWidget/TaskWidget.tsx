@@ -66,6 +66,11 @@ interface Props {
   onDeleteList: (id: string) => Promise<string | null>;
   onAdd: (title: string, notes?: string) => Promise<string | null>;
   onAddSubtask: (parentId: string, title: string) => Promise<string | null>;
+  /** Adds a task right below another, at its level; returns the new id. */
+  onAddBelow: (
+    afterId: string,
+    title: string,
+  ) => Promise<{ id: string } | { error: string }>;
   /** Pasted multi-line text, as tasks and subtasks. */
   onAddOutline: (entries: OutlineEntry[]) => Promise<string | null>;
   onSelectList: (id: string) => void;
@@ -91,6 +96,44 @@ export function TaskWidget(props: Props) {
     setSelection(emptySelection);
     setExpandedId((current) => (current === id ? null : id));
   };
+
+  /**
+   * The row showing the "add below" field, if any. Held here rather than in
+   * the row so that after each add the field moves onto the task just made —
+   * the next one then lands under it, and a run of tasks keeps its order.
+   */
+  const [belowId, setBelowId] = useState<string | null>(null);
+  const startAddBelow = (id: string) => {
+    setExpandedId(null);
+    setBelowId(id);
+  };
+  const submitBelow = async (title: string): Promise<string | null> => {
+    if (!belowId) return null;
+    const result = await props.onAddBelow(belowId, title);
+    if ("error" in result) return result.error;
+    setBelowId(result.id);
+    return null;
+  };
+
+  // Escape steps back one level at a time: an open editor closes itself (the
+  // field handles that), then the next Escape folds the open task away.
+  useEffect(() => {
+    if (expandedId === null) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest("input, textarea, [contenteditable='true'], .task-menu, .due-popover")
+      ) {
+        return;
+      }
+      event.preventDefault();
+      setExpandedId(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expandedId]);
 
   const [selection, setSelection] = useState<Selection>(emptySelection);
   /** Brief "Copied" confirmation on the selection bar, since a copy is silent. */
@@ -172,6 +215,24 @@ export function TaskWidget(props: Props) {
       completed: order(props.tasks.filter((t) => !isActive(t))),
     };
   }, [props.tasks, props.settlingIds]);
+
+  /** Where a click on the empty space under the list adds after. */
+  const lastTopLevelId =
+    [...active].reverse().find((t) => !t.parentId && !t.id.startsWith("pending-"))
+      ?.id ?? null;
+
+  /**
+   * The row that draws the add-below field. A new top-level task goes after
+   * its neighbour's subtasks too, so under a parent with children the field
+   * sits below the last child — where the task will actually appear.
+   */
+  const belowTask = belowId ? active.find((t) => t.id === belowId) : undefined;
+  const belowHostId = (() => {
+    if (!belowTask) return null;
+    if (belowTask.parentId) return belowTask.id;
+    const kids = active.filter((t) => t.parentId === belowTask.id);
+    return kids.length ? kids[kids.length - 1].id : belowTask.id;
+  })();
 
   /* -- Multi-select -------------------------------------------------------- */
 
@@ -610,6 +671,11 @@ export function TaskWidget(props: Props) {
                   isSelected={selectedIds.has(task.id)}
                   onSelect={selectIn("active")}
                   onAddSubtask={props.onAddSubtask}
+                  onStartAddBelow={startAddBelow}
+                  isAddingBelow={belowHostId === task.id}
+                  belowIsSubtask={Boolean(belowTask?.parentId)}
+                  onSubmitBelow={submitBelow}
+                  onCancelBelow={() => setBelowId(null)}
                   onToggle={toggleRow}
                   onDelete={props.onDelete}
                   onEdit={props.onEdit}
@@ -626,6 +692,18 @@ export function TaskWidget(props: Props) {
                 <li className="drop-gap" aria-hidden="true" />
               )}
             </ul>
+
+            {/* The empty space under the last task is itself a place to add
+                one, as in Notion: a faint "+ Add task" shows on hover, and a
+                click opens the field at the very bottom of the list. */}
+            {lastTopLevelId && belowId === null && !session && (
+              <button
+                className="add-at-end"
+                onClick={() => startAddBelow(lastTopLevelId)}
+              >
+                <span className="add-at-end-label">+ Add task</span>
+              </button>
+            )}
 
             {completed.length > 0 && (
               <section className="completed">

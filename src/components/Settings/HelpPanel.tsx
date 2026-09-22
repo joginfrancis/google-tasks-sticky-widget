@@ -89,7 +89,10 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
             <dt>
               <kbd>Esc</kbd>
             </dt>
-            <dd>Close what is open — an editor, a menu, this page, a selection</dd>
+            <dd>
+              Step back one level — close the editor, then fold the open task,
+              then a menu, this page or a selection
+            </dd>
 
             <dt>
               <kbd>Delete</kbd>
@@ -161,6 +164,18 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
               the task is open
             </dd>
 
+            <dt>+ on a hovered task</dt>
+            <dd>
+              Adds a task right below it. Enter adds and moves down, so a run
+              of tasks keeps its order
+            </dd>
+
+            <dt>Click the empty space below</dt>
+            <dd>Adds a task at the bottom of the list</dd>
+
+            <dt>Right-click selected text</dt>
+            <dd>Cut, copy and paste, instead of the task menu</dd>
+
             <dt>Drag up or down</dt>
             <dd>Reorders</dd>
 
@@ -210,6 +225,12 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
             <em>Add subtask</em>, or pick it from the task&rsquo;s menu. Enter
             adds one and leaves the field ready for the next, so a checklist
             is typed in one go.
+          </p>
+
+          <p>
+            <strong>Long descriptions get the whole screen.</strong> Click one
+            to edit it and, if it does not fit, the note stretches to the full
+            height of the screen. It goes back to its size when you finish.
           </p>
 
           <p>

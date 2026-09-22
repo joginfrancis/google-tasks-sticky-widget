@@ -512,3 +512,61 @@
 .task-item.is-expanded .task-menu-trigger {
   opacity: 1;
 }
+
+/* Add below ---------------------------------------------------------------- */
+
+/* The hover "+", beside the options trigger and hidden the same way: present
+   on the row you are pointing at, invisible on the other thirty. */
+.task-add-below {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-right: -6px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease);
+}
+
+.task-item:hover .task-add-below,
+.task-add-below:focus-visible {
+  opacity: 1;
+}
+
+.task-add-below:hover {
+  background: var(--surface-active);
+  color: var(--text);
+}
+
+/* Lined up with the row's title, with an empty box where the checkbox will
+   be — it reads as the task it is about to become. */
+.add-below {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 2px 4px 4px 8px;
+}
+
+.add-below.is-subtask {
+  padding-left: 30px;
+}
+
+.add-below-mark {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+.add-below .task-error {
+  padding: 0;
+}

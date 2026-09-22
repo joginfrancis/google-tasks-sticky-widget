@@ -475,3 +475,46 @@ pub fn note_window_frame(window: tauri::Window) -> Result<(i32, i32, f64), Strin
     let scale = window.scale_factor().map_err(|e| e.to_string())?;
     Ok((pos.x, pos.y, scale))
 }
+
+/// Geometry a note had before it was stretched to full height, by label.
+static TALL_RESTORE: Mutex<Option<HashMap<String, (tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>)>>> =
+    Mutex::new(None);
+
+/// Stretches a note to the full height of its monitor's work area while a long
+/// description is being read or edited, and puts it back afterwards.
+///
+/// Only the height and top edge change — the note stays in its column, so the
+/// eye does not have to find it again. Restoring uses the exact geometry saved
+/// on the way up rather than recomputing it.
+#[tauri::command]
+pub fn note_set_tall(window: tauri::Window, tall: bool) -> Result<(), String> {
+    let label = window.label().to_string();
+    let mut guard = TALL_RESTORE.lock().map_err(|e| e.to_string())?;
+    let saved = guard.get_or_insert_with(HashMap::new);
+
+    if tall {
+        if saved.contains_key(&label) {
+            return Ok(());
+        }
+        let pos = window.outer_position().map_err(|e| e.to_string())?;
+        let size = window.outer_size().map_err(|e| e.to_string())?;
+        let Some(monitor) = window.current_monitor().map_err(|e| e.to_string())? else {
+            return Ok(());
+        };
+        let area = monitor.work_area();
+        if size.height >= area.size.height {
+            return Ok(());
+        }
+        saved.insert(label, (pos, size));
+        window
+            .set_position(tauri::PhysicalPosition::new(pos.x, area.position.y))
+            .map_err(|e| e.to_string())?;
+        window
+            .set_size(tauri::PhysicalSize::new(size.width, area.size.height))
+            .map_err(|e| e.to_string())?;
+    } else if let Some((pos, size)) = saved.remove(&label) {
+        window.set_size(size).map_err(|e| e.to_string())?;
+        window.set_position(pos).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}

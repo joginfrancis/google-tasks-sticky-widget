@@ -398,6 +398,7 @@ pub fn create_task(
     title: String,
     notes: Option<String>,
     parent_id: Option<String>,
+    after_id: Option<String>,
 ) -> Result<Task, String> {
     let title = title.trim().to_string();
     if title.is_empty() {
@@ -410,7 +411,9 @@ pub fn create_task(
     // the API puts it first, so adding "step 1", "step 2", "step 3" would list
     // them backwards. A top-level quick-add keeps the default: it lands on top,
     // where the add box is.
-    let previous = parent_id.as_ref().and_then(|parent| {
+    // `after_id` is "insert right below this one" — the hover + and the
+    // add-below field. It wins over both defaults.
+    let previous = after_id.or_else(|| parent_id.as_ref().and_then(|parent| {
         app.state::<Store>()
             .tasks_for_list(&task_list_id)
             .ok()?
@@ -418,7 +421,7 @@ pub fn create_task(
             .filter(|t| t.parent_id.as_deref() == Some(parent.as_str()))
             .last()
             .map(|t| t.id)
-    });
+    }));
 
     let created = client(&app)?
         .insert_task(

@@ -81,6 +81,9 @@ function reorderLocally(list: Task[], id: string, toIndex: number): Task[] {
  */
 export function useTasks(connected: boolean) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  /** Latest tasks for callbacks that must not re-create on every change. */
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
   const [taskLists, setTaskLists] = useState<TaskList[]>([]);
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -904,6 +907,64 @@ export function useTasks(connected: boolean) {
     [],
   );
 
+  /**
+   * Adds a task directly below another, at the same level: below a top-level
+   * task it is a new top-level task, below a subtask it is a sibling subtask.
+   * Returns the new id (the real one once Google confirms), so the caller can
+   * chain the next add below it and keep typing in order.
+   */
+  const addTaskBelow = useCallback(
+    async (
+      afterId: string,
+      title: string,
+    ): Promise<{ id: string } | { error: string }> => {
+      const listId = currentListRef.current;
+      if (!listId) return { error: "No task list selected." };
+
+      const anchor = tasksRef.current.find((t) => t.id === afterId);
+      const parentId = anchor?.parentId ?? null;
+      const tempId = `pending-${crypto.randomUUID()}`;
+      const optimistic: Task = {
+        id: tempId,
+        parentId,
+        title,
+        notes: null,
+        due: null,
+        status: "needsAction",
+        position: "",
+        updated: new Date().toISOString(),
+      };
+      setTasks((prev) => {
+        const at = prev.findIndex((t) => t.id === afterId);
+        if (at === -1) return [...prev, optimistic];
+        return [...prev.slice(0, at + 1), optimistic, ...prev.slice(at + 1)];
+      });
+
+      try {
+        const created = await invoke<Task>("create_task", {
+          taskListId: listId,
+          title,
+          notes: null,
+          parentId,
+          // A placeholder is not a real id Google knows; fall back to its
+          // default for the level rather than send one.
+          afterId: afterId.startsWith("pending-") ? null : afterId,
+        });
+        setTasks((prev) => {
+          if (prev.some((t) => t.id === created.id)) {
+            return prev.filter((t) => t.id !== tempId);
+          }
+          return prev.map((t) => (t.id === tempId ? created : t));
+        });
+        return { id: created.id };
+      } catch (err) {
+        setTasks((prev) => prev.filter((t) => t.id !== tempId));
+        return { error: String(err) };
+      }
+    },
+    [],
+  );
+
   const createList = useCallback(
     async (title: string): Promise<string | null> => {
       try {
@@ -1023,6 +1084,7 @@ export function useTasks(connected: boolean) {
     deleteTasks,
     addTask,
     addSubtask,
+    addTaskBelow,
     addOutline,
     editTask,
     openInGoogle,

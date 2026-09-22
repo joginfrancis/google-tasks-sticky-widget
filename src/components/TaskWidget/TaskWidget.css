@@ -697,3 +697,32 @@
     box-shadow: none;
   }
 }
+
+/* The empty space below the last task. It grows to fill whatever room is left,
+   so "click anywhere down there" is literally true, and stays invisible until
+   hovered — an empty note should look empty, not like a form. */
+.add-at-end {
+  flex: 1 0 34px;
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  margin: -6px 0 6px;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: text;
+}
+
+.add-at-end-label {
+  padding-left: 25px;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.add-at-end:hover .add-at-end-label,
+.add-at-end:focus-visible .add-at-end-label {
+  opacity: 1;
+}

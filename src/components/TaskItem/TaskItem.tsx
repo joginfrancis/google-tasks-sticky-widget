@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { Task } from "../../types";
 import { dueDateInDays, formatDue, isOverdue } from "../../lib/date";
 import { DueChip } from "./DueChip";
@@ -56,6 +57,19 @@ interface Props {
    * Tasks is one level deep — so its absence is what hides the option.
    */
   onAddSubtask?: (parentId: string, title: string) => Promise<string | null>;
+  /**
+   * Opens the "add a task below this one" field. The list owns which row has
+   * it, so after each add the field can hop down onto the task just created
+   * and several can be typed in order.
+   */
+  onStartAddBelow?: (id: string) => void;
+  /** This row is the one showing the add-below field. */
+  isAddingBelow?: boolean;
+  /** The task being added below is a subtask, so the field indents to match. */
+  belowIsSubtask?: boolean;
+  /** Adds below this row; resolves to an error message, or null. */
+  onSubmitBelow?: (title: string) => Promise<string | null>;
+  onCancelBelow?: () => void;
 }
 
 export function TaskItem({
@@ -77,6 +91,11 @@ export function TaskItem({
   isSelected,
   onSelect,
   onAddSubtask,
+  onStartAddBelow,
+  isAddingBelow,
+  belowIsSubtask,
+  onSubmitBelow,
+  onCancelBelow,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
@@ -87,6 +106,8 @@ export function TaskItem({
   const [addingSubtask, setAddingSubtask] = useState(false);
   const [subtaskDraft, setSubtaskDraft] = useState("");
   const [subtaskError, setSubtaskError] = useState<string | null>(null);
+  const [belowDraft, setBelowDraft] = useState("");
+  const [belowError, setBelowError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const rowRef = useRef<HTMLLIElement>(null);
   /**
@@ -120,6 +141,29 @@ export function TaskItem({
       inputRef.current.focus();
       inputRef.current.select();
     }
+  }, [editing]);
+
+  // A long description gets the whole height of the screen while it is being
+  // edited, and the note goes back to its own size when editing ends. Only
+  // when it would not otherwise fit — a two-line note needs no ceremony.
+  useEffect(() => {
+    if (editing !== "notes") return;
+    const field = inputRef.current;
+    const body = rowRef.current?.closest(".widget-body") as HTMLElement | null;
+    if (!field || !body) return;
+    if (field.scrollHeight <= body.clientHeight - 60) return;
+
+    invoke("note_set_tall", { tall: true })
+      .then(() => {
+        window.setTimeout(
+          () => rowRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }),
+          80,
+        );
+      })
+      .catch(() => {});
+    // Always asked to shrink back: Rust ignores it for a note it never grew,
+    // and this way a grow that lands after editing ended is still undone.
+    return () => void invoke("note_set_tall", { tall: false }).catch(() => {});
   }, [editing]);
 
   // A row unmounted mid-gesture — completed, deleted, or dragged to another
@@ -281,6 +325,18 @@ export function TaskItem({
     }
   };
 
+  const submitBelow = async () => {
+    const title = belowDraft.trim();
+    if (!title || !onSubmitBelow) return;
+    setBelowDraft("");
+    setBelowError(null);
+    const failure = await onSubmitBelow(title);
+    if (failure) {
+      setBelowDraft(title);
+      setBelowError(failure);
+    }
+  };
+
   const openSubtaskField = () => {
     if (!isExpanded) onToggleExpand(task.id);
     setAddingSubtask(true);
@@ -304,6 +360,12 @@ export function TaskItem({
         .filter(Boolean)
         .join(" ")}
       onContextMenu={(event) => {
+        // Inside text being edited, or over text the user has selected, the
+        // right-click is about that text: leave the system's Cut / Copy /
+        // Paste menu alone rather than covering it with the task menu.
+        const target = event.target as HTMLElement;
+        const selected = window.getSelection()?.toString() ?? "";
+        if (target.closest("textarea, input") || selected.trim()) return;
         event.preventDefault();
         setMenuOpen(true);
       }}
@@ -575,6 +637,24 @@ export function TaskItem({
           )}
         </div>
 
+        {onStartAddBelow && !done && (
+          <button
+            className="task-add-below"
+            aria-label="Add a task below"
+            title="Add a task below"
+            onClick={() => onStartAddBelow(task.id)}
+          >
+            <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+              <path
+                d="M8 3.5v9M3.5 8h9"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        )}
+
         <button
           className="task-menu-trigger"
           aria-label="Task options"
@@ -590,6 +670,37 @@ export function TaskItem({
       </div>
 
       {error && <p className="task-error">{error}</p>}
+
+      {isAddingBelow && (
+        <div className={`add-below${belowIsSubtask ? " is-subtask" : ""}`}>
+          <span className="add-below-mark" aria-hidden="true" />
+          <input
+            className="subtask-input"
+            autoFocus
+            value={belowDraft}
+            placeholder="New task…"
+            maxLength={1024}
+            onChange={(e) => {
+              setBelowDraft(e.target.value);
+              if (belowError) setBelowError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void submitBelow();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                onCancelBelow?.();
+              }
+            }}
+            onBlur={() => {
+              if (!belowDraft.trim() && !belowError) onCancelBelow?.();
+            }}
+          />
+          {belowError && <p className="task-error">{belowError}</p>}
+        </div>
+      )}
 
       {menuOpen && (
         <>
@@ -621,6 +732,18 @@ export function TaskItem({
             >
               {task.due ? "Change date" : "Add date"}
             </button>
+            {onStartAddBelow && !done && (
+              <button
+                role="menuitem"
+                className="task-menu-item"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onStartAddBelow(task.id);
+                }}
+              >
+                Add task below
+              </button>
+            )}
             {canAddSubtask && (
               <button
                 role="menuitem"

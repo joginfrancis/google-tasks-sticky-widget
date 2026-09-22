@@ -446,6 +446,7 @@ export default function App() {
       onDeleteList={tasks.deleteList}
       onAdd={tasks.addTask}
       onAddSubtask={tasks.addSubtask}
+      onAddBelow={tasks.addTaskBelow}
       onAddOutline={tasks.addOutline}
       onSelectList={tasks.selectList}
       onDuplicateNote={duplicateNote}
