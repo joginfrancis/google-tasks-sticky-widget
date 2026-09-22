@@ -20,8 +20,6 @@ const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 /// it should read as the product rather than the binary.
 const VALUE_NAME: &str = "Sticky Widget";
 
-/// Passed so a startup launch goes to the tray instead of flashing the window.
-const HIDDEN_FLAG: &str = "--hidden";
 
 fn run_key(access: u32) -> Result<RegKey, String> {
     RegKey::predef(HKEY_CURRENT_USER)
@@ -36,7 +34,10 @@ fn command_line() -> Result<String, String> {
     // Quoted because the path routinely contains spaces — "Sticky note" here,
     // "Program Files" once installed. Unquoted, Windows would run the wrong
     // thing or nothing.
-    Ok(format!("\"{}\" {HIDDEN_FLAG}", exe.display()))
+    // No flags: whether to start in the tray is the "Start hidden" setting's
+    // call alone. Entries written with the old --hidden flag no longer match
+    // this, so refresh_path_if_registered rewrites them on the next launch.
+    Ok(format!("\"{}\"", exe.display()))
 }
 
 pub fn is_enabled() -> bool {
@@ -91,7 +92,3 @@ pub fn refresh_path_if_registered() {
     }
 }
 
-/// True when Windows started us from that Run entry.
-pub fn launched_hidden() -> bool {
-    std::env::args().any(|arg| arg == HIDDEN_FLAG)
-}

@@ -191,8 +191,11 @@ pub fn run() {
 
                 let _ = win.set_skip_taskbar(!show_in_taskbar);
 
-                // Either the stored preference or the flag the Run entry passes.
-                if start_hidden || autostart::launched_hidden() {
+                // The "Start hidden" setting alone decides. Launching from the
+                // Windows startup entry used to force this as well, which made
+                // "Start with Windows" silently mean "start in the tray" and
+                // left the Start hidden switch with nothing to do.
+                if start_hidden {
                     let _ = win.hide();
                 }
             }
