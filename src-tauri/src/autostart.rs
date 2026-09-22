@@ -81,12 +81,17 @@ pub fn refresh_path_if_registered() {
         return;
     }
 
-    let (Ok(key), Ok(current)) = (run_key(KEY_WRITE), command_line()) else {
+    // Read *and* write: it compares the stored entry before replacing it.
+    // Opened write-only, the read was refused, the failure was taken to mean
+    // "nothing to fix", and a stale entry was never once repaired.
+    let (Ok(key), Ok(current)) = (run_key(KEY_READ | KEY_WRITE), command_line()) else {
         return;
     };
 
     let stored: Result<String, _> = key.get_value(VALUE_NAME);
-    if stored.map(|s| s != current).unwrap_or(false) {
+    // An unreadable entry is treated as stale, not as fine: rewriting a correct
+    // value costs nothing, while leaving a broken one breaks sign-in silently.
+    if stored.map(|s| s != current).unwrap_or(true) {
         log::info!("startup entry pointed at an old path; updating it");
         let _ = key.set_value(VALUE_NAME, &current);
     }
