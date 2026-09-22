@@ -65,6 +65,7 @@ interface Props {
   onRenameList: (id: string, title: string) => Promise<string | null>;
   onDeleteList: (id: string) => Promise<string | null>;
   onAdd: (title: string, notes?: string) => Promise<string | null>;
+  onAddSubtask: (parentId: string, title: string) => Promise<string | null>;
   /** Pasted multi-line text, as tasks and subtasks. */
   onAddOutline: (entries: OutlineEntry[]) => Promise<string | null>;
   onSelectList: (id: string) => void;
@@ -608,6 +609,7 @@ export function TaskWidget(props: Props) {
                   onToggleExpand={toggleExpand}
                   isSelected={selectedIds.has(task.id)}
                   onSelect={selectIn("active")}
+                  onAddSubtask={props.onAddSubtask}
                   onToggle={toggleRow}
                   onDelete={props.onDelete}
                   onEdit={props.onEdit}

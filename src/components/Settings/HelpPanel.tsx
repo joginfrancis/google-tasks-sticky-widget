@@ -183,7 +183,10 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
             <dd>Ticks every selected task at once</dd>
 
             <dt>Right-click</dt>
-            <dd>Menu: date, move to another list, open in Google, delete</dd>
+            <dd>
+              Menu: date, add a subtask, move to another list, open in Google,
+              delete
+            </dd>
           </dl>
         </section>
 
@@ -200,6 +203,13 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
             <strong>Lines beside a task mean it has a description.</strong>{" "}
             Descriptions stay hidden while a task is closed, so every row is one
             line tall — the mark is how a task with more to say says so.
+          </p>
+
+          <p>
+            <strong>Adding subtasks.</strong> Open a task and choose{" "}
+            <em>Add subtask</em>, or pick it from the task&rsquo;s menu. Enter
+            adds one and leaves the field ready for the next, so a checklist
+            is typed in one go.
           </p>
 
           <p>

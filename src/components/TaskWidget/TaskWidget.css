@@ -85,21 +85,31 @@
 
 /* Body -------------------------------------------------------------------- */
 
+/* A column, so the Completed section can be pushed to the foot of the note
+   instead of trailing straight after the last open task. */
 .widget-body {
   flex: 1;
+  display: flex;
+  flex-direction: column;
   padding: 6px 6px 10px;
 }
 
 .task-list {
-  margin: 0;
+  /* The minimum gap above Completed, for when the list is long enough that
+     Completed's auto margin has nothing left to fill. */
+  margin: 0 0 8px;
   padding: 0;
   list-style: none;
 }
 
 /* Completed section -------------------------------------------------------- */
 
+/* Sits at the bottom of the note however few open tasks there are. Finished
+   work is out of the way, not in the middle of the space the open tasks will
+   grow into — and it stays shut until asked. `auto` falls back to nothing once
+   the list is long enough to scroll, so the gap never pushes it off screen. */
 .completed {
-  margin-top: 8px;
+  margin-top: auto;
   padding-top: 6px;
   border-top: 1px solid var(--border);
 }

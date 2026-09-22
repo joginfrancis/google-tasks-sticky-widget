@@ -319,3 +319,46 @@ describe("TaskItem selection clicks", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 });
+
+describe("TaskItem add subtask", () => {
+  it("offers Add subtask on an open task and adds on Enter, staying open", async () => {
+    const user = userEvent.setup();
+    const onAddSubtask = vi.fn().mockResolvedValue(null);
+    setup({ isExpanded: true, onAddSubtask });
+
+    await user.click(screen.getByRole("button", { name: "Add subtask" }));
+    const field = screen.getByPlaceholderText("Add a subtask…");
+    await user.type(field, "Step one{Enter}");
+
+    expect(onAddSubtask).toHaveBeenCalledWith(task.id, "Step one");
+    // A checklist is several steps typed in one go.
+    expect(field).toHaveValue("");
+    expect(field).toHaveFocus();
+
+    await user.type(field, "Step two{Enter}");
+    expect(onAddSubtask).toHaveBeenLastCalledWith(task.id, "Step two");
+  });
+
+  it("does not offer it on a subtask — Google Tasks is one level deep", () => {
+    setup({
+      isExpanded: true,
+      isSubtask: true,
+      task: { ...task, parentId: "parent" },
+      onAddSubtask: vi.fn(),
+    });
+    expect(screen.queryByRole("button", { name: "Add subtask" })).not.toBeInTheDocument();
+  });
+
+  it("keeps what was typed when adding fails", async () => {
+    const user = userEvent.setup();
+    const onAddSubtask = vi.fn().mockResolvedValue("No connection");
+    setup({ isExpanded: true, onAddSubtask });
+
+    await user.click(screen.getByRole("button", { name: "Add subtask" }));
+    const field = screen.getByPlaceholderText("Add a subtask…");
+    await user.type(field, "Step one{Enter}");
+
+    expect(await screen.findByText("No connection")).toBeInTheDocument();
+    expect(field).toHaveValue("Step one");
+  });
+});

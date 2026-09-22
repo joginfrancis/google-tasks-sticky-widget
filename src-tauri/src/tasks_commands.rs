@@ -397,6 +397,7 @@ pub fn create_task(
     task_list_id: String,
     title: String,
     notes: Option<String>,
+    parent_id: Option<String>,
 ) -> Result<Task, String> {
     let title = title.trim().to_string();
     if title.is_empty() {
@@ -405,9 +406,28 @@ pub fn create_task(
 
     let notes = notes.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
 
+    // A subtask goes *after* its parent's existing subtasks. With no `previous`
+    // the API puts it first, so adding "step 1", "step 2", "step 3" would list
+    // them backwards. A top-level quick-add keeps the default: it lands on top,
+    // where the add box is.
+    let previous = parent_id.as_ref().and_then(|parent| {
+        app.state::<Store>()
+            .tasks_for_list(&task_list_id)
+            .ok()?
+            .into_iter()
+            .filter(|t| t.parent_id.as_deref() == Some(parent.as_str()))
+            .last()
+            .map(|t| t.id)
+    });
+
     let created = client(&app)?
-        // Quick-add always makes a top-level task at the default position.
-        .insert_task(&task_list_id, &title, notes.as_deref(), None, None)
+        .insert_task(
+            &task_list_id,
+            &title,
+            notes.as_deref(),
+            parent_id.as_deref(),
+            previous.as_deref(),
+        )
         .map_err(|err| {
             if err == ApiError::Unauthorized {
                 on_auth_lost(&app);

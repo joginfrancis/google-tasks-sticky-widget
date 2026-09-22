@@ -71,6 +71,7 @@ beforeEach(() => {
     onRenameList: noopAsync,
     onDeleteList: noopAsync,
     onAdd: noopAsync,
+    onAddSubtask: noopAsync,
     onAddOutline: noopAsync,
     onSelectList: noop,
     onDuplicateNote: noop,

@@ -51,6 +51,11 @@ interface Props {
    * absence leaves those clicks behaving as plain ones.
    */
   onSelect?: (id: string, mode: { toggle: boolean; range: boolean }) => void;
+  /**
+   * Adds a subtask under this task. Absent for subtasks themselves — Google
+   * Tasks is one level deep — so its absence is what hides the option.
+   */
+  onAddSubtask?: (parentId: string, title: string) => Promise<string | null>;
 }
 
 export function TaskItem({
@@ -71,12 +76,17 @@ export function TaskItem({
   onToggleExpand,
   isSelected,
   onSelect,
+  onAddSubtask,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [editing, setEditing] = useState<null | "title" | "notes">(null);
   const [draft, setDraft] = useState("");
   const [dueOpen, setDueOpen] = useState(false);
+  /** The inline "add subtask" field is open under this task. */
+  const [addingSubtask, setAddingSubtask] = useState(false);
+  const [subtaskDraft, setSubtaskDraft] = useState("");
+  const [subtaskError, setSubtaskError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const rowRef = useRef<HTMLLIElement>(null);
   /**
@@ -90,6 +100,7 @@ export function TaskItem({
 
   const done = task.status === "completed";
   const overdue = !done && isOverdue(task.due);
+  const canAddSubtask = Boolean(onAddSubtask) && !isSubtask && !done;
   /**
    * Written locally but not yet confirmed by Google. The id is the tell: a real
    * one comes from the API, so a `pending-` prefix can only be ours.
@@ -250,6 +261,29 @@ export function TaskItem({
         commitEdit();
       }
     }
+  };
+
+  /**
+   * Enter adds the subtask and leaves the field open for the next, exactly as
+   * the main add box behaves — a checklist under a task is usually several
+   * steps typed in one go. Empty Enter does nothing; Escape closes.
+   */
+  const submitSubtask = async () => {
+    const title = subtaskDraft.trim();
+    if (!title || !onAddSubtask) return;
+    setSubtaskDraft("");
+    setSubtaskError(null);
+    const failure = await onAddSubtask(task.id, title);
+    if (failure) {
+      // SPEC §3.3: a failed add never throws away what was typed.
+      setSubtaskDraft(title);
+      setSubtaskError(failure);
+    }
+  };
+
+  const openSubtaskField = () => {
+    if (!isExpanded) onToggleExpand(task.id);
+    setAddingSubtask(true);
   };
 
   return (
@@ -487,6 +521,11 @@ export function TaskItem({
 
           {isExpanded && (
             <div className="task-actions">
+              {canAddSubtask && !addingSubtask && (
+                <button className="task-action" onClick={openSubtaskField}>
+                  Add subtask
+                </button>
+              )}
               <button
                 className="task-action"
                 onClick={() => onOpenInGoogle(task.id)}
@@ -500,6 +539,38 @@ export function TaskItem({
               >
                 Delete
               </button>
+            </div>
+          )}
+
+          {isExpanded && addingSubtask && canAddSubtask && (
+            <div className="subtask-add">
+              <input
+                className="subtask-input"
+                autoFocus
+                value={subtaskDraft}
+                placeholder="Add a subtask…"
+                maxLength={1024}
+                onChange={(e) => {
+                  setSubtaskDraft(e.target.value);
+                  if (subtaskError) setSubtaskError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void submitSubtask();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setAddingSubtask(false);
+                    setSubtaskDraft("");
+                    setSubtaskError(null);
+                  }
+                }}
+                onBlur={() => {
+                  if (!subtaskDraft.trim() && !subtaskError) setAddingSubtask(false);
+                }}
+              />
+              {subtaskError && <p className="task-error">{subtaskError}</p>}
             </div>
           )}
         </div>
@@ -550,6 +621,18 @@ export function TaskItem({
             >
               {task.due ? "Change date" : "Add date"}
             </button>
+            {canAddSubtask && (
+              <button
+                role="menuitem"
+                className="task-menu-item"
+                onClick={() => {
+                  setMenuOpen(false);
+                  openSubtaskField();
+                }}
+              >
+                Add subtask
+              </button>
+            )}
             {task.due && (
               <button
                 role="menuitem"

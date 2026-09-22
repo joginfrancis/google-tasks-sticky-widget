@@ -855,6 +855,55 @@ export function useTasks(connected: boolean) {
     [readCache],
   );
 
+  /**
+   * Adds a subtask under `parentId`, as its last child.
+   *
+   * The row shows at once, under its parent, and is swapped for the real task
+   * when Google answers. Appended to the array because the list draws each
+   * parent's children in array order, and a new subtask belongs at the end.
+   */
+  const addSubtask = useCallback(
+    async (parentId: string, title: string): Promise<string | null> => {
+      const listId = currentListRef.current;
+      if (!listId) return "No task list selected.";
+
+      const tempId = `pending-${crypto.randomUUID()}`;
+      setTasks((prev) => [
+        ...prev,
+        {
+          id: tempId,
+          parentId,
+          title,
+          notes: null,
+          due: null,
+          status: "needsAction",
+          position: "",
+          updated: new Date().toISOString(),
+        },
+      ]);
+
+      try {
+        const created = await invoke<Task>("create_task", {
+          taskListId: listId,
+          title,
+          notes: null,
+          parentId,
+        });
+        setTasks((prev) => {
+          const without = prev.filter((t) => t.id !== tempId);
+          return without.some((t) => t.id === created.id)
+            ? without
+            : [...without, created];
+        });
+        return null;
+      } catch (err) {
+        setTasks((prev) => prev.filter((t) => t.id !== tempId));
+        return String(err);
+      }
+    },
+    [],
+  );
+
   const createList = useCallback(
     async (title: string): Promise<string | null> => {
       try {
@@ -941,6 +990,7 @@ export function useTasks(connected: boolean) {
           taskListId: listId,
           title,
           notes: notes ?? null,
+          parentId: null,
         });
         setTasks((prev) => {
           // A re-read may already have brought the real row in, now that
@@ -972,6 +1022,7 @@ export function useTasks(connected: boolean) {
     deleteTask,
     deleteTasks,
     addTask,
+    addSubtask,
     addOutline,
     editTask,
     openInGoogle,

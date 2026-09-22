@@ -400,6 +400,33 @@
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
+/* The inline field for a new subtask. Indented to where the subtask will
+   appear, so it reads as "one more under this task" before anything is typed. */
+.subtask-add {
+  margin: 6px 0 2px 14px;
+}
+
+.subtask-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.subtask-input:focus {
+  border-color: var(--accent);
+}
+
+.subtask-input::placeholder {
+  color: var(--text-muted);
+}
+
 /* A row is grabbable, so say so before the drag starts. */
 .task-item .task-title {
   cursor: default;
