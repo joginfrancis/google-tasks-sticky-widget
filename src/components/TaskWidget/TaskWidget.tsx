@@ -174,8 +174,25 @@ export function TaskWidget(props: Props) {
 
   /* -- Multi-select -------------------------------------------------------- */
 
-  // Only open tasks can be selected; completed ones sit in their own section.
-  const selectableOrder = useMemo(() => active.map((t) => t.id), [active]);
+  /**
+   * Which section the selection lives in. It is one or the other, never both:
+   * the open and completed tasks are separate lists, so a Shift-range from one
+   * into the other has no meaningful "between", and the two need different
+   * actions — Complete for open tasks, Restore for finished ones.
+   */
+  const [selectionSection, setSelectionSection] = useState<"active" | "completed">(
+    "active",
+  );
+
+  // The tasks the selection draws from, in the order they are shown. Completed
+  // rows only count while that section is expanded — hidden rows cannot be
+  // clicked, and a selection must never act on rows out of sight.
+  const sectionTasks = useMemo(
+    () =>
+      selectionSection === "active" ? active : completedOpen ? completed : [],
+    [selectionSection, active, completed, completedOpen],
+  );
+  const selectableOrder = useMemo(() => sectionTasks.map((t) => t.id), [sectionTasks]);
 
   // Tasks leave the list — completed, deleted, synced away — and a selection of
   // things no longer shown would act on rows the user cannot see.
@@ -191,12 +208,21 @@ export function TaskWidget(props: Props) {
   const selectedIds = selection.ids;
   const selecting = selectedIds.size > 0;
 
-  const onSelect = useCallback(
-    (id: string, mode: { toggle: boolean; range: boolean }) => {
-      setExpandedId(null);
-      setSelection((current) => applySelectClick(current, selectableOrder, id, mode));
-    },
-    [selectableOrder],
+  const selectIn = useCallback(
+    (section: "active" | "completed") =>
+      (id: string, mode: { toggle: boolean; range: boolean }) => {
+        setExpandedId(null);
+        setConfirmingDelete(false);
+        const order = (section === "active" ? active : completed).map((t) => t.id);
+        // Clicking into the other section starts over there rather than
+        // carrying a selection across the boundary.
+        const startingFresh = section !== selectionSection;
+        setSelectionSection(section);
+        setSelection((current) =>
+          applySelectClick(startingFresh ? emptySelection : current, order, id, mode),
+        );
+      },
+    [active, completed, selectionSection],
   );
 
   const clearSelection = useCallback(() => {
@@ -223,7 +249,7 @@ export function TaskWidget(props: Props) {
   };
 
   // Subtasks go with a selected parent, so the question should say so.
-  const subtasksGoing = active.filter(
+  const subtasksGoing = sectionTasks.filter(
     (t) => t.parentId !== null && selectedIds.has(t.parentId) && !selectedIds.has(t.id),
   ).length;
 
@@ -240,7 +266,7 @@ export function TaskWidget(props: Props) {
   const copySelected = () => {
     // Indented the same way a paste is read, so copying tasks and pasting
     // them into any note rebuilds them, nesting and all.
-    const text = formatOutline(active, selectedIds);
+    const text = formatOutline(sectionTasks, selectedIds);
     void navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1200);
@@ -581,7 +607,7 @@ export function TaskWidget(props: Props) {
                   isExpanded={expandedId === task.id}
                   onToggleExpand={toggleExpand}
                   isSelected={selectedIds.has(task.id)}
-                  onSelect={onSelect}
+                  onSelect={selectIn("active")}
                   onToggle={toggleRow}
                   onDelete={props.onDelete}
                   onEdit={props.onEdit}
@@ -623,7 +649,9 @@ export function TaskWidget(props: Props) {
                         error={props.errors[task.id] ?? null}
                         isExpanded={expandedId === task.id}
                         onToggleExpand={toggleExpand}
-                        onToggle={props.onToggle}
+                        isSelected={selectedIds.has(task.id)}
+                        onSelect={selectIn("completed")}
+                        onToggle={toggleRow}
                         onDelete={props.onDelete}
                         onEdit={props.onEdit}
                         onSetDue={props.onSetDue}
@@ -674,8 +702,11 @@ export function TaskWidget(props: Props) {
             <>
           <span className="selection-count">{selectedIds.size} selected</span>
           <div className="selection-actions">
+            {/* The same action either way — toggling each task's state — but
+                named for what it does from here: finishing open tasks, or
+                bringing finished ones back. */}
             <button className="selection-action" onClick={completeSelected}>
-              Complete
+              {selectionSection === "completed" ? "Restore" : "Complete"}
             </button>
             <button
               className="selection-action"
