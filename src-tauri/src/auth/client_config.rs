@@ -77,13 +77,30 @@ fn dirs_home() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+/// Compiled in by build.rs from whatever credentials the build machine had.
+/// `None` in a build that had none — a development case, not a user one.
+fn builtin() -> Option<ClientConfig> {
+    let id = option_env!("GTASKS_BUILTIN_CLIENT_ID")?;
+    Some(ClientConfig {
+        client_id: id.to_string(),
+        client_secret: option_env!("GTASKS_BUILTIN_CLIENT_SECRET").map(str::to_string),
+    })
+}
+
 impl ClientConfig {
     pub fn load() -> Result<Self, String> {
         let paths = candidate_paths();
 
         let Some(path) = paths.first() else {
+            // Nothing on this machine, so use what the app was built with —
+            // the ordinary case for anyone who has simply installed it. A file
+            // still wins where one exists, which is how a second account is
+            // tested without rebuilding.
+            if let Some(config) = builtin() {
+                return Ok(config);
+            }
             return Err(format!(
-                "No Google client credentials found. Put the downloaded \
+                "This copy of the app was built without Google credentials. Put a \
                  client_secret_*.json in %USERPROFILE%\\{DEFAULT_DIR}\\, or set \
                  {ENV_OVERRIDE} to its full path."
             ));
