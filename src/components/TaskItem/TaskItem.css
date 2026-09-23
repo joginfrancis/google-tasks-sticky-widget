@@ -589,3 +589,18 @@ body.is-tall .task-edit.is-notes {
 body.is-tall .task-item.is-expanded .task-notes {
   display: block;
 }
+
+/* A subtask's description takes the note's full width, not the subtask's.
+   The 22px indent that marks a row as nested is worth it on a title — it is
+   what shows the nesting — but on a paragraph it costs a word per line and
+   says nothing the row above has not already said. */
+.task-item.is-subtask .task-notes,
+.task-item.is-subtask .task-date-row,
+.task-item.is-subtask .task-actions {
+  margin-left: -22px;
+}
+
+.task-item.is-subtask .task-edit.is-notes {
+  width: calc(100% + 32px);
+  margin-left: -27px;
+}
