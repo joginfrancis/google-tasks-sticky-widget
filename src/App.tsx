@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 
 import type { Settings, ThemePreference, WindowLayer } from "./types";
 import { useTasks } from "./hooks/useTasks";
+import { useUpdate } from "./hooks/useUpdate";
 import { uiLog } from "./lib/log";
 import { windowLabel } from "./lib/window";
 import { TaskWidget } from "./components/TaskWidget/TaskWidget";
@@ -307,6 +308,8 @@ export default function App() {
 
   const quit = () => invoke("quit_app").catch(console.error);
 
+  const update = useUpdate();
+
   if (account === null) {
     return <div className="widget" />;
   }
@@ -423,6 +426,7 @@ export default function App() {
 
   return (
     <TaskWidget
+      update={update}
       tasks={tasks.tasks}
       taskLists={tasks.taskLists}
       settings={settings}

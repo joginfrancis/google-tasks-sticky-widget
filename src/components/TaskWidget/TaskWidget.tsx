@@ -83,6 +83,17 @@ interface Props {
   onOpenHelp: () => void;
   onHide: () => void;
   onQuit: () => void;
+  /** A new version, if one is waiting. Only the main note ever has one. */
+  update: {
+    state:
+      | { phase: "idle" }
+      | { phase: "available"; version: string }
+      | { phase: "downloading" }
+      | { phase: "ready" }
+      | { phase: "failed"; message: string };
+    install: () => void;
+    dismiss: () => void;
+  };
 }
 
 export function TaskWidget(props: Props) {
@@ -607,6 +618,37 @@ export function TaskWidget(props: Props) {
           </button>
         </div>
       </header>
+
+      {props.update.state.phase !== "idle" && (
+        <div className="update-strip">
+          {props.update.state.phase === "available" && (
+            <>
+              <span>Version {props.update.state.version} is out</span>
+              <button className="update-action" onClick={props.update.install}>
+                Update
+              </button>
+              <button
+                className="update-dismiss"
+                onClick={props.update.dismiss}
+                aria-label="Not now"
+                title="Not now"
+              >
+                ×
+              </button>
+            </>
+          )}
+          {props.update.state.phase === "downloading" && <span>Downloading…</span>}
+          {props.update.state.phase === "ready" && <span>Restarting…</span>}
+          {props.update.state.phase === "failed" && (
+            <>
+              <span>Update failed</span>
+              <button className="update-dismiss" onClick={props.update.dismiss}>
+                ×
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Add-task sits directly under the heading, as in Google Tasks — capture
           is the most frequent action and should not need a scroll to reach. */}

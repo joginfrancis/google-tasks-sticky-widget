@@ -1,0 +1,67 @@
+# Builds the Windows installers and publishes them as a GitHub Release.
+#
+# Triggered by a version tag (`v0.1.1`), or by hand from the Actions tab. The
+# release is created as a draft so a bad build can be thrown away before anyone
+# is offered it: publishing the draft is what makes `latest.json` live, and
+# that file is what installed copies check.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Rust builds are slow and almost entirely unchanged between releases.
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - run: npx tsc --noEmit -p .
+
+      - run: npx vitest run
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the update bundle. Without it the app has no way to know an
+          # update came from us, and refuses to install one.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # The Google OAuth *desktop* client, baked in by build.rs so that a
+          # new user has nothing to configure. Not a confidential credential —
+          # see docs/api-findings.md §8 — but kept in secrets rather than the
+          # repository so it is changed in one place.
+          GTASKS_CLIENT_ID: ${{ secrets.GTASKS_CLIENT_ID }}
+          GTASKS_CLIENT_SECRET: ${{ secrets.GTASKS_CLIENT_SECRET }}
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', github.run_number) }}
+          releaseName: Sticky Widget ${{ github.ref_name }}
+          releaseBody: |
+            Install `Sticky.Widget_x64-setup.exe` (or the `.msi`).
+
+            Windows will warn that the publisher is unknown — the app is not
+            code signed. Choose **More info**, then **Run anyway**.
+
+            Already have it installed? It will offer this version itself.
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: true

@@ -29,6 +29,21 @@ fn main() {
 }
 
 fn read_credentials() -> Option<(String, Option<String>)> {
+    // CI has no home directory full of Google downloads: the same two values
+    // arrive as repository secrets instead.
+    println!("cargo:rerun-if-env-changed=GTASKS_CLIENT_ID");
+    println!("cargo:rerun-if-env-changed=GTASKS_CLIENT_SECRET");
+    if let Ok(id) = std::env::var("GTASKS_CLIENT_ID") {
+        if !id.trim().is_empty() {
+            return Some((
+                id,
+                std::env::var("GTASKS_CLIENT_SECRET")
+                    .ok()
+                    .filter(|s| !s.trim().is_empty()),
+            ));
+        }
+    }
+
     let path = credentials_path()?;
     println!("cargo:rerun-if-changed={}", path.display());
 

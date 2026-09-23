@@ -726,3 +726,43 @@
 .add-at-end:focus-visible .add-at-end-label {
   opacity: 1;
 }
+
+/* A new version is waiting. One line, above the add box, dismissible — an
+   update is worth mentioning once and never worth interrupting for. */
+.update-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+}
+
+.update-strip span {
+  flex: 1;
+}
+
+.update-action {
+  padding: 3px 8px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.update-action:hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.update-dismiss {
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
