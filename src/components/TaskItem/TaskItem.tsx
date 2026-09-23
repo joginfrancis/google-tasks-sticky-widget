@@ -106,6 +106,12 @@ export function TaskItem({
   const [addingSubtask, setAddingSubtask] = useState(false);
   const [subtaskDraft, setSubtaskDraft] = useState("");
   const [subtaskError, setSubtaskError] = useState<string | null>(null);
+  /**
+   * Where to put the caret when the description opens for editing — the
+   * character that was clicked. Null means "select everything", which is what
+   * a title wants and a paragraph does not.
+   */
+  const caretTarget = useRef<number | null>(null);
   const [belowDraft, setBelowDraft] = useState("");
   const [belowError, setBelowError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -137,43 +143,63 @@ export function TaskItem({
   const hasVisibleDueChip = Boolean(task.due) || (isExpanded && !done);
 
   useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
+    if (!editing || !inputRef.current) return;
+    const field = inputRef.current;
+    field.focus();
+    const caret = caretTarget.current;
+    caretTarget.current = null;
+    if (caret === null) {
+      // A title is short and usually being replaced outright.
+      field.select();
+    } else {
+      // A description is prose: clicking it means "put the cursor here", not
+      // "highlight all of this". Ctrl+A is still there for the whole thing.
+      const at = Math.min(caret, field.value.length);
+      field.setSelectionRange(at, at);
     }
   }, [editing]);
 
-  // A long description gets the whole height of the screen while it is being
-  // edited, and the note goes back to its own size when editing ends. Only
-  // when it would not otherwise fit — a two-line note needs no ceremony.
-  useEffect(() => {
-    if (editing !== "notes") return;
-    const field = inputRef.current;
-    const body = rowRef.current?.closest(".widget-body") as HTMLElement | null;
-    if (!field || !body) return;
-    // Anything that would need scrolling inside the note is worth the room.
-    if (field.scrollHeight <= body.clientHeight - 40) return;
+  /**
+   * A note stretches to the full height of the screen when the task it has
+   * open does not fit inside it — the description, the date row and the
+   * actions together — and shrinks back when the task is closed again.
+   *
+   * Measured rather than guessed: whether a given task overflows depends on
+   * how tall the user has made this note, so a character count would be right
+   * only by accident.
+   */
+  const isTall = useRef(false);
+  const setTall = (tall: boolean) => {
+    if (isTall.current === tall) return;
+    isTall.current = tall;
+    document.body.classList.toggle("is-tall", tall);
+    void invoke("note_set_tall", { tall }).catch(() => {});
+  };
 
-    invoke("note_set_tall", { tall: true })
-      .then(() => {
-        // The extra height is only useful if the description takes it: the
-        // editor stretches to the bottom of the now-tall note, and the row it
-        // belongs to goes to the top so the text starts at the top of the
-        // screen rather than halfway down it.
-        document.body.classList.add("is-tall");
-        window.setTimeout(
-          () => rowRef.current?.scrollIntoView({ block: "start", behavior: "auto" }),
-          60,
-        );
-      })
-      .catch(() => {});
-    // Always asked to shrink back: Rust ignores it for a note it never grew,
-    // and this way a grow that lands after editing ended is still undone.
-    return () => {
-      document.body.classList.remove("is-tall");
-      void invoke("note_set_tall", { tall: false }).catch(() => {});
-    };
-  }, [editing]);
+  useEffect(() => {
+    if (!isExpanded) {
+      setTall(false);
+      return;
+    }
+    // After the row has been laid out with whatever just changed — an editor
+    // opening, a line being typed — not before.
+    const id = window.setTimeout(() => {
+      const row = rowRef.current;
+      const body = row?.closest(".widget-body") as HTMLElement | null;
+      if (!row || !body) return;
+      if (row.scrollHeight + 16 <= body.clientHeight) return;
+      setTall(true);
+      window.setTimeout(
+        () => rowRef.current?.scrollIntoView({ block: "start", behavior: "auto" }),
+        60,
+      );
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [isExpanded, editing, draft, task.notes]);
+
+  // Leaving the row tall after it has gone would strand the note at full
+  // height with nothing in it.
+  useEffect(() => () => setTall(false), []);
 
   // A row unmounted mid-gesture — completed, deleted, or dragged to another
   // list — must not expand itself a moment later.
@@ -512,7 +538,10 @@ export function TaskItem({
                need a double click does not exist down here. */
             <span
               className={`task-notes ${task.notes ? "" : "is-placeholder"}`}
-              onClick={() => beginEdit("notes")}
+              onClick={(event) => {
+                caretTarget.current = offsetAtPoint(event);
+                beginEdit("notes");
+              }}
               title="Click to edit"
             >
               {task.notes || "Add details…"}
@@ -868,4 +897,25 @@ export function TaskItem({
       )}
     </li>
   );
+}
+
+/**
+ * The character offset a click landed on, so editing can start with the caret
+ * there. Returns null where the browser cannot say — the caret then falls back
+ * to selecting the whole thing, which is the old behaviour.
+ */
+function offsetAtPoint(event: React.MouseEvent): number | null {
+  const host = event.currentTarget as HTMLElement;
+  const doc = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+  };
+
+  const position = doc.caretPositionFromPoint?.(event.clientX, event.clientY);
+  if (position && host.contains(position.offsetNode)) return position.offset;
+
+  const range = doc.caretRangeFromPoint?.(event.clientX, event.clientY);
+  if (range && host.contains(range.startContainer)) return range.startOffset;
+
+  return null;
 }

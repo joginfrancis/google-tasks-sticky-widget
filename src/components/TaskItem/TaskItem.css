@@ -124,6 +124,12 @@
 .task-edit.is-notes {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
+  /* Text should sit where it sat a moment ago, at the same width: the box's
+     own border and padding would otherwise push every line in by 5px and cost
+     a word per line on a 340px note. Pulled back out by exactly that much. */
+  width: calc(100% + 10px);
+  margin-left: -5px;
+  padding: 1px 4px;
 }
 
 /* The pause between ticking and the row relocating, so the eye can follow it. */
@@ -576,4 +582,10 @@
    stays its old size, which is the worst of both. */
 body.is-tall .task-edit.is-notes {
   min-height: calc(100vh - 190px);
+}
+
+/* Reading a long description in a stretched note should have the same room as
+   editing it — the row is the tall thing here, not the editor. */
+body.is-tall .task-item.is-expanded .task-notes {
+  display: block;
 }
