@@ -151,19 +151,28 @@ export function TaskItem({
     const field = inputRef.current;
     const body = rowRef.current?.closest(".widget-body") as HTMLElement | null;
     if (!field || !body) return;
-    if (field.scrollHeight <= body.clientHeight - 60) return;
+    // Anything that would need scrolling inside the note is worth the room.
+    if (field.scrollHeight <= body.clientHeight - 40) return;
 
     invoke("note_set_tall", { tall: true })
       .then(() => {
+        // The extra height is only useful if the description takes it: the
+        // editor stretches to the bottom of the now-tall note, and the row it
+        // belongs to goes to the top so the text starts at the top of the
+        // screen rather than halfway down it.
+        document.body.classList.add("is-tall");
         window.setTimeout(
-          () => rowRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }),
-          80,
+          () => rowRef.current?.scrollIntoView({ block: "start", behavior: "auto" }),
+          60,
         );
       })
       .catch(() => {});
     // Always asked to shrink back: Rust ignores it for a note it never grew,
     // and this way a grow that lands after editing ended is still undone.
-    return () => void invoke("note_set_tall", { tall: false }).catch(() => {});
+    return () => {
+      document.body.classList.remove("is-tall");
+      void invoke("note_set_tall", { tall: false }).catch(() => {});
+    };
   }, [editing]);
 
   // A row unmounted mid-gesture — completed, deleted, or dragged to another

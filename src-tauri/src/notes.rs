@@ -502,6 +502,11 @@ pub fn note_set_tall(window: tauri::Window, tall: bool) -> Result<(), String> {
             return Ok(());
         };
         let area = monitor.work_area();
+        log::info!(
+            "note_set_tall: {}x{} at {},{} -> work area {}x{} at {},{}",
+            size.width, size.height, pos.x, pos.y,
+            area.size.width, area.size.height, area.position.x, area.position.y
+        );
         if size.height >= area.size.height {
             return Ok(());
         }
