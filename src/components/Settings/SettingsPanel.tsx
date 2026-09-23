@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import type {
   Settings,
   TaskList,
@@ -224,7 +225,7 @@ export function SettingsPanel(props: Props) {
           </button>
           <div className="settings-row">
             <span className="settings-label">Version</span>
-            <span className="settings-value">0.1.0</span>
+            <span className="settings-value">{useAppVersion()}</span>
           </div>
           <p className="settings-note">
             Your tasks travel only between this computer and Google. Nothing is
@@ -234,6 +235,17 @@ export function SettingsPanel(props: Props) {
       </div>
     </div>
   );
+}
+
+/** The version the app actually is, rather than one typed into this file. */
+function useAppVersion(): string {
+  const [version, setVersion] = useState("");
+  useEffect(() => {
+    getVersion()
+      .then(setVersion)
+      .catch(() => {});
+  }, []);
+  return version;
 }
 
 /**
