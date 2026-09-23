@@ -135,6 +135,13 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
             <dd>Save the description — plain Enter adds a line there instead</dd>
 
             <dt>
+              <kbd>Ctrl</kbd> <kbd>B</kbd> / <kbd>Ctrl</kbd> <kbd>I</kbd>
+            </dt>
+            <dd>
+              Bold or italic, in a description. Pressing it again takes it off
+            </dd>
+
+            <dt>
               <kbd>Tab</kbd>
             </dt>
             <dd>Move on: title, then description, then date</dd>
@@ -228,6 +235,25 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
           </p>
 
           <p>
+            <strong>Descriptions take a little formatting.</strong> Wrap words
+            in <code>**stars**</code> for bold or <code>*one star*</code> for
+            italic, start a line with <code>-</code> for a bullet or{" "}
+            <code>1.</code> for a number. Google only stores plain text, so the
+            characters themselves are what your phone shows — the formatting is
+            how this widget draws them.
+          </p>
+
+          <p>
+            <strong>Links are clickable, and pictures show.</strong> Paste a web
+            address into a description and it opens in your browser at a click.
+            Paste one over selected words and those words become the link.
+            A link to an image — one ending in .png or .jpg — is drawn as the
+            picture itself. Google Tasks has no attachments of any kind, so a
+            picture has to live somewhere on the web already; the note holds
+            the address, not the file.
+          </p>
+
+          <p>
             <strong>Long descriptions get the whole screen.</strong> Click one
             to edit it and, if it does not fit, the note stretches to the full
             height of the screen. It goes back to its size when you finish.
@@ -263,6 +289,12 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
           <h2>Not included</h2>
 
           <dl className="help-keys help-gaps">
+            <dt>Uploading a picture</dt>
+            <dd>
+              Google Tasks stores no files. A link to a picture already online
+              is shown in the note; there is nowhere to put one that is not
+            </dd>
+
             <dt>Starring, repeats, attachments</dt>
             <dd>
               Google keeps these but does not offer them to apps. The repeat

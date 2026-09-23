@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Task } from "../../types";
 import { dueDateInDays, formatDue, isOverdue } from "../../lib/date";
 import { DueChip } from "./DueChip";
+import { RichText } from "./RichText";
+import { isUrl, pasteLink, toggleMarker } from "../../lib/richText";
 import "./TaskItem.css";
 
 /**
@@ -299,7 +301,29 @@ export function TaskItem({
     beginEdit(field);
   };
 
+  /** Wraps the selection in `**` or `*`, and takes it off again. */
+  const applyMarker = (marker: string) => {
+    const field = inputRef.current;
+    if (!field) return;
+    const next = toggleMarker(field.value, field.selectionStart, field.selectionEnd, marker);
+    setDraft(next.text);
+    // After React has rewritten the value, or the old selection is restored.
+    window.setTimeout(() => field.setSelectionRange(next.start, next.end), 0);
+  };
+
   const handleEditKey = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Bold and italic are Markdown characters in the text, because that is all
+    // a plain-text description can hold — Google shows the asterisks, this
+    // widget shows the emphasis.
+    if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+      const key = event.key.toLowerCase();
+      if (key === "b" || key === "i") {
+        event.preventDefault();
+        applyMarker(key === "b" ? "**" : "*");
+        return;
+      }
+    }
+
     if (event.key === "Escape") {
       event.preventDefault();
       setEditing(null);
@@ -520,6 +544,27 @@ export function TaskItem({
             <textarea
               ref={inputRef}
               className="task-edit is-notes"
+              onPaste={(event) => {
+                // Pasting a link over selected words names the link with those
+                // words, as in Notion. Anything else pastes as it always did.
+                const pasted = event.clipboardData.getData("text/plain");
+                const field = event.currentTarget;
+                if (!isUrl(pasted) || field.selectionStart === field.selectionEnd) {
+                  return;
+                }
+                event.preventDefault();
+                const next = pasteLink(
+                  field.value,
+                  field.selectionStart,
+                  field.selectionEnd,
+                  pasted.trim(),
+                );
+                setDraft(next.text);
+                window.setTimeout(
+                  () => field.setSelectionRange(next.caret, next.caret),
+                  0,
+                );
+              }}
               rows={2}
               value={draft}
               maxLength={8192}
@@ -539,12 +584,17 @@ export function TaskItem({
             <span
               className={`task-notes ${task.notes ? "" : "is-placeholder"}`}
               onClick={(event) => {
+                // A link and a picture own their clicks; opening the editor
+                // on top of one would make them unusable.
+                if ((event.target as HTMLElement).closest(".rt-link, .rt-image")) {
+                  return;
+                }
                 caretTarget.current = offsetAtPoint(event);
                 beginEdit("notes");
               }}
               title="Click to edit"
             >
-              {task.notes || "Add details…"}
+              {task.notes ? <RichText text={task.notes} /> : "Add details…"}
             </span>
           ) : null}
           {/* Notes are deliberately absent when collapsed: a row carrying

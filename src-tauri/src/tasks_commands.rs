@@ -762,6 +762,23 @@ pub fn open_task_in_google(app: AppHandle, task_id: String) -> Result<(), String
         .map_err(|e| format!("Could not open your browser: {e}"))
 }
 
+/// Opens a link found in a task description.
+///
+/// The text came from a description, which is user data that has been round
+/// tripped through Google — so the scheme is checked here rather than trusted
+/// from the frontend. Only http(s) ever reaches the shell: `file:` would open
+/// documents off this machine and `javascript:` is not a place at all.
+#[tauri::command]
+pub fn open_link(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        log::warn!("refusing to open a link that is not http(s)");
+        return Err("That link doesn't look safe to open.".into());
+    }
+
+    tauri_plugin_opener::open_url(&url, None::<&str>)
+        .map_err(|e| format!("Could not open your browser: {e}"))
+}
+
 #[tauri::command]
 pub fn delete_task(
     app: AppHandle,

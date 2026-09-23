@@ -604,3 +604,71 @@ body.is-tall .task-item.is-expanded .task-notes {
   width: calc(100% + 32px);
   margin-left: -27px;
 }
+
+/* Rendered description ----------------------------------------------------- */
+
+/* Each line is its own block so a description keeps the shape it was typed
+   in — the span it lives in is inline, and without this every line would run
+   into the next one. */
+.rt-line {
+  display: block;
+}
+
+.rt-line.is-bullet {
+  display: flex;
+  gap: 6px;
+}
+
+.rt-marker {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+/* A blank line, at half the height of a real one: enough to separate two
+   paragraphs, not enough to waste a note on empty space. */
+.rt-gap {
+  display: block;
+  height: 0.5em;
+}
+
+.rt-code {
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--surface-hover);
+  font-family: "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+  font-size: 0.92em;
+}
+
+/* A button, not an anchor: the link opens through Rust, which checks the
+   scheme first. Styled as a link because that is what it is. */
+.rt-link {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.rt-link:hover {
+  text-decoration-thickness: 2px;
+}
+
+.rt-image {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  margin: 4px 0;
+  border-radius: var(--radius-control);
+  object-fit: contain;
+  cursor: pointer;
+}
+
+/* Nothing loaded — the address is still in the text, so say nothing here. */
+.rt-image.is-broken {
+  display: none;
+}

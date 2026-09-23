@@ -97,6 +97,7 @@ pub fn run() {
             tasks_commands::set_task_completed,
             tasks_commands::update_task,
             tasks_commands::open_task_in_google,
+            tasks_commands::open_link,
             tasks_commands::delete_task,
             tasks_commands::move_task,
             tasks_commands::move_task_to,
