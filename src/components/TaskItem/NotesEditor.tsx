@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { toHtml, toMarkdown } from "../../lib/richHtml";
-import { isUrl } from "../../lib/richText";
+import { isImageUrl, isUrl } from "../../lib/richText";
 
 /**
  * The description editor: what you see is what the note shows.
@@ -73,7 +73,15 @@ export function NotesEditor({
       aria-label="Description"
       data-placeholder="Add details…"
       onInput={onInput}
-      onBlur={commit}
+      onBlur={(event) => {
+        // Focus moving into the toolbar is not the user leaving the editor —
+        // it is them about to format what they just selected. Typing a link
+        // address into the bar's field was closing the editor underneath it,
+        // which is why the link and image buttons appeared to do nothing.
+        const next = event.relatedTarget as HTMLElement | null;
+        if (next?.closest(".format-bar")) return;
+        commit();
+      }}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.preventDefault();
@@ -120,9 +128,20 @@ export function NotesEditor({
         const selection = window.getSelection();
         const hasSelection = selection ? !selection.isCollapsed : false;
 
-        if (isUrl(text) && hasSelection) {
+        if (isUrl(text) && isImageUrl(text) && !hasSelection) {
+          // A pasted picture address becomes the picture, not a line of text
+          // about one.
+          document.execCommand("insertImage", false, text.trim());
+        } else if (isUrl(text) && hasSelection) {
           // Pasting a link over words names the link with those words.
           document.execCommand("createLink", false, text.trim());
+        } else if (isUrl(text)) {
+          document.execCommand("createLink", false, text.trim());
+          // execCommand with nothing selected does nothing, so write the
+          // address in first and link that.
+          if (!(window.getSelection()?.anchorNode as HTMLElement | null)?.parentElement?.closest("a")) {
+            document.execCommand("insertHTML", false, anchorHtml(text.trim()));
+          }
         } else {
           document.execCommand("insertText", false, text);
         }
@@ -140,6 +159,16 @@ export function NotesEditor({
       }}
     />
   );
+}
+
+/** The address as its own link. Escaped: user input going into markup. */
+function anchorHtml(url: string): string {
+  const safe = url
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+  return `<a href="${safe}">${safe}</a>`;
 }
 
 async function openLink(url: string) {

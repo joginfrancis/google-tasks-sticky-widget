@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 /**
  * The formatting controls above a description being edited.
@@ -23,6 +23,37 @@ export function FormatBar({ editor, onChanged }: Props) {
   /** Open with "link" or "image" while an address is being typed. */
   const [asking, setAsking] = useState<null | "link" | "image">(null);
   const [url, setUrl] = useState("");
+  /**
+   * Where the caret was before the address field took focus.
+   *
+   * Typing into that field moves the selection out of the editor, and the
+   * browser's editing commands act on the selection — so without putting it
+   * back, a link would be applied to nothing at all.
+   */
+  const savedRange = useRef<Range | null>(null);
+
+  const remember = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (editor?.contains(range.commonAncestorContainer)) {
+      savedRange.current = range.cloneRange();
+    }
+  };
+
+  const restore = () => {
+    const range = savedRange.current;
+    editor?.focus();
+    if (!range) return;
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  };
+
+  const ask = (what: "link" | "image") => {
+    remember();
+    setAsking(what);
+  };
 
   const run = (command: string, value?: string) => {
     editor?.focus();
@@ -36,10 +67,12 @@ export function FormatBar({ editor, onChanged }: Props) {
     setAsking(null);
     if (!address || !editor) return;
 
+    // Back to the words that were selected when the button was pressed.
+    restore();
+
     // A bare "example.com" is a link the user meant; without a scheme nothing
     // downstream will treat it as one.
     const full = /^https?:\/\//i.test(address) ? address : `https://${address}`;
-    editor.focus();
 
     if (asking === "image") {
       document.execCommand("insertImage", false, full);
@@ -87,7 +120,7 @@ export function FormatBar({ editor, onChanged }: Props) {
       <Button
         label="Add link"
         hint="Link — or paste one over selected words"
-        onClick={() => setAsking("link")}
+        onClick={() => ask("link")}
       >
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
           <path
@@ -102,7 +135,7 @@ export function FormatBar({ editor, onChanged }: Props) {
       <Button
         label="Add image"
         hint="Picture, by its web address"
-        onClick={() => setAsking("image")}
+        onClick={() => ask("image")}
       >
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
           <rect
@@ -146,11 +179,26 @@ export function FormatBar({ editor, onChanged }: Props) {
                 e.stopPropagation();
                 setAsking(null);
                 setUrl("");
+                restore();
               }
             }}
           />
-          <button className="fb-url-ok" onClick={submitUrl}>
-            Add
+          <button
+            className="fb-url-ok"
+            onClick={submitUrl}
+            aria-label={asking === "image" ? "Insert image" : "Insert link"}
+            title="Insert — or press Enter"
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <path
+                d="M3.5 8.5l3 3 6-6.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
         </div>
       )}
