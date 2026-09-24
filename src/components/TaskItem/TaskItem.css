@@ -191,10 +191,11 @@
   z-index: 10;
 }
 
+/* Fixed, not absolute: the task list scrolls and the note is small, so a menu
+   laid out inside the row gets cut off by both. Its coordinates are worked out
+   in TaskItem and clamped to the window. */
 .task-menu {
-  position: absolute;
-  right: 6px;
-  top: 100%;
+  position: fixed;
   z-index: 11;
   min-width: 156px;
   padding: 4px;
@@ -202,6 +203,10 @@
   border: 1px solid var(--border);
   border-radius: 7px;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+  /* A last resort for a note squeezed against the bottom of the screen: the
+     menu scrolls rather than losing its last item. */
+  max-height: calc(100vh - 12px);
+  overflow-y: auto;
 }
 
 .task-menu-item {

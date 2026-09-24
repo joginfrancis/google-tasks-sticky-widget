@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Task } from "../../types";
 import { dueDateInDays, formatDue, isOverdue } from "../../lib/date";
 import { DueChip } from "./DueChip";
@@ -403,24 +403,64 @@ export function TaskItem({
   };
 
   /**
-   * The options menu is drawn inside the note, so on a short note its lower
-   * half is simply not there — which is how "Add subtask", "Move to list" and
-   * "Delete" went missing. Take exactly the height it overflows by, and give
-   * it back when the menu closes.
+   * The options menu is positioned by hand, in window coordinates.
+   *
+   * Laid out inside the row it was clipped twice over: by the scrolling task
+   * list, and by the window itself — which is how Delete disappeared off the
+   * bottom of a short note. A fixed position escapes the scroller; growing the
+   * window covers the rest.
    */
   const menuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number }>({
+    top: 0,
+    left: 0,
+  });
+
+  useLayoutEffect(() => {
     if (!menuOpen) return;
+
     let release: null | (() => void) = null;
-    // One frame later, so the menu has been laid out and can be measured.
-    const id = window.setTimeout(() => {
-      if (menuRef.current) release = growToFit(menuRef.current);
-    }, 0);
+
+    const place = () => {
+      const menu = menuRef.current;
+      const anchor = (triggerRef.current ?? rowRef.current)?.getBoundingClientRect();
+      if (!menu || !anchor) return;
+
+      const height = menu.offsetHeight;
+      const width = menu.offsetWidth;
+      const gap = 4;
+      const edge = 6;
+
+      // Below the button, above it when that would not fit, and clamped when
+      // neither does — then the window is asked for the missing height.
+      const below = anchor.bottom + gap;
+      const above = anchor.top - height - gap;
+      let top = below;
+      if (below + height > window.innerHeight - edge) {
+        top = above >= edge ? above : Math.max(edge, window.innerHeight - height - edge);
+      }
+
+      const left = Math.min(
+        Math.max(edge, anchor.right - width),
+        window.innerWidth - width - edge,
+      );
+
+      setMenuPos({ top, left });
+
+      release?.();
+      release = growToFit(menu);
+    };
+
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
     return () => {
-      window.clearTimeout(id);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
       release?.();
     };
-    // `moveOpen` is in here because expanding the submenu makes the menu taller.
+    // `moveOpen` is here because expanding the submenu makes the menu taller.
   }, [menuOpen, moveOpen]);
 
   const openSubtaskField = () => {
@@ -842,6 +882,7 @@ export function TaskItem({
         )}
 
         <button
+          ref={triggerRef}
           className="task-menu-trigger"
           aria-label="Task options"
           title="Task options"
@@ -897,7 +938,12 @@ export function TaskItem({
               setMoveOpen(false);
             }}
           />
-          <div className="task-menu" role="menu" ref={menuRef}>
+          <div
+            className="task-menu"
+            role="menu"
+            ref={menuRef}
+            style={{ top: menuPos.top, left: menuPos.left }}
+          >
             <button
               role="menuitem"
               className="task-menu-item"
