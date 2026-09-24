@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { toHtml, toMarkdown } from "../../lib/richHtml";
 import { isImageUrl, isUrl } from "../../lib/richText";
 
@@ -22,7 +22,6 @@ interface Props {
   /** Character offset to put the caret at, or null to leave it at the end. */
   caret: number | null;
   onCommit: (markdown: string) => void;
-  onCancel: () => void;
   /** Tab out of the editor — the date button is the next stop. */
   onTabOut: () => void;
   /** Shift+Tab, which walks back to the title. */
@@ -36,15 +35,11 @@ export function NotesEditor({
   value,
   caret,
   onCommit,
-  onCancel,
   onTabOut,
   onTabBack,
   onInput,
   editorRef,
 }: Props) {
-  /** Set while cancelling, so the blur that follows does not save it anyway. */
-  const cancelled = useRef(false);
-
   useEffect(() => {
     const host = editorRef.current;
     if (!host) return;
@@ -58,7 +53,7 @@ export function NotesEditor({
 
   const commit = () => {
     const host = editorRef.current;
-    if (!host || cancelled.current) return;
+    if (!host) return;
     onCommit(toMarkdown(host));
   };
 
@@ -83,11 +78,32 @@ export function NotesEditor({
         commit();
       }}
       onKeyDown={(event) => {
+        // Escape closes the description and keeps what is in it.
+        //
+        // It used to throw the edit away, which is the usual convention for a
+        // one-line field — but a description is somewhere you delete a
+        // paragraph and then close the box, and having the paragraph spring
+        // back is not a cancel, it is a loss. Every way out of this editor now
+        // saves; Ctrl+Z is what undoes.
         if (event.key === "Escape") {
           event.preventDefault();
           event.stopPropagation();
-          cancelled.current = true;
-          onCancel();
+          commit();
+          return;
+        }
+
+        // Ctrl+A belongs to the description while the caret is in it, not to
+        // whatever the window would otherwise select.
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+          const host = editorRef.current;
+          if (host) {
+            event.preventDefault();
+            const range = document.createRange();
+            range.selectNodeContents(host);
+            const selection = window.getSelection();
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+          }
           return;
         }
 

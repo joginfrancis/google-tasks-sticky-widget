@@ -630,7 +630,6 @@ export function TaskItem({
                 }
                 setEditing(null);
               }}
-              onCancel={() => setEditing(null)}
               onTabOut={() => setTimeout(() => dueButtonRef.current?.focus(), 0)}
               onTabBack={() => beginEdit("title")}
             />

@@ -135,6 +135,11 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
             <dd>Save the description — plain Enter adds a line there instead</dd>
 
             <dt>
+              <kbd>Ctrl</kbd> <kbd>A</kbd>
+            </dt>
+            <dd>Select the whole description, while the cursor is in one</dd>
+
+            <dt>
               <kbd>Ctrl</kbd> <kbd>B</kbd> / <kbd>Ctrl</kbd> <kbd>I</kbd>
             </dt>
             <dd>
@@ -150,8 +155,10 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
               <kbd>Esc</kbd>
             </dt>
             <dd>
-              Cancel <span className="help-warn">and discard the edit</span> —
-              clicking away saves it instead
+              Close the editor. A title reverts{" "}
+              <span className="help-warn">and loses the edit</span>; a
+              description keeps what you wrote, since deleting a paragraph and
+              closing the box should not bring it back
             </dd>
           </dl>
         </section>
