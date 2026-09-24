@@ -1,77 +1,77 @@
 import { useState } from "react";
-import { insertLink, toggleBullet, toggleMarker } from "../../lib/richText";
 
 /**
  * The formatting controls above a description being edited.
  *
- * The markers this writes are the text itself — Google stores plain text, so
- * `**bold**` is what is really saved and what the phone shows. The bar exists
- * because that convention is invisible until someone tells you: everything
- * here is something you could type by hand, and the bar is how you find out
- * that you can.
+ * They act on the live editor through the browser's own editing commands, so
+ * what happens is what the user sees: bold text goes bold, a link becomes a
+ * link. The Markdown that ends up in Google is written when the edit is saved,
+ * not typed by hand here.
  *
  * Every button uses `onMouseDown` with `preventDefault`, so pressing one never
- * takes focus from the textarea. Losing focus would collapse the selection the
+ * takes focus from the editor. Losing focus would collapse the selection the
  * button is about to act on, and blur would save and close the editor.
  */
 interface Props {
-  /** The textarea being formatted. */
-  field: HTMLTextAreaElement | null;
-  /** Hands the new text back, with the selection to restore afterwards. */
-  onChange: (text: string, selection: { start: number; end: number }) => void;
+  /** The contenteditable being formatted. */
+  editor: HTMLDivElement | null;
+  /** Something changed, so the note may need to grow. */
+  onChanged: () => void;
 }
 
-export function FormatBar({ field, onChange }: Props) {
-  /** Open with "link" or "image" while a URL is being typed. */
+export function FormatBar({ editor, onChanged }: Props) {
+  /** Open with "link" or "image" while an address is being typed. */
   const [asking, setAsking] = useState<null | "link" | "image">(null);
   const [url, setUrl] = useState("");
 
-  const marker = (mark: string) => {
-    if (!field) return;
-    const next = toggleMarker(field.value, field.selectionStart, field.selectionEnd, mark);
-    onChange(next.text, { start: next.start, end: next.end });
-  };
-
-  const bullets = () => {
-    if (!field) return;
-    const next = toggleBullet(field.value, field.selectionStart, field.selectionEnd);
-    onChange(next.text, { start: next.start, end: next.end });
+  const run = (command: string, value?: string) => {
+    editor?.focus();
+    document.execCommand(command, false, value);
+    onChanged();
   };
 
   const submitUrl = () => {
     const address = url.trim();
-    if (!field || !address) {
-      setAsking(null);
-      setUrl("");
-      return;
-    }
+    setUrl("");
+    setAsking(null);
+    if (!address || !editor) return;
+
     // A bare "example.com" is a link the user meant; without a scheme nothing
     // downstream will treat it as one.
     const full = /^https?:\/\//i.test(address) ? address : `https://${address}`;
-    const next = insertLink(
-      field.value,
-      field.selectionStart,
-      field.selectionEnd,
-      full,
-      asking === "image",
-    );
-    onChange(next.text, { start: next.caret, end: next.caret });
-    setAsking(null);
-    setUrl("");
+    editor.focus();
+
+    if (asking === "image") {
+      document.execCommand("insertImage", false, full);
+    } else {
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed) {
+        document.execCommand("createLink", false, full);
+      } else {
+        // Nothing selected: the address becomes its own link, rather than
+        // leaving an empty one the user cannot see or click.
+        document.execCommand("insertHTML", false, linkHtml(full));
+      }
+    }
+    onChanged();
   };
 
   return (
     <div className="format-bar" onMouseDown={(e) => e.preventDefault()}>
-      <Button label="Bold" hint="Bold — Ctrl+B" onClick={() => marker("**")}>
+      <Button label="Bold" hint="Bold — Ctrl+B" onClick={() => run("bold")}>
         <span className="fb-bold">B</span>
       </Button>
-      <Button label="Italic" hint="Italic — Ctrl+I" onClick={() => marker("*")}>
+      <Button label="Italic" hint="Italic — Ctrl+I" onClick={() => run("italic")}>
         <span className="fb-italic">I</span>
       </Button>
-      <Button label="Strikethrough" hint="Strikethrough" onClick={() => marker("~~")}>
+      <Button
+        label="Strikethrough"
+        hint="Strikethrough"
+        onClick={() => run("strikeThrough")}
+      >
         <span className="fb-strike">ab</span>
       </Button>
-      <Button label="Bulleted list" hint="Bulleted list" onClick={bullets}>
+      <Button label="Bulleted list" hint="Bulleted list" onClick={() => run("insertUnorderedList")}>
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
           <circle cx="3" cy="4" r="1.2" fill="currentColor" />
           <circle cx="3" cy="8" r="1.2" fill="currentColor" />
@@ -99,7 +99,11 @@ export function FormatBar({ field, onChange }: Props) {
           />
         </svg>
       </Button>
-      <Button label="Add image" hint="Picture, by its web address" onClick={() => setAsking("image")}>
+      <Button
+        label="Add image"
+        hint="Picture, by its web address"
+        onClick={() => setAsking("image")}
+      >
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
           <rect
             x="2"
@@ -128,7 +132,9 @@ export function FormatBar({ field, onChange }: Props) {
             className="fb-url-input"
             autoFocus
             value={url}
-            placeholder={asking === "image" ? "Image address…" : "Link address…"}
+            placeholder={
+              asking === "image" ? "Direct image address…" : "Link address…"
+            }
             onMouseDown={(e) => e.stopPropagation()}
             onChange={(e) => setUrl(e.target.value)}
             onKeyDown={(e) => {
@@ -150,6 +156,16 @@ export function FormatBar({ field, onChange }: Props) {
       )}
     </div>
   );
+}
+
+/** The address as its own link. Escaped: it is user input going into markup. */
+function linkHtml(url: string): string {
+  const safe = url
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+  return `<a href="${safe}">${safe}</a>`;
 }
 
 function Button({

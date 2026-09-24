@@ -228,26 +228,25 @@ describe("TaskItem editing", () => {
     expect(screen.getByText("Water the plants")).toBeInTheDocument();
   });
 
-  it("inserts a newline on Enter in the notes editor and commits on Ctrl+Enter", async () => {
-    // A description is prose: breaking a line is the common intent there, the
-    // opposite of a title where Enter means "done".
+  it("commits the description on Ctrl+Enter", async () => {
+    // A description is prose: Enter breaks a line there, so finishing needs
+    // Ctrl+Enter. The editor is a contenteditable now — the formatting is
+    // shown as formatting — so what it holds is read from the DOM.
     const user = userEvent.setup();
     setup({ isExpanded: true });
-    // The description opens on a single click now; only the title needs two.
     await user.click(screen.getByText("The big one by the window"));
 
-    const editor = screen.getByRole("textbox") as HTMLTextAreaElement;
-    await user.clear(editor);
-    await user.type(editor, "First{Enter}Second");
-
-    expect(handlers.onEdit).not.toHaveBeenCalled();
-    expect(editor.value).toBe("First\nSecond");
-
+    const editor = screen.getByRole("textbox", { name: "Description" });
+    editor.innerHTML = "<div>First</div><div>Second</div>";
+    await user.click(editor);
     await user.keyboard("{Control>}{Enter}{/Control}");
-    expect(handlers.onEdit).toHaveBeenCalledWith("task-1", { notes: "First\nSecond" });
+
+    expect(handlers.onEdit).toHaveBeenCalledWith("task-1", {
+      notes: "First\nSecond",
+    });
   });
 
-  it("walks Tab from the title editor into the notes editor, committing on the way", async () => {
+  it("walks Tab from the title editor into the description, committing on the way", async () => {
     const user = userEvent.setup();
     setup({ isExpanded: true });
     await user.dblClick(title());
@@ -259,14 +258,14 @@ describe("TaskItem editing", () => {
 
     // The title edit was saved, not dropped, before moving on.
     expect(handlers.onEdit).toHaveBeenCalledWith("task-1", { title: "Renamed" });
-    // And the notes editor is now the one open, seeded with the existing notes.
-    expect(screen.getByRole("textbox")).toHaveValue("The big one by the window");
+    // And the description is now the one open, holding what was there.
+    const editor = screen.getByRole("textbox", { name: "Description" });
+    expect(editor).toHaveTextContent("The big one by the window");
   });
 
-  it("walks Shift+Tab from the notes editor back to the title editor", async () => {
+  it("walks Shift+Tab from the description back to the title", async () => {
     const user = userEvent.setup();
     setup({ isExpanded: true });
-    // The description opens on a single click now; only the title needs two.
     await user.click(screen.getByText("The big one by the window"));
 
     await user.tab({ shift: true });

@@ -809,3 +809,66 @@ body.is-tall .task-item.is-expanded .task-notes {
 .task-action.is-danger:hover {
   color: var(--danger);
 }
+
+/* The description as its own panel ---------------------------------------- */
+
+/* Now that it runs the full width of the note, the description needs an edge
+   of its own — without one it reads as loose text between the task above and
+   the buttons below, rather than as the task's own detail. A tint and a radius
+   are enough; a full border would make every open task look like a form. */
+.task-item.is-expanded .task-notes,
+.task-edit.is-notes.is-rich {
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+.task-item.is-expanded .task-notes:hover {
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+/* Being edited: the same panel, now clearly live. */
+.task-edit.is-notes.is-rich {
+  min-height: 3.4em;
+  border-color: var(--accent);
+  background: var(--surface-raised);
+  outline: none;
+  overflow-wrap: anywhere;
+}
+
+.task-edit.is-notes.is-rich:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+}
+
+/* What the editor shows — the same shapes the read-only view uses, so nothing
+   moves when an edit begins or ends. */
+.task-edit.is-notes.is-rich ul,
+.task-edit.is-notes.is-rich ol {
+  margin: 2px 0;
+  padding-left: 18px;
+}
+
+.task-edit.is-notes.is-rich a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: text;
+}
+
+.task-edit.is-notes.is-rich img {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  margin: 4px 0;
+  border-radius: var(--radius-control);
+}
+
+.task-edit.is-notes.is-rich code {
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--surface-hover);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 0.92em;
+}

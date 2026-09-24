@@ -4,7 +4,8 @@ import { dueDateInDays, formatDue, isOverdue } from "../../lib/date";
 import { DueChip } from "./DueChip";
 import { RichText } from "./RichText";
 import { FormatBar } from "./FormatBar";
-import { isUrl, pasteLink, toggleMarker } from "../../lib/richText";
+import { NotesEditor } from "./NotesEditor";
+import { toggleMarker } from "../../lib/richText";
 import { growFull, growToFit } from "../../lib/windowFit";
 import "./TaskItem.css";
 
@@ -116,7 +117,9 @@ export function TaskItem({
    */
   const caretTarget = useRef<number | null>(null);
   /** The description textarea, once mounted, so the format bar can act on it. */
-  const [notesField, setNotesField] = useState<HTMLTextAreaElement | null>(null);
+  const notesRef = useRef<HTMLDivElement>(null);
+  /** Bumped as the description is typed, so the note re-measures its height. */
+  const [notesRevision, setNotesRevision] = useState(0);
   const [belowDraft, setBelowDraft] = useState("");
   const [belowError, setBelowError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -203,7 +206,7 @@ export function TaskItem({
       );
     }, 0);
     return () => window.clearTimeout(id);
-  }, [isExpanded, editing, draft, task.notes]);
+  }, [isExpanded, editing, draft, notesRevision, task.notes]);
 
   // Leaving the row tall after it has gone would strand the note at full
   // height with nothing in it.
@@ -613,49 +616,23 @@ export function TaskItem({
                 and a control that sits under its text reads as belonging to
                 whatever comes next. */}
             <FormatBar
-              field={notesField}
-              onChange={(text, selection) => {
-                setDraft(text);
-                window.setTimeout(() => {
-                  notesField?.focus();
-                  notesField?.setSelectionRange(selection.start, selection.end);
-                }, 0);
-              }}
+              editor={notesRef.current}
+              onChanged={() => setNotesRevision((n) => n + 1)}
             />
-            <textarea
-              ref={(el) => {
-                inputRef.current = el;
-                setNotesField(el);
-              }}
-              className="task-edit is-notes"
-              onPaste={(event) => {
-                // Pasting a link over selected words names the link with those
-                // words, as in Notion. Anything else pastes as it always did.
-                const pasted = event.clipboardData.getData("text/plain");
-                const field = event.currentTarget;
-                if (!isUrl(pasted) || field.selectionStart === field.selectionEnd) {
-                  return;
+            <NotesEditor
+              editorRef={notesRef}
+              value={task.notes ?? ""}
+              caret={caretTarget.current}
+              onInput={() => setNotesRevision((n) => n + 1)}
+              onCommit={(markdown) => {
+                if (markdown !== (task.notes ?? "")) {
+                  onEdit(task.id, { notes: markdown });
                 }
-                event.preventDefault();
-                const next = pasteLink(
-                  field.value,
-                  field.selectionStart,
-                  field.selectionEnd,
-                  pasted.trim(),
-                );
-                setDraft(next.text);
-                window.setTimeout(
-                  () => field.setSelectionRange(next.caret, next.caret),
-                  0,
-                );
+                setEditing(null);
               }}
-              rows={2}
-              value={draft}
-              maxLength={8192}
-              placeholder="Add details…"
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={handleEditKey}
-              onBlur={commitEdit}
+              onCancel={() => setEditing(null)}
+              onTabOut={() => setTimeout(() => dueButtonRef.current?.focus(), 0)}
+              onTabBack={() => beginEdit("title")}
             />
             </>
           ) : isExpanded ? (
