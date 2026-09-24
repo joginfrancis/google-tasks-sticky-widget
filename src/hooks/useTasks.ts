@@ -606,6 +606,9 @@ export function useTasks(connected: boolean) {
           taskId: id,
           title: patch.title,
           notes: patch.notes,
+          // An emptied description means "remove it", which Google only hears
+          // as an explicit null — an empty string it simply stores.
+          clearNotes: patch.notes === "",
           due: patch.due ?? undefined,
           // Explicit, because IPC folds undefined and null together.
           clearDue: "due" in patch && patch.due === null,

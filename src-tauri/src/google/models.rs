@@ -72,8 +72,13 @@ pub struct TaskPatch {
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// `Some(None)` clears the description; `None` leaves it untouched.
+    ///
+    /// Clearing needs an explicit `null`: an empty string is a value Google
+    /// stores rather than a removal, which is why emptying a description in
+    /// the widget appeared to do nothing.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub notes: Option<String>,
+    pub notes: Option<Option<String>>,
     /// `Some(None)` clears the date; `None` leaves it untouched.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub due: Option<Option<String>>,
@@ -165,6 +170,39 @@ mod tests {
             hidden: false,
             web_view_link: Some("https://tasks.google.com/task/abc".into()),
         }
+    }
+
+    #[test]
+    fn clearing_a_description_sends_null_and_leaving_it_sends_nothing() {
+        // An empty string is a value Google keeps; only null removes the
+        // description. Getting this wrong makes "delete the details" silently
+        // do nothing at all.
+        let cleared = TaskPatch {
+            notes: Some(None),
+            ..Default::default()
+        };
+        assert_eq!(
+            serde_json::to_string(&cleared).expect("serialises"),
+            r#"{"notes":null}"#
+        );
+
+        let untouched = TaskPatch {
+            title: Some("Renamed".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            serde_json::to_string(&untouched).expect("serialises"),
+            r#"{"title":"Renamed"}"#
+        );
+
+        let written = TaskPatch {
+            notes: Some(Some("Details".into())),
+            ..Default::default()
+        };
+        assert_eq!(
+            serde_json::to_string(&written).expect("serialises"),
+            r#"{"notes":"Details"}"#
+        );
     }
 
     #[test]

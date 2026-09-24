@@ -481,6 +481,7 @@ pub fn update_task(
     task_id: String,
     title: Option<String>,
     notes: Option<String>,
+    clear_notes: Option<bool>,
     due: Option<String>,
     clear_due: Option<bool>,
 ) -> Result<Task, String> {
@@ -506,9 +507,17 @@ pub fn update_task(
         due.map(Some)
     };
 
+    // An emptied description is a removal, and Google only accepts that as an
+    // explicit null.
+    let notes_patch = if clear_notes.unwrap_or(false) {
+        Some(None)
+    } else {
+        notes.map(Some)
+    };
+
     let patch = crate::google::models::TaskPatch {
         title: title.map(|t| t.trim().to_string()),
-        notes,
+        notes: notes_patch,
         due: due_patch,
         status: None,
     };
