@@ -487,32 +487,6 @@
   border-top: 1px solid var(--border);
 }
 
-.task-action {
-  padding: 3px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease),
-    color var(--duration-fast) var(--ease);
-}
-
-.task-action:hover {
-  background: var(--surface-active);
-  color: var(--text);
-}
-
-.task-action.is-danger {
-  color: var(--danger);
-}
-
-.task-action.is-danger:hover {
-  background: color-mix(in srgb, var(--danger) 12%, transparent);
-  color: var(--danger);
-}
-
 /* The options button is always visible on an open row — hover-to-reveal makes
    sense for a dense list, not for the one row the user is working in. */
 .task-item.is-expanded .task-menu-trigger {
@@ -590,20 +564,7 @@ body.is-tall .task-item.is-expanded .task-notes {
   display: block;
 }
 
-/* A subtask's description takes the note's full width, not the subtask's.
-   The 22px indent that marks a row as nested is worth it on a title — it is
-   what shows the nesting — but on a paragraph it costs a word per line and
-   says nothing the row above has not already said. */
-.task-item.is-subtask .task-notes,
-.task-item.is-subtask .task-date-row,
-.task-item.is-subtask .task-actions {
-  margin-left: -22px;
-}
 
-.task-item.is-subtask .task-edit.is-notes {
-  width: calc(100% + 32px);
-  margin-left: -27px;
-}
 
 /* Rendered description ----------------------------------------------------- */
 
@@ -763,4 +724,83 @@ body.is-tall .task-item.is-expanded .task-notes {
 
 .fb-url-ok:hover {
   background: var(--surface-hover);
+}
+
+/* Full width when open ----------------------------------------------------- */
+
+/* Everything below the title line runs the whole width of the note, at both
+   levels, so an open task and an open subtask are the same shape.
+
+   The indents that make sense on a title — the checkbox column, and the extra
+   22px that marks a row as nested — say nothing on a paragraph below it. They
+   only cost words per line, which on a 340px note is the difference between
+   reading a description and squinting at it. The row's own left padding is
+   where the text stops; nothing goes past the edge of the note.
+
+   One variable holds how far back each level has to reach, so the two cases
+   differ by a number rather than by a second set of rules. */
+.task-item.is-expanded {
+  --open-outdent: 25px;
+  /* The right side reaches under the options button, which is only ever on
+     the title line. */
+  --open-reach: 26px;
+}
+
+.task-item.is-expanded.is-subtask {
+  --open-outdent: 47px;
+}
+
+.task-item.is-expanded .task-notes,
+.task-item.is-expanded .task-date-row,
+.task-item.is-expanded .task-actions,
+.task-item.is-expanded .format-bar,
+.task-item.is-expanded .subtask-add {
+  margin-left: calc(var(--open-outdent) * -1);
+  width: calc(100% + var(--open-outdent) + var(--open-reach));
+}
+
+/* A span by default, which would ignore the width above. */
+.task-item.is-expanded .task-notes {
+  display: block;
+  box-sizing: border-box;
+}
+
+.task-item.is-expanded .task-edit.is-notes {
+  /* 5px of it is the editor's own border and padding, pulled back so the text
+     sits exactly where it sat a moment ago. */
+  margin-left: calc((var(--open-outdent) + 5px) * -1);
+  width: calc(100% + var(--open-outdent) + var(--open-reach) + 10px);
+}
+
+/* The date row and the actions are flex rows; the extra width is for the
+   description, not for spreading buttons across the note. */
+.task-item.is-expanded .task-date-row,
+.task-item.is-expanded .task-actions {
+  justify-content: flex-start;
+}
+
+/* Icon actions ------------------------------------------------------------- */
+
+.task-action {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.task-action:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.task-action.is-danger:hover {
+  color: var(--danger);
 }

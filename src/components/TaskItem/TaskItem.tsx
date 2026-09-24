@@ -715,24 +715,77 @@ export function TaskItem({
           )}
 
           {isExpanded && (
+            /* Icons, not words. Three labelled buttons made a row of the note
+               look like a dialog; these say the same thing in a line each and
+               leave the description the width it wants. Every one keeps its
+               name on hover and for a screen reader. */
             <div className="task-actions">
               {canAddSubtask && !addingSubtask && (
-                <button className="task-action" onClick={openSubtaskField}>
-                  Add subtask
+                <button
+                  className="task-action"
+                  onClick={openSubtaskField}
+                  aria-label="Add subtask"
+                  title="Add subtask"
+                >
+                  <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+                    <path
+                      d="M3 3.5v6a2 2 0 0 0 2 2h4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M11.5 8.5v6M8.5 11.5h6"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                    />
+                  </svg>
                 </button>
               )}
               <button
                 className="task-action"
                 onClick={() => onOpenInGoogle(task.id)}
-                title="Starring, repeats and attachments live in Google Tasks"
+                aria-label="Open in Google Tasks"
+                title="Open in Google Tasks — starring, repeats and attachments live there"
               >
-                Open in Google
+                <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+                  <path
+                    d="M8.5 3H3.5v9.5H13V7.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M10 3h3v3M13 3L8 8"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </button>
               <button
                 className="task-action is-danger"
                 onClick={() => onDelete(task.id)}
+                aria-label="Delete task"
+                title="Delete"
               >
-                Delete
+                <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+                  <path
+                    d="M3.5 4.5h9M6.5 4.5V3h3v1.5M5 4.5l.6 8h4.8l.6-8"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </button>
             </div>
           )}
