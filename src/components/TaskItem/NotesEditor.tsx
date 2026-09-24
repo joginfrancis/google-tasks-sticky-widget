@@ -98,6 +98,9 @@ export function NotesEditor({
           const host = editorRef.current;
           if (host) {
             event.preventDefault();
+            // preventDefault alone leaves the event travelling up to the
+            // window listeners, which is how it reached the add-task box.
+            event.stopPropagation();
             const range = document.createRange();
             range.selectNodeContents(host);
             const selection = window.getSelection();

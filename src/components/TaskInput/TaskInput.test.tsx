@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // The component tree reaches Tauri through src/lib/window.ts, which caches the
@@ -227,5 +227,28 @@ describe("TaskInput", () => {
     expect(onSubmit).toHaveBeenLastCalledWith("Buy eggs", undefined);
     await waitFor(() => expect(input).toHaveValue(""));
     expect(input).toHaveFocus();
+  });
+});
+
+describe("TaskInput Ctrl+A", () => {
+  it("leaves Ctrl+A alone while a description is being edited", () => {
+    const noop = vi.fn().mockResolvedValue(null);
+    render(<TaskInput onSubmit={noop} onSubmitOutline={noop} />);
+
+    // A description editor is a contenteditable, not a textarea — the shortcut
+    // used to miss that and jump out of the description mid-edit.
+    const editor = document.createElement("div");
+    editor.setAttribute("contenteditable", "true");
+    document.body.appendChild(editor);
+    editor.focus();
+
+    fireEvent.keyDown(editor, { key: "a", ctrlKey: true });
+    expect(screen.queryByPlaceholderText("What needs doing?")).toBeNull();
+
+    // With focus outside any text, it still opens the add field.
+    fireEvent.keyDown(document.body, { key: "a", ctrlKey: true });
+    expect(screen.getByPlaceholderText("What needs doing?")).toBeInTheDocument();
+
+    editor.remove();
   });
 });

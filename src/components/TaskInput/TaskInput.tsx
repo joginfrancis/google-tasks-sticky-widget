@@ -58,7 +58,16 @@ export function TaskInput({ onSubmit, onSubmitOutline }: Props) {
     const onKey = (event: KeyboardEvent) => {
       if (event.ctrlKey && event.key.toLowerCase() === "a" && !open) {
         const target = event.target as HTMLElement;
-        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
+        // Anywhere text is being typed, Ctrl+A belongs to that text. The
+        // description editor is a contenteditable rather than a textarea, and
+        // missing that made Ctrl+A jump out of a description instead of
+        // selecting it.
+        const typing =
+          target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable ||
+          Boolean(target.closest?.('[contenteditable="true"]'));
+        if (!typing) {
           event.preventDefault();
           setOpen(true);
         }
