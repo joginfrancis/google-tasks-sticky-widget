@@ -227,6 +227,12 @@ export function SettingsPanel(props: Props) {
             <span className="settings-label">Version</span>
             <span className="settings-value">{useAppVersion()}</span>
           </div>
+          {/* Whose app this is. A widget with no name on it reads as one
+              nobody stands behind. */}
+          <div className="settings-row">
+            <span className="settings-label">Made by</span>
+            <span className="settings-value">John K J Francis</span>
+          </div>
           <p className="settings-note">
             Your tasks travel only between this computer and Google. Nothing is
             sent anywhere else, and no analytics are collected.

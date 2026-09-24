@@ -1,5 +1,7 @@
 # Sticky Widget
 
+By **[John K J Francis](https://github.com/joginfrancis)**.
+
 Your Google Tasks lists as sticky notes on the Windows desktop. One note per
 list, each its own small window with its own colour and its own place on
 screen. Everything you change is your real Google Tasks data, synced both ways
@@ -75,3 +77,19 @@ The design notes are worth reading before changing anything:
   Google project
 - [docs/publishing-and-verification.md](docs/publishing-and-verification.md) —
   Google's consent screen and verification
+
+## Credits
+
+Created and designed by **John K J Francis** — the idea, the product design,
+the interaction and visual design, and the architectural decisions behind how
+it works. Many of the harder problems here were solved by him directly: how a
+task drags between two separate note windows, how a plain-text description can
+carry formatting without lying to Google, and where the app should refuse to
+pretend an API limit does not exist.
+
+The code was written by Claude (Anthropic) working to his direction, review
+and repeated refinement.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). Copyright © 2026 John K J Francis.

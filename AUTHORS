@@ -1,0 +1,20 @@
+Sticky Widget was created by John K J Francis <johnkjfrancis@gmail.com>.
+
+His is the idea, the product design, the interaction and visual design, and
+the architecture the code follows. The design documents in this repository —
+SPEC.md, ARCHITECTURE.md, and the decisions recorded in docs/ — describe his
+choices, including several of the harder ones:
+
+  - dragging a task from one note window into another, across two separate
+    webviews, using native hit-testing rather than a web drag API that cannot
+    leave its own window;
+  - keeping one SQLite cache and one sync manager in the Rust core, with every
+    note window as a view of it, rather than a copy of the state per window;
+  - formatting descriptions as the plain text Google actually stores, so the
+    phone and the web app never see something the widget invented;
+  - naming what the Google Tasks API does not offer instead of hiding it.
+
+The code was written by Claude (Anthropic) under his direction, to his review,
+and through his repeated refinement.
+
+Copyright (c) 2026 John K J Francis. MIT licensed; see LICENSE.

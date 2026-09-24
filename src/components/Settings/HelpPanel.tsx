@@ -332,6 +332,13 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
             next.
           </p>
         </section>
+
+        <section className="help-section">
+          <p className="help-note">
+            Sticky Widget was created and designed by John K J Francis. Free
+            and open source under the MIT licence.
+          </p>
+        </section>
       </div>
     </div>
   );
