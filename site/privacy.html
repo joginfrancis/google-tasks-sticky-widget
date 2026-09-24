@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy policy &middot; Sticky Widget</title>
+    <meta
+      name="description"
+      content="What Sticky Widget does with your Google Tasks data: it stays on your computer and goes only to Google."
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="page-head">
+      <p class="eyebrow"><a href="index.html">Sticky Widget</a></p>
+      <h1>Privacy policy</h1>
+      <p class="fine">Last updated 23 September 2026.</p>
+    </header>
+
+    <main class="prose">
+      <section>
+        <h2>In short</h2>
+        <p>
+          Sticky Widget runs entirely on your own computer. It talks to Google
+          and to nobody else. There is no server belonging to this app, no
+          account to create, and no analytics of any kind. Nothing you write in
+          a task is ever seen by the developer.
+        </p>
+      </section>
+
+      <section>
+        <h2>What the app accesses</h2>
+        <p>
+          When you connect your account, the app asks Google for one permission:
+          <code>https://www.googleapis.com/auth/tasks</code>, which allows it to
+          see, create, edit and delete your Google Tasks and task lists. That is
+          the only permission requested, and it is what the app needs to show
+          your tasks and let you change them.
+        </p>
+        <p>
+          The app does not request access to your email, your contacts, your
+          calendar, your files, or your profile information, and it cannot read
+          them.
+        </p>
+      </section>
+
+      <section>
+        <h2>How your data is used</h2>
+        <p>
+          Your task lists, tasks, their notes and their due dates are read from
+          Google so they can be displayed on your desktop, and written back to
+          Google when you add, edit, complete, reorder or delete something. That
+          is the entire use.
+        </p>
+        <p>
+          Google user data is never used for advertising, never sold, never
+          shared with anyone, and never used to train any machine-learning or
+          artificial-intelligence model.
+        </p>
+      </section>
+
+      <section>
+        <h2>Where your data is stored</h2>
+        <ul>
+          <li>
+            <strong>Your tasks</strong> are cached in a database file on your
+            computer, so the notes can be drawn instantly and without a network
+            request. This file lives in your own Windows user folder.
+          </li>
+          <li>
+            <strong>The sign-in token</strong> that keeps you connected is
+            stored in Windows Credential Manager, the part of Windows built for
+            secrets. It is never written to a file, never written to the app's
+            logs, and never leaves your computer except to Google when the app
+            renews its access.
+          </li>
+          <li>
+            <strong>Your preferences</strong> &mdash; note positions, colours,
+            which lists are open &mdash; are kept in a small settings file on
+            your computer. These never leave it: Google Tasks has no such
+            fields, so they exist only locally.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>What is sent over the network</h2>
+        <p>
+          The app connects to Google's servers only: the Tasks API
+          (<code>googleapis.com</code>) and Google's sign-in service
+          (<code>accounts.google.com</code>, <code>oauth2.googleapis.com</code>).
+          It also checks GitHub for new versions of the app; that check sends
+          nothing about you or your tasks.
+        </p>
+        <p>
+          One exception is worth stating plainly: if you paste a link to an
+          image into a task description, the app displays that image, which
+          means your computer requests it from whatever website hosts it. That
+          website will see that a request was made, as it would if you opened
+          the link in a browser. No task content is sent with the request.
+        </p>
+      </section>
+
+      <section>
+        <h2>Sharing</h2>
+        <p>
+          Your data is not shared with anyone. There are no third-party
+          services, no trackers, no advertising networks, and no analytics
+          libraries in the app. The only party your data reaches is Google,
+          which is where it already lives.
+        </p>
+      </section>
+
+      <section>
+        <h2>Retention and deletion</h2>
+        <p>
+          The local cache exists only to serve you and can be removed at any
+          time. Choosing <strong>Disconnect</strong> in the app's settings
+          deletes the stored sign-in token immediately. Uninstalling the app
+          removes the app; to remove the cached data as well, delete the
+          <code>in.startupmission.stickywidget</code> folders in
+          <code>%LOCALAPPDATA%</code> and <code>%APPDATA%</code>.
+        </p>
+        <p>
+          You can also revoke the app's access to your Google account at any
+          time at
+          <a href="https://myaccount.google.com/permissions">
+            myaccount.google.com/permissions</a>. Deleting a task in the app
+          deletes it in Google Tasks, and deleting your tasks in Google is
+          handled by Google.
+        </p>
+      </section>
+
+      <section>
+        <h2>Google API Services User Data Policy</h2>
+        <p>
+          Sticky Widget's use and transfer of information received from Google
+          APIs adheres to the
+          <a href="https://developers.google.com/terms/api-services-user-data-policy">
+            Google API Services User Data Policy</a>, including the Limited Use
+          requirements.
+        </p>
+      </section>
+
+      <section>
+        <h2>Children</h2>
+        <p>
+          The app is not directed at children under 13 and collects no
+          information from anyone.
+        </p>
+      </section>
+
+      <section>
+        <h2>Changes</h2>
+        <p>
+          If this policy changes, the new version will be published on this page
+          with a new date above. The app's source code is public, so any change
+          in what it does with your data is visible in its history.
+        </p>
+      </section>
+
+      <section>
+        <h2>Contact</h2>
+        <p>
+          Questions or concerns:
+          <a href="https://github.com/joginfrancis/google-tasks-sticky-widget/issues">
+            open an issue on GitHub</a>.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        <a href="index.html">Home</a>
+        <span aria-hidden="true">&middot;</span>
+        <a href="https://github.com/joginfrancis/google-tasks-sticky-widget">GitHub</a>
+      </p>
+      <p class="fine">
+        Sticky Widget is an independent project and is not affiliated with or
+        endorsed by Google.
+      </p>
+    </footer>
+  </body>
+</html>
