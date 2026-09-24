@@ -483,45 +483,138 @@ static TALL_RESTORE: Mutex<Option<HashMap<String, (tauri::PhysicalPosition<i32>,
 /// Stretches a note to the full height of its monitor's work area while a long
 /// description is being read or edited, and puts it back afterwards.
 ///
-/// Only the height and top edge change — the note stays in its column, so the
-/// eye does not have to find it again. Restoring uses the exact geometry saved
-/// on the way up rather than recomputing it.
+/// The top edge stays where the user put it whenever the note can grow
+/// downwards from there. A window that jumps to the top of the screen every
+/// time a task is opened stops feeling like a note left somewhere on purpose —
+/// so moving it is a last resort, taken only when the remaining height below
+/// is not worth having.
 #[tauri::command]
 pub fn note_set_tall(window: tauri::Window, tall: bool) -> Result<(), String> {
     let label = window.label().to_string();
-    let mut guard = TALL_RESTORE.lock().map_err(|e| e.to_string())?;
-    let saved = guard.get_or_insert_with(HashMap::new);
 
     if tall {
-        if saved.contains_key(&label) {
-            return Ok(());
+        {
+            let guard = TALL_RESTORE.lock().map_err(|e| e.to_string())?;
+            if guard.as_ref().is_some_and(|m| m.contains_key(&label)) {
+                return Ok(());
+            }
         }
+
         let pos = window.outer_position().map_err(|e| e.to_string())?;
         let size = window.outer_size().map_err(|e| e.to_string())?;
         let Some(monitor) = window.current_monitor().map_err(|e| e.to_string())? else {
             return Ok(());
         };
         let area = monitor.work_area();
-        log::info!(
-            "note_set_tall: {}x{} at {},{} -> work area {}x{} at {},{}",
-            size.width, size.height, pos.x, pos.y,
-            area.size.width, area.size.height, area.position.x, area.position.y
-        );
         if size.height >= area.size.height {
             return Ok(());
         }
-        saved.insert(label, (pos, size));
-        window
-            .set_position(tauri::PhysicalPosition::new(pos.x, area.position.y))
-            .map_err(|e| e.to_string())?;
-        window
-            .set_size(tauri::PhysicalSize::new(size.width, area.size.height))
-            .map_err(|e| e.to_string())?;
-    } else if let Some((pos, size)) = saved.remove(&label) {
-        window.set_size(size).map_err(|e| e.to_string())?;
-        window.set_position(pos).map_err(|e| e.to_string())?;
+
+        let bottom = area.position.y + area.size.height as i32;
+        let room_below = (bottom - pos.y).max(0) as u32;
+
+        // Keep the top edge if two thirds of the screen is available below it;
+        // that is plenty for a description, and staying put is worth more than
+        // the last few hundred pixels.
+        let (y, height) = if room_below * 3 >= area.size.height * 2 {
+            (pos.y, room_below)
+        } else {
+            (area.position.y, area.size.height)
+        };
+
+        if height <= size.height {
+            return Ok(());
+        }
+
+        TALL_RESTORE
+            .lock()
+            .map_err(|e| e.to_string())?
+            .get_or_insert_with(HashMap::new)
+            .insert(label, (pos, size));
+
+        animate(&window, pos, size, tauri::PhysicalPosition::new(pos.x, y), tauri::PhysicalSize::new(size.width, height));
+    } else {
+        let saved = TALL_RESTORE
+            .lock()
+            .map_err(|e| e.to_string())?
+            .as_mut()
+            .and_then(|m| m.remove(&label));
+
+        if let Some((pos, size)) = saved {
+            let from_pos = window.outer_position().map_err(|e| e.to_string())?;
+            let from_size = window.outer_size().map_err(|e| e.to_string())?;
+            animate(&window, from_pos, from_size, pos, size);
+        }
     }
     Ok(())
+}
+
+/// How long a note takes to change size. Long enough to be followed by eye,
+/// short enough that nobody waits for it.
+const ANIMATION_MS: u64 = 180;
+const FRAMES: u64 = 12;
+
+/// Moves and resizes a window over a fifth of a second rather than in one jump.
+///
+/// A note that snaps to a new size reads as a glitch — the eye cannot tell
+/// whether the window moved or was replaced. Eased, the same change reads as
+/// the note making room for itself.
+fn animate(
+    window: &tauri::Window,
+    from_pos: tauri::PhysicalPosition<i32>,
+    from_size: tauri::PhysicalSize<u32>,
+    to_pos: tauri::PhysicalPosition<i32>,
+    to_size: tauri::PhysicalSize<u32>,
+) {
+    let window = window.clone();
+    std::thread::spawn(move || {
+        for frame in 1..=FRAMES {
+            // Ease-out: most of the movement happens early, which is what makes
+            // it feel like a response rather than a transition.
+            let t = frame as f64 / FRAMES as f64;
+            let eased = 1.0 - (1.0 - t).powi(3);
+
+            let lerp_i = |a: i32, b: i32| a + ((b - a) as f64 * eased).round() as i32;
+            let lerp_u = |a: u32, b: u32| {
+                (a as f64 + (b as f64 - a as f64) * eased).round().max(1.0) as u32
+            };
+
+            let _ = window.set_size(tauri::PhysicalSize::new(
+                lerp_u(from_size.width, to_size.width),
+                lerp_u(from_size.height, to_size.height),
+            ));
+            let _ = window.set_position(tauri::PhysicalPosition::new(
+                lerp_i(from_pos.x, to_pos.x),
+                lerp_i(from_pos.y, to_pos.y),
+            ));
+
+            std::thread::sleep(std::time::Duration::from_millis(ANIMATION_MS / FRAMES));
+        }
+        // Exactly the target, whatever the rounding did on the way.
+        let _ = window.set_size(to_size);
+        let _ = window.set_position(to_pos);
+    });
+}
+
+/// Puts every stretched note back to its own size.
+///
+/// Called before the app exits, because the window-state plugin saves whatever
+/// size a window has at that moment — and a note that was left tall for a long
+/// description would otherwise reopen tall for ever after.
+pub fn restore_all_sizes(app: &AppHandle) {
+    let Ok(mut guard) = TALL_RESTORE.lock() else {
+        return;
+    };
+    let Some(saved) = guard.as_mut() else {
+        return;
+    };
+
+    for (label, (pos, size)) in saved.drain() {
+        if let Some(window) = app.get_webview_window(&label) {
+            let _ = window.set_size(size);
+            let _ = window.set_position(pos);
+        }
+    }
 }
 
 /// Makes a note taller by `extra` physical pixels, so something that opened
@@ -566,11 +659,12 @@ pub fn note_grow(window: tauri::Window, extra: u32) -> Result<(), String> {
         pos.y
     };
 
-    window
-        .set_size(tauri::PhysicalSize::new(size.width, height))
-        .map_err(|e| e.to_string())?;
-    window
-        .set_position(tauri::PhysicalPosition::new(pos.x, y))
-        .map_err(|e| e.to_string())?;
+    animate(
+        &window,
+        pos,
+        size,
+        tauri::PhysicalPosition::new(pos.x, y),
+        tauri::PhysicalSize::new(size.width, height),
+    );
     Ok(())
 }

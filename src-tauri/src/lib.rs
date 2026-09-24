@@ -221,6 +221,12 @@ pub fn run() {
         })
         .on_window_event(|win, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
+                // A note left stretched for a long description must not have
+                // that size remembered: the window-state plugin writes down
+                // whatever it finds here, and the note would reopen tall for
+                // ever after.
+                notes::restore_all_sizes(win.app_handle());
+
                 if win.label() == notes::MAIN_LABEL {
                     // The main note hides rather than closing. With skipTaskbar
                     // on, exiting here would strand the user with a
@@ -260,6 +266,13 @@ pub fn run() {
             }
             _ => {}
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // Quitting from the tray never passes through CloseRequested, so
+            // the same restore has to happen on the way out.
+            if let tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit = event {
+                notes::restore_all_sizes(app);
+            }
+        });
 }

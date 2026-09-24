@@ -1,6 +1,6 @@
 [package]
 name = "sticky-widget"
-version = "0.1.1"
+version = "0.1.2"
 description = "Google Tasks as sticky notes on the Windows desktop"
 authors = ["Jogin Francis <johnkjfrancis@gmail.com>"]
 license = "MIT"
