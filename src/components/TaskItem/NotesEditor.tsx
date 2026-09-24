@@ -147,19 +147,37 @@ export function NotesEditor({
         const selection = window.getSelection();
         const hasSelection = selection ? !selection.isCollapsed : false;
 
-        if (isUrl(text) && isImageUrl(text) && !hasSelection) {
-          // A pasted picture address becomes the picture, not a line of text
-          // about one.
-          document.execCommand("insertImage", false, text.trim());
+        if (isUrl(text) && !hasSelection) {
+          const url = text.trim();
+          if (isImageUrl(url)) {
+            // The address says picture, so it goes in as one.
+            insertAtCaret(imageFor(url));
+          } else {
+            // It might still be a picture — plenty of image links carry no
+            // file extension — so it goes in as a link now and quietly turns
+            // into the picture if it turns out to load as one. A link that is
+            // only ever a link stays exactly as pasted.
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.textContent = url;
+            insertAtCaret(anchor);
+
+            void loadsAsImage(url).then((yes) => {
+              if (yes && anchor.isConnected) {
+                anchor.replaceWith(imageFor(url));
+                onInput();
+              }
+            });
+          }
         } else if (isUrl(text) && hasSelection) {
           // Pasting a link over words names the link with those words.
-          document.execCommand("createLink", false, text.trim());
-        } else if (isUrl(text)) {
-          document.execCommand("createLink", false, text.trim());
-          // execCommand with nothing selected does nothing, so write the
-          // address in first and link that.
-          if (!(window.getSelection()?.anchorNode as HTMLElement | null)?.parentElement?.closest("a")) {
-            document.execCommand("insertHTML", false, anchorHtml(text.trim()));
+          const anchor = document.createElement("a");
+          anchor.href = text.trim();
+          const selectionRange = window.getSelection()?.getRangeAt(0);
+          if (selectionRange) {
+            anchor.appendChild(selectionRange.extractContents());
+            selectionRange.insertNode(anchor);
+            caretAfter(anchor);
           }
         } else {
           document.execCommand("insertText", false, text);
@@ -180,14 +198,51 @@ export function NotesEditor({
   );
 }
 
-/** The address as its own link. Escaped: user input going into markup. */
-function anchorHtml(url: string): string {
-  const safe = url
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-  return `<a href="${safe}">${safe}</a>`;
+/** A picture element for an address the user pasted or asked for. */
+function imageFor(url: string): HTMLImageElement {
+  const img = document.createElement("img");
+  img.src = url;
+  return img;
+}
+
+/** Puts a node where the caret is, and leaves the caret after it. */
+function insertAtCaret(node: Node) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return;
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+  range.insertNode(node);
+  caretAfter(node);
+}
+
+function caretAfter(node: Node) {
+  const after = document.createRange();
+  after.setStartAfter(node);
+  after.collapse(true);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(after);
+}
+
+/**
+ * Whether an address actually serves a picture.
+ *
+ * Asked by trying to load it, because the address alone cannot say: plenty of
+ * real image links end in an id rather than `.jpg`, and plenty of pages end in
+ * something that looks like a file. The request is one the note would make
+ * anyway if this turns out to be a picture, and nothing about the description
+ * is sent with it.
+ */
+function loadsAsImage(url: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const probe = new Image();
+    const done = (result: boolean) => () => resolve(result);
+    probe.onload = done(true);
+    probe.onerror = done(false);
+    probe.src = url;
+    // A server that never answers should not leave this hanging.
+    window.setTimeout(() => resolve(false), 6000);
+  });
 }
 
 async function openLink(url: string) {
