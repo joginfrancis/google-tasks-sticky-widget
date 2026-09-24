@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import type { Task } from "../../types";
 import { dueDateInDays, formatDue, isOverdue } from "../../lib/date";
 import { DueChip } from "./DueChip";
 import { RichText } from "./RichText";
 import { isUrl, pasteLink, toggleMarker } from "../../lib/richText";
+import { growFull, growToFit } from "../../lib/windowFit";
 import "./TaskItem.css";
 
 /**
@@ -170,12 +170,15 @@ export function TaskItem({
    * how tall the user has made this note, so a character count would be right
    * only by accident.
    */
-  const isTall = useRef(false);
+  const releaseTall = useRef<null | (() => void)>(null);
   const setTall = (tall: boolean) => {
-    if (isTall.current === tall) return;
-    isTall.current = tall;
-    document.body.classList.toggle("is-tall", tall);
-    void invoke("note_set_tall", { tall }).catch(() => {});
+    if (tall === Boolean(releaseTall.current)) return;
+    if (tall) {
+      releaseTall.current = growFull();
+    } else {
+      releaseTall.current?.();
+      releaseTall.current = null;
+    }
   };
 
   useEffect(() => {
@@ -395,6 +398,27 @@ export function TaskItem({
       setBelowError(failure);
     }
   };
+
+  /**
+   * The options menu is drawn inside the note, so on a short note its lower
+   * half is simply not there — which is how "Add subtask", "Move to list" and
+   * "Delete" went missing. Take exactly the height it overflows by, and give
+   * it back when the menu closes.
+   */
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    let release: null | (() => void) = null;
+    // One frame later, so the menu has been laid out and can be measured.
+    const id = window.setTimeout(() => {
+      if (menuRef.current) release = growToFit(menuRef.current);
+    }, 0);
+    return () => {
+      window.clearTimeout(id);
+      release?.();
+    };
+    // `moveOpen` is in here because expanding the submenu makes the menu taller.
+  }, [menuOpen, moveOpen]);
 
   const openSubtaskField = () => {
     if (!isExpanded) onToggleExpand(task.id);
@@ -799,7 +823,7 @@ export function TaskItem({
               setMoveOpen(false);
             }}
           />
-          <div className="task-menu" role="menu">
+          <div className="task-menu" role="menu" ref={menuRef}>
             <button
               role="menuitem"
               className="task-menu-item"

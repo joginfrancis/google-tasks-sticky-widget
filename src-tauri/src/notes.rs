@@ -523,3 +523,54 @@ pub fn note_set_tall(window: tauri::Window, tall: bool) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// Makes a note taller by `extra` physical pixels, so something that opened
+/// inside it — a menu, a date picker — is not cut off by the window edge.
+///
+/// Unlike `note_set_tall` this takes only what is asked for: a six-item menu
+/// needs a hundred pixels, and throwing the window to full screen height for
+/// it would be a bigger surprise than the clipping it fixes. The original
+/// geometry is remembered in the same place, so `note_set_tall(false)` is what
+/// puts either kind of growth back.
+#[tauri::command]
+pub fn note_grow(window: tauri::Window, extra: u32) -> Result<(), String> {
+    if extra == 0 {
+        return Ok(());
+    }
+
+    let label = window.label().to_string();
+    let pos = window.outer_position().map_err(|e| e.to_string())?;
+    let size = window.outer_size().map_err(|e| e.to_string())?;
+    let Some(monitor) = window.current_monitor().map_err(|e| e.to_string())? else {
+        return Ok(());
+    };
+    let area = monitor.work_area();
+
+    let height = (size.height + extra).min(area.size.height);
+    if height <= size.height {
+        return Ok(());
+    }
+
+    let mut guard = TALL_RESTORE.lock().map_err(|e| e.to_string())?;
+    let saved = guard.get_or_insert_with(HashMap::new);
+    // Only the first growth records where the note started; a second one
+    // would otherwise record the already-grown size as the way back.
+    saved.entry(label).or_insert((pos, size));
+
+    // Growing downwards off the bottom of the screen would hide the very thing
+    // being made room for, so the note moves up instead when it has to.
+    let bottom = area.position.y + area.size.height as i32;
+    let y = if pos.y + height as i32 > bottom {
+        (bottom - height as i32).max(area.position.y)
+    } else {
+        pos.y
+    };
+
+    window
+        .set_size(tauri::PhysicalSize::new(size.width, height))
+        .map_err(|e| e.to_string())?;
+    window
+        .set_position(tauri::PhysicalPosition::new(pos.x, y))
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}

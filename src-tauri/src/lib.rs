@@ -114,6 +114,7 @@ pub fn run() {
             notes::note_window_at,
             notes::note_window_frame,
             notes::note_set_tall,
+            notes::note_grow,
             sync::note_activity,
             sync::request_sync,
             sync::sync_interval_secs,

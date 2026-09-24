@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { growForHeight } from "../../lib/windowFit";
 import "./DueChip.css";
 
 /** Calendar width and rough height, needed before it has been laid out. */
@@ -80,12 +81,19 @@ export function DueChip(props: Props) {
     };
 
     place();
+
+    // On a note shorter than the calendar, clamping alone still leaves the
+    // last week of the month off the bottom. Take the missing height from the
+    // window and give it straight back when the calendar closes.
+    const release = growForHeight(CALENDAR_H);
+
     // The note can be resized or scrolled while the calendar is open.
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
     return () => {
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
+      release();
     };
   }, [props.open]);
 
