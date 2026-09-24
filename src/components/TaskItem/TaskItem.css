@@ -672,3 +672,95 @@ body.is-tall .task-item.is-expanded .task-notes {
 .rt-image.is-broken {
   display: none;
 }
+
+/* Format bar --------------------------------------------------------------- */
+
+/* Sits directly above the description being edited, sharing its left edge so
+   the two read as one control rather than a bar floating over the row. */
+.format-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1px;
+  margin: 3px 0 3px -5px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+}
+
+.format-button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.format-button:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.fb-bold {
+  font-weight: 700;
+}
+
+.fb-italic {
+  font-style: italic;
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.fb-strike {
+  text-decoration: line-through;
+}
+
+/* The address field, shown in place when Link or Image is pressed. A separate
+   dialog for one line of text would be heavier than the thing it collects. */
+.fb-url {
+  display: flex;
+  gap: 4px;
+  flex: 1 0 100%;
+  padding: 3px 2px 1px;
+}
+
+.fb-url-input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.fb-url-input:focus {
+  border-color: var(--accent);
+}
+
+.fb-url-ok {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.fb-url-ok:hover {
+  background: var(--surface-hover);
+}

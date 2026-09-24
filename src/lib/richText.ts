@@ -17,6 +17,7 @@ export type Inline =
   | { kind: "bold"; text: string }
   | { kind: "italic"; text: string }
   | { kind: "code"; text: string }
+  | { kind: "strike"; text: string }
   | { kind: "link"; text: string; url: string }
   | { kind: "image"; url: string; alt: string };
 
@@ -84,6 +85,8 @@ const PATTERNS: {
     },
   },
   { re: /`([^`\n]+)`/g, build: (m) => ({ kind: "code", text: m[1] }) },
+  // Before the emphasis rules: `~~` would otherwise be read as two strays.
+  { re: /~~([^~\n]+)~~/g, build: (m) => ({ kind: "strike", text: m[1] }) },
   { re: /\*\*([^*\n]+)\*\*/g, build: (m) => ({ kind: "bold", text: m[1] }) },
   { re: /__([^_\n]+)__/g, build: (m) => ({ kind: "bold", text: m[1] }) },
   { re: /\*([^*\n]+)\*/g, build: (m) => ({ kind: "italic", text: m[1] }) },
@@ -190,5 +193,58 @@ export function toggleMarker(
     text: value.slice(0, start) + wrapped + value.slice(end),
     start: start + marker.length,
     end: end + marker.length,
+  };
+}
+
+/**
+ * Turns the lines the selection touches into bullets, or back into plain
+ * lines when they are all bullets already.
+ *
+ * Line-based, not selection-based: a bullet is a property of a line, and
+ * half-bulleting the middle of one would produce something nobody meant.
+ */
+export function toggleBullet(
+  value: string,
+  start: number,
+  end: number,
+): { text: string; start: number; end: number } {
+  const lineStart = value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+  const lineEndIndex = value.indexOf("\n", end);
+  const lineEnd = lineEndIndex === -1 ? value.length : lineEndIndex;
+
+  const block = value.slice(lineStart, lineEnd);
+  const lines = block.split("\n");
+  const allBulleted = lines.every(
+    (line) => line.trim() === "" || /^\s*[-*•]\s+/.test(line),
+  );
+
+  const next = lines
+    .map((line) => {
+      if (line.trim() === "") return line;
+      return allBulleted ? line.replace(/^(\s*)[-*•]\s+/, "$1") : `- ${line}`;
+    })
+    .join("\n");
+
+  const text = value.slice(0, lineStart) + next + value.slice(lineEnd);
+  return { text, start: lineStart, end: lineStart + next.length };
+}
+
+/** `[words](url)`, or a bare URL when nothing is selected. Same for images. */
+export function insertLink(
+  value: string,
+  start: number,
+  end: number,
+  url: string,
+  asImage = false,
+): { text: string; caret: number } {
+  const selected = value.slice(start, end);
+  const insert = asImage
+    ? `![${selected}](${url})`
+    : selected
+      ? `[${selected}](${url})`
+      : url;
+  return {
+    text: value.slice(0, start) + insert + value.slice(end),
+    caret: start + insert.length,
   };
 }

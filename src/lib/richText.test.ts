@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  insertLink,
+  toggleBullet,
   parseBlocks,
   parseInline,
   isImageUrl,
@@ -90,5 +92,32 @@ describe("editing helpers", () => {
     expect(isImageUrl("https://x.test/a")).toBe(false);
     expect(isUrl(" https://x.test ")).toBe(true);
     expect(isUrl("https://x.test and more")).toBe(false);
+  });
+});
+
+describe("toolbar helpers", () => {
+  it("bullets every line the selection touches, and unbullets them again", () => {
+    const on = toggleBullet("one\ntwo\nthree", 0, 7);
+    expect(on.text).toBe("- one\n- two\nthree");
+
+    const off = toggleBullet(on.text, on.start, on.end);
+    expect(off.text).toBe("one\ntwo\nthree");
+  });
+
+  it("leaves blank lines alone", () => {
+    expect(toggleBullet("one\n\ntwo", 0, 8).text).toBe("- one\n\n- two");
+  });
+
+  it("names a link with the selection, and writes an image differently", () => {
+    expect(insertLink("see docs", 4, 8, "https://x.test").text).toBe(
+      "see [docs](https://x.test)",
+    );
+    expect(insertLink("", 0, 0, "https://x.test/a.png", true).text).toBe(
+      "![](https://x.test/a.png)",
+    );
+  });
+
+  it("reads strikethrough", () => {
+    expect(parseInline("~~gone~~")).toEqual([{ kind: "strike", text: "gone" }]);
   });
 });

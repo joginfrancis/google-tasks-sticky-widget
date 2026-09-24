@@ -3,6 +3,7 @@ import type { Task } from "../../types";
 import { dueDateInDays, formatDue, isOverdue } from "../../lib/date";
 import { DueChip } from "./DueChip";
 import { RichText } from "./RichText";
+import { FormatBar } from "./FormatBar";
 import { isUrl, pasteLink, toggleMarker } from "../../lib/richText";
 import { growFull, growToFit } from "../../lib/windowFit";
 import "./TaskItem.css";
@@ -114,6 +115,8 @@ export function TaskItem({
    * a title wants and a paragraph does not.
    */
   const caretTarget = useRef<number | null>(null);
+  /** The description textarea, once mounted, so the format bar can act on it. */
+  const [notesField, setNotesField] = useState<HTMLTextAreaElement | null>(null);
   const [belowDraft, setBelowDraft] = useState("");
   const [belowError, setBelowError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -565,8 +568,25 @@ export function TaskItem({
           )}
 
           {editing === "notes" ? (
+            <>
+            {/* Above the box, not below: the buttons act on what is selected,
+                and a control that sits under its text reads as belonging to
+                whatever comes next. */}
+            <FormatBar
+              field={notesField}
+              onChange={(text, selection) => {
+                setDraft(text);
+                window.setTimeout(() => {
+                  notesField?.focus();
+                  notesField?.setSelectionRange(selection.start, selection.end);
+                }, 0);
+              }}
+            />
             <textarea
-              ref={inputRef}
+              ref={(el) => {
+                inputRef.current = el;
+                setNotesField(el);
+              }}
               className="task-edit is-notes"
               onPaste={(event) => {
                 // Pasting a link over selected words names the link with those
@@ -597,6 +617,7 @@ export function TaskItem({
               onKeyDown={handleEditKey}
               onBlur={commitEdit}
             />
+            </>
           ) : isExpanded ? (
             // Expanded always offers the notes slot, empty or not — "add
             // details" being invisible until notes exist is the main thing the

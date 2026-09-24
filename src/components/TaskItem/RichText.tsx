@@ -53,6 +53,8 @@ function renderInline(tokens: Inline[]) {
         return <strong key={i}>{token.text}</strong>;
       case "italic":
         return <em key={i}>{token.text}</em>;
+      case "strike":
+        return <s key={i}>{token.text}</s>;
       case "code":
         return (
           <code key={i} className="rt-code">
