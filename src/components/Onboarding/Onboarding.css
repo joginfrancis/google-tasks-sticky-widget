@@ -71,3 +71,26 @@
   color: var(--text-muted);
   line-height: 1.45;
 }
+
+/* A bar to grab and a way out. Without these the screen could be neither moved
+   nor dismissed, which matters more here than anywhere: signing in happens in
+   a browser window that this one was sitting on top of. */
+.onboarding-head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 7px;
+}
+
+.onboarding-head .icon-button {
+  /* Quiet until wanted: this screen is mostly one button, and a second one
+     competing with it would muddle the only instruction that matters. */
+  opacity: 0.5;
+}
+
+.onboarding-head .icon-button:hover {
+  opacity: 1;
+}

@@ -99,7 +99,15 @@ export default function App() {
 
     const changed = listen<boolean>("auth:changed", (event) => {
       setAccount({ connected: event.payload, authorizing: false });
-      if (event.payload) setAuthError(null);
+      if (event.payload) {
+        setAuthError(null);
+        // Signing in dropped the note out of the way of the browser; now that
+        // there are tasks to show, it goes back to wherever the user keeps it.
+        setWindowLayer((layer) => {
+          invoke("set_window_layer", { layer }).catch(() => {});
+          return layer;
+        });
+      }
     });
     const failed = listen<string>("auth:error", (event) =>
       setAuthError(event.payload),
@@ -114,6 +122,11 @@ export default function App() {
   const handleConnect = useCallback(() => {
     setAuthError(null);
     setAccount((a) => ({ connected: a?.connected ?? false, authorizing: true }));
+    // Sign-in happens in the browser, so the note must get out of its way: a
+    // window pinned above everything is exactly the wrong thing to be while
+    // the user is trying to click Allow underneath it. The layer is restored
+    // once there is a widget to show.
+    invoke("set_window_layer", { layer: "normal" }).catch(() => {});
     invoke("begin_google_auth").catch((err: unknown) => {
       setAuthError(String(err));
       setAccount((a) => ({ connected: a?.connected ?? false, authorizing: false }));
@@ -319,6 +332,7 @@ export default function App() {
       <div className="widget">
         <Onboarding
           onConnect={handleConnect}
+          onHide={hide}
           authorizing={account.authorizing}
           error={authError}
         />
