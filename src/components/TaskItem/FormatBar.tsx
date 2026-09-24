@@ -31,6 +31,8 @@ export function FormatBar({ editor, onChanged }: Props) {
    * back, a link would be applied to nothing at all.
    */
   const savedRange = useRef<Range | null>(null);
+  /** Where the field floats: beside the selection it is about to act on. */
+  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
 
   const remember = () => {
     const selection = window.getSelection();
@@ -52,6 +54,23 @@ export function FormatBar({ editor, onChanged }: Props) {
 
   const ask = (what: "link" | "image") => {
     remember();
+
+    // Beside the words being linked, not up in the toolbar: the address and
+    // the text it belongs to should be in the same glance, as they are in
+    // Docs or Notion.
+    const rect = savedRange.current?.getBoundingClientRect();
+    if (rect && (rect.width || rect.height)) {
+      // Clamped to the note: a selection near the right edge would otherwise
+      // push the field off the window it is supposed to be helping with.
+      const width = 232;
+      const edge = 8;
+      setAnchor({
+        top: Math.min(rect.bottom + 6, window.innerHeight - 44),
+        left: Math.max(edge, Math.min(rect.left, window.innerWidth - width - edge)),
+      });
+    } else {
+      setAnchor(null);
+    }
     setAsking(what);
   };
 
@@ -64,28 +83,49 @@ export function FormatBar({ editor, onChanged }: Props) {
   const submitUrl = () => {
     const address = url.trim();
     setUrl("");
+    const what = asking;
     setAsking(null);
-    if (!address || !editor) return;
-
-    // Back to the words that were selected when the button was pressed.
-    restore();
+    setAnchor(null);
+    if (!address || !editor || !what) return;
 
     // A bare "example.com" is a link the user meant; without a scheme nothing
     // downstream will treat it as one.
     const full = /^https?:\/\//i.test(address) ? address : `https://${address}`;
 
-    if (asking === "image") {
-      document.execCommand("insertImage", false, full);
+    // Built by hand rather than with execCommand("createLink"), which quietly
+    // does nothing when the selection has been restored rather than made by
+    // the user — which is exactly this case, every time.
+    const range = savedRange.current;
+    editor.focus();
+    if (!range) return;
+
+    const node =
+      what === "image" ? document.createElement("img") : document.createElement("a");
+
+    if (what === "image") {
+      (node as HTMLImageElement).src = full;
     } else {
-      const selection = window.getSelection();
-      if (selection && !selection.isCollapsed) {
-        document.execCommand("createLink", false, full);
+      (node as HTMLAnchorElement).href = full;
+      if (range.collapsed) {
+        // Nothing selected: the address becomes its own link, rather than an
+        // empty one nobody can see or click.
+        node.textContent = full;
       } else {
-        // Nothing selected: the address becomes its own link, rather than
-        // leaving an empty one the user cannot see or click.
-        document.execCommand("insertHTML", false, linkHtml(full));
+        node.appendChild(range.extractContents());
       }
     }
+
+    range.insertNode(node);
+
+    // Caret after whatever was just inserted, ready to keep typing.
+    const after = document.createRange();
+    after.setStartAfter(node);
+    after.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(after);
+    savedRange.current = after.cloneRange();
+
     onChanged();
   };
 
@@ -160,7 +200,10 @@ export function FormatBar({ editor, onChanged }: Props) {
       </Button>
 
       {asking && (
-        <div className="fb-url">
+        <div
+          className={`fb-url${anchor ? " is-floating" : ""}`}
+          style={anchor ? { top: anchor.top, left: anchor.left } : undefined}
+        >
           <input
             className="fb-url-input"
             autoFocus
@@ -204,16 +247,6 @@ export function FormatBar({ editor, onChanged }: Props) {
       )}
     </div>
   );
-}
-
-/** The address as its own link. Escaped: it is user input going into markup. */
-function linkHtml(url: string): string {
-  const safe = url
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-  return `<a href="${safe}">${safe}</a>`;
 }
 
 function Button({
