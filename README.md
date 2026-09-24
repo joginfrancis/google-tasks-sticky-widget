@@ -1,6 +1,6 @@
 # Sticky Widget
 
-By **[John K J Francis](https://github.com/joginfrancis)**.
+By **[Jogin Francis](https://github.com/joginfrancis)**.
 
 Your Google Tasks lists as sticky notes on the Windows desktop. One note per
 list, each its own small window with its own colour and its own place on
@@ -80,7 +80,7 @@ The design notes are worth reading before changing anything:
 
 ## Credits
 
-Created and designed by **John K J Francis** — the idea, the product design,
+Created and designed by **Jogin Francis** — the idea, the product design,
 the interaction and visual design, and the architectural decisions behind how
 it works. Many of the harder problems here were solved by him directly: how a
 task drags between two separate note windows, how a plain-text description can
@@ -92,4 +92,4 @@ and repeated refinement.
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE). Copyright © 2026 John K J Francis.
+MIT — see [LICENSE](LICENSE). Copyright © 2026 Jogin Francis.

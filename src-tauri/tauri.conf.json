@@ -45,8 +45,8 @@
       "icons/icon.ico"
     ],
     "createUpdaterArtifacts": true,
-    "publisher": "John K J Francis",
-    "copyright": "Copyright \u00a9 2026 John K J Francis",
+    "publisher": "Jogin Francis",
+    "copyright": "Copyright \u00a9 2026 Jogin Francis",
     "shortDescription": "Google Tasks as sticky notes",
     "longDescription": "Your Google Tasks lists as sticky notes on the Windows desktop, synced both ways with Google.",
     "licenseFile": "../LICENSE"

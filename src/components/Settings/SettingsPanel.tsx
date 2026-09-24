@@ -231,7 +231,7 @@ export function SettingsPanel(props: Props) {
               nobody stands behind. */}
           <div className="settings-row">
             <span className="settings-label">Made by</span>
-            <span className="settings-value">John K J Francis</span>
+            <span className="settings-value">Jogin Francis</span>
           </div>
           <p className="settings-note">
             Your tasks travel only between this computer and Google. Nothing is
