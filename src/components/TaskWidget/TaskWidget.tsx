@@ -403,6 +403,14 @@ export function TaskWidget(props: Props) {
   const reorderable = useMemo(() => active, [active]);
 
   const listRef = useRef<HTMLUListElement>(null);
+  /**
+   * The scrolling area, which exists even when the list does not.
+   *
+   * An empty note renders an empty state instead of a `<ul>`, so measuring the
+   * list gave nothing to aim at and a task dragged from another note was
+   * refused — the one note where a hand-off is most obviously wanted.
+   */
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   /**
    * Which slot the pointer is over, measured from live row geometry rather than
@@ -414,9 +422,10 @@ export function TaskWidget(props: Props) {
   const resolveIndex = useCallback(
     (client: { x: number; y: number }) => {
       const list = listRef.current;
-      if (!list) return null;
+      const host = list ?? bodyRef.current;
+      if (!host) return null;
 
-      const bounds = list.getBoundingClientRect();
+      const bounds = host.getBoundingClientRect();
       const slack = 24; // Forgive a little overshoot past either end.
       if (
         client.y < bounds.top - slack ||
@@ -426,6 +435,9 @@ export function TaskWidget(props: Props) {
       ) {
         return null;
       }
+
+      // Nothing in this note yet: the only slot there is, is the first one.
+      if (!list) return 0;
 
       const rows = Array.from(
         list.querySelectorAll<HTMLElement>("li.task-item"),
@@ -659,7 +671,14 @@ export function TaskWidget(props: Props) {
         />
       </div>
 
-      <div className="widget-body scroll-area">
+      <div
+        ref={bodyRef}
+        className={`widget-body scroll-area${
+          foreign && foreign.overIndex !== null && active.length === 0
+            ? " is-drop-target"
+            : ""
+        }`}
+      >
         {active.length === 0 && completed.length === 0 ? (
           <EmptyState />
         ) : (

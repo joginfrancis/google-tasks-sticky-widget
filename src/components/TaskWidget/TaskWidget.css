@@ -766,3 +766,12 @@
   font: inherit;
   cursor: pointer;
 }
+
+/* A task from another note is hovering an empty one. There are no rows to draw
+   a gap between, so the note itself says it will take the task. */
+.widget-body.is-drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -6px;
+  border-radius: var(--radius-row);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
