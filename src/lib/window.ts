@@ -28,3 +28,18 @@ export function windowLabel(): string {
 export function isMainNote(): boolean {
   return windowLabel() === MAIN_LABEL;
 }
+
+/**
+ * The task this window is a page for, if it is one.
+ *
+ * Page windows carry their task in the URL rather than in a registry, because
+ * unlike a note there is nothing to restore later: a page is opened, used and
+ * closed within one session.
+ */
+export function pageTarget(): { taskId: string; listId: string } | null {
+  if (!windowLabel().startsWith("page-")) return null;
+  const params = new URLSearchParams(window.location.search);
+  const taskId = params.get("page");
+  const listId = params.get("list");
+  return taskId && listId ? { taskId, listId } : null;
+}

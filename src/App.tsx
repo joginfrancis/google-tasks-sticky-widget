@@ -6,11 +6,12 @@ import type { Settings, ThemePreference, WindowLayer } from "./types";
 import { useTasks } from "./hooks/useTasks";
 import { useUpdate } from "./hooks/useUpdate";
 import { uiLog } from "./lib/log";
-import { windowLabel } from "./lib/window";
+import { pageTarget, windowLabel } from "./lib/window";
 import { TaskWidget } from "./components/TaskWidget/TaskWidget";
 import { SettingsPanel } from "./components/Settings/SettingsPanel";
 import { HelpPanel } from "./components/Settings/HelpPanel";
 import { Onboarding } from "./components/Onboarding/Onboarding";
+import { TaskPage } from "./components/TaskPage/TaskPage";
 
 import "./styles/tokens.css";
 import "./styles/base.css";
@@ -321,6 +322,18 @@ export default function App() {
 
   const quit = () => invoke("quit_app").catch(console.error);
 
+  /** Opens one task in a window of its own, centred on this screen. */
+  const openTaskPage = useCallback(
+    (taskId: string) => {
+      const listId = tasks.selectedListId;
+      if (!listId) return;
+      invoke("open_task_page", { taskListId: listId, taskId }).catch(
+        (err: unknown) => uiLog(`open task page failed: ${String(err)}`, "error"),
+      );
+    },
+    [tasks.selectedListId],
+  );
+
   const update = useUpdate();
 
   if (account === null) {
@@ -337,6 +350,25 @@ export default function App() {
           error={authError}
         />
       </div>
+    );
+  }
+
+  // A page window is the same app pointed at one task: same hook, same
+  // commands, so an edit here reaches the note behind it like any other.
+  const page = pageTarget();
+  if (page) {
+    const task = tasks.tasks.find((t) => t.id === page.taskId) ?? null;
+    return (
+      <TaskPage
+        task={task}
+        subtasks={tasks.tasks.filter((t) => t.parentId === page.taskId)}
+        loading={tasks.tasks.length === 0 && tasks.status.state === "syncing"}
+        onEdit={(id, patch) => void tasks.editTask(id, patch)}
+        onSetDue={(id, due) => void tasks.editTask(id, { due })}
+        onToggle={handleToggle}
+        onAddSubtask={tasks.addSubtask}
+        onOpenInGoogle={tasks.openInGoogle}
+      />
     );
   }
 
@@ -464,6 +496,7 @@ export default function App() {
       onDeleteList={tasks.deleteList}
       onAdd={tasks.addTask}
       onAddSubtask={tasks.addSubtask}
+      onOpenPage={openTaskPage}
       onAddBelow={tasks.addTaskBelow}
       onAddOutline={tasks.addOutline}
       onSelectList={tasks.selectList}

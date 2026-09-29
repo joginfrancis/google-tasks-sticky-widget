@@ -4,7 +4,8 @@
   "description": "Minimal capability for note windows. See ARCHITECTURE.md \u00a73 \u2014 the frontend gets window dragging only; every other privileged action goes through an explicit Rust command. The note-* pattern covers windows opened per task list; without it a new note loads with no IPC at all and every command silently fails.",
   "windows": [
     "main",
-    "note-*"
+    "note-*",
+    "page-*"
   ],
   "permissions": [
     "core:default",

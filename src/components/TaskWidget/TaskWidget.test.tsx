@@ -72,6 +72,7 @@ beforeEach(() => {
     onDeleteList: noopAsync,
     onAdd: noopAsync,
     onAddSubtask: noopAsync,
+    onOpenPage: noop,
     update: { state: { phase: "idle" }, install: noop, dismiss: noop },
     onAddBelow: vi.fn().mockResolvedValue({ id: "new-1" }),
     onAddOutline: noopAsync,

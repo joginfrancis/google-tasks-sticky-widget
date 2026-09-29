@@ -66,6 +66,8 @@ interface Props {
   onDeleteList: (id: string) => Promise<string | null>;
   onAdd: (title: string, notes?: string) => Promise<string | null>;
   onAddSubtask: (parentId: string, title: string) => Promise<string | null>;
+  /** Opens one task in its own window. */
+  onOpenPage: (id: string) => void;
   /** Adds a task right below another, at its level; returns the new id. */
   onAddBelow: (
     afterId: string,
@@ -732,6 +734,7 @@ export function TaskWidget(props: Props) {
                   isSelected={selectedIds.has(task.id)}
                   onSelect={selectIn("active")}
                   onAddSubtask={props.onAddSubtask}
+                  onOpenPage={props.onOpenPage}
                   onStartAddBelow={startAddBelow}
                   isAddingBelow={belowHostId === task.id}
                   belowIsSubtask={Boolean(belowTask?.parentId)}

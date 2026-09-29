@@ -61,6 +61,8 @@ interface Props {
    * Tasks is one level deep — so its absence is what hides the option.
    */
   onAddSubtask?: (parentId: string, title: string) => Promise<string | null>;
+  /** Opens this task in a window of its own. */
+  onOpenPage?: (id: string) => void;
   /**
    * Opens the "add a task below this one" field. The list owns which row has
    * it, so after each add the field can hop down onto the task just created
@@ -95,6 +97,7 @@ export function TaskItem({
   isSelected,
   onSelect,
   onAddSubtask,
+  onOpenPage,
   onStartAddBelow,
   isAddingBelow,
   belowIsSubtask,
@@ -653,6 +656,14 @@ export function TaskItem({
                 caretTarget.current = offsetAtPoint(event);
                 beginEdit("notes");
               }}
+              // Double-clicking a description asks for room, which is exactly
+              // what the page is. The single click has already opened the
+              // inline editor; this replaces it with the bigger one.
+              onDoubleClick={() => {
+                if (!onOpenPage) return;
+                setEditing(null);
+                onOpenPage(task.id);
+              }}
               title="Click to edit"
             >
               {task.notes ? <RichText text={task.notes} /> : "Add details…"}
@@ -757,6 +768,25 @@ export function TaskItem({
                       stroke="currentColor"
                       strokeWidth="1.4"
                       strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              )}
+              {onOpenPage && (
+                <button
+                  className="task-action"
+                  onClick={() => onOpenPage(task.id)}
+                  aria-label="Open in a window"
+                  title="Open in a window — room for the description"
+                >
+                  <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+                    <path
+                      d="M9.5 2.5h4v4M13.5 2.5L9 7M6.5 13.5h-4v-4M2.5 13.5L7 9"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                     />
                   </svg>
                 </button>
@@ -940,6 +970,18 @@ export function TaskItem({
             >
               {task.due ? "Change date" : "Add date"}
             </button>
+            {onOpenPage && (
+              <button
+                role="menuitem"
+                className="task-menu-item"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onOpenPage(task.id);
+                }}
+              >
+                Open in a window
+              </button>
+            )}
             {onStartAddBelow && !done && (
               <button
                 role="menuitem"

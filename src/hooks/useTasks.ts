@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import type { SyncStatus, Task, TaskList } from "../types";
-import { isMainNote } from "../lib/window";
+import { isMainNote, pageTarget } from "../lib/window";
 import type { OutlineEntry } from "../lib/outline";
 import { applyDrop, type DropTarget } from "../lib/dropTarget";
 
@@ -252,7 +252,10 @@ export function useTasks(connected: boolean) {
 
         // Which list *this window* shows. Extra notes are pinned to the list in
         // their own label; only `main` follows the persisted selection.
-        const pinned = await invoke<string | null>("note_list_id");
+        // A page window carries its list in its own URL: it is not a note, so
+        // the note registry knows nothing about it.
+        const pinned =
+          pageTarget()?.listId ?? (await invoke<string | null>("note_list_id"));
         if (cancelled) return;
 
         // Prefer the window's own list, then the saved one, but only if it

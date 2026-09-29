@@ -1,0 +1,239 @@
+/* One task, in a window with room. Deliberately quieter than the note: this is
+   somewhere to read and write, so the chrome gets out of the way and the text
+   is the only loud thing on screen. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-window);
+  overflow: hidden;
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.28);
+}
+
+.page.is-empty {
+  background: var(--surface);
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 7px 8px;
+  background: var(--surface-header);
+  border-bottom: 1px solid var(--border);
+}
+
+/* "Saving…" / "Saved", beside the close button. Small and calm: an autosave
+   that announces itself loudly is worse than one you have to trust. */
+.page-state {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  transition: opacity var(--duration) var(--ease);
+}
+
+.page-state.is-quiet {
+  opacity: 0;
+}
+
+.page-body {
+  flex: 1;
+  padding: 26px 20px 40px;
+}
+
+/* The line length, not the window width. A 900px page is welcome; a 900px line
+   of text is unreadable, which would waste the space it was given. */
+.page-column {
+  max-width: 660px;
+  margin: 0 auto;
+}
+
+.page-title {
+  margin: 0 0 10px;
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1.25;
+  cursor: text;
+  overflow-wrap: anywhere;
+}
+
+.page-title.is-done {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  cursor: default;
+}
+
+.page-title-edit {
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 2px 6px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1.25;
+  resize: none;
+  outline: none;
+  field-sizing: content;
+}
+
+.page-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.page-check,
+.page-quick,
+.page-link,
+.page-done {
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.page-check:hover,
+.page-quick:hover,
+.page-link:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/* The description fills the column and grows with what is in it. */
+.page .task-edit.is-notes.is-rich {
+  min-height: 240px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.page-count {
+  margin: 8px 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.page-count.is-over {
+  color: var(--danger);
+}
+
+/* Subtasks --------------------------------------------------------------- */
+
+.page-subtasks {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.page-subtasks h2 {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+}
+
+.page-subtasks ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.page-subtasks li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 0;
+}
+
+.page-sub-check {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-on-accent);
+  cursor: pointer;
+}
+
+.page-sub-check[aria-checked="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.page-subtasks .is-done {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.page-hint {
+  margin: 0 0 6px;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.page-sub-add {
+  width: 100%;
+  margin-top: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.page-sub-add:focus {
+  border-color: var(--accent);
+}
+
+/* Foot ------------------------------------------------------------------- */
+
+.page-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 32px;
+}
+
+.page-done {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.page-done:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.page-gone {
+  margin: auto;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  text-align: center;
+}

@@ -668,3 +668,118 @@ pub fn note_grow(window: tauri::Window, extra: u32) -> Result<(), String> {
     );
     Ok(())
 }
+
+/* -- Task pages ------------------------------------------------------------ */
+
+/// Label prefix for the one-task page windows.
+const PAGE_PREFIX: &str = "page-";
+/// How much of the screen a page takes, and the least it is worth opening at.
+const PAGE_FRACTION: f64 = 0.62;
+const PAGE_MIN: (f64, f64) = (720.0, 560.0);
+
+/// Opens a task in a window of its own, centred on the screen.
+///
+/// A sticky note is 340px wide because it is a note; a description you intend
+/// to actually write in is not. This is the same task, in a window with room —
+/// and a separate window rather than the note stretched, so the note stays
+/// where it was put and the page can be dragged to another screen.
+///
+/// One page per task: asking twice brings the existing one forward instead of
+/// opening a second view of the same text, which would let two editors fight
+/// over one description.
+#[tauri::command]
+pub fn open_task_page(
+    app: AppHandle,
+    window: tauri::Window,
+    task_list_id: String,
+    task_id: String,
+) -> Result<String, String> {
+    let label = format!("{PAGE_PREFIX}{}", sanitise(&task_id));
+
+    if let Some(existing) = app.get_webview_window(&label) {
+        let _ = existing.show();
+        let _ = existing.unminimize();
+        let _ = existing.set_focus();
+        return Ok(label);
+    }
+
+    // Sized and placed against the screen the note is on, not the primary one.
+    let monitor = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| app.primary_monitor().ok().flatten());
+
+    let (width, height, x, y) = match &monitor {
+        Some(monitor) => {
+            let scale = monitor.scale_factor();
+            let area = monitor.work_area();
+            let logical_w = area.size.width as f64 / scale;
+            let logical_h = area.size.height as f64 / scale;
+
+            let width = (logical_w * PAGE_FRACTION).max(PAGE_MIN.0).min(logical_w - 40.0);
+            let height = (logical_h * PAGE_FRACTION).max(PAGE_MIN.1).min(logical_h - 40.0);
+
+            let x = area.position.x as f64 / scale + (logical_w - width) / 2.0;
+            let y = area.position.y as f64 / scale + (logical_h - height) / 2.0;
+            (width, height, Some(x), Some(y))
+        }
+        None => (PAGE_MIN.0, PAGE_MIN.1, None, None),
+    };
+
+    let url = format!(
+        "index.html?page={}&list={}",
+        urlencode(&task_id),
+        urlencode(&task_list_id)
+    );
+
+    let mut builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
+        .title("Sticky Widget")
+        .inner_size(width, height)
+        .min_inner_size(420.0, 320.0)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .resizable(true)
+        // A page is somewhere you work for a while: it belongs in Alt+Tab, and
+        // it must not float above the windows you are reading from.
+        .skip_taskbar(false)
+        .always_on_top(false)
+        .focused(true);
+
+    if let (Some(x), Some(y)) = (x, y) {
+        builder = builder.position(x, y);
+    }
+
+    builder.build().map_err(|e| e.to_string())?;
+    log::info!("open_task_page: {label} for list {task_list_id}");
+    Ok(label)
+}
+
+/// Closes the calling page window. Ordinary notes are left alone.
+#[tauri::command]
+pub fn close_task_page(window: tauri::Window) -> Result<(), String> {
+    if !window.label().starts_with(PAGE_PREFIX) {
+        return Err("Not a task page.".into());
+    }
+    window.close().map_err(|e| e.to_string())
+}
+
+/// Window labels must be alphanumeric-ish; Google's task ids are not.
+fn sanitise(id: &str) -> String {
+    id.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect()
+}
+
+fn urlencode(value: &str) -> String {
+    value
+        .bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
