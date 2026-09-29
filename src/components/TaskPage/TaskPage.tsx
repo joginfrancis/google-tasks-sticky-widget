@@ -2,16 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Task } from "../../types";
 import { formatDue, dueDateInDays, isOverdue } from "../../lib/date";
-import { NotesEditor } from "../TaskItem/NotesEditor";
+import { NotesEditor, NOTES_LIMIT } from "../TaskItem/NotesEditor";
 import { FormatBar } from "../TaskItem/FormatBar";
 import { DueChip } from "../TaskItem/DueChip";
 import "./TaskPage.css";
 
-/** Google's ceiling for a description. Worth warning about before it bites. */
-const NOTES_LIMIT = 8192;
+/** Where the count appears — well before Google's ceiling, not at it. */
 const WARN_AT = 7000;
 /** How long to wait after typing stops before saving. */
-const AUTOSAVE_MS = 1500;
+const AUTOSAVE_MS = 2000;
 
 interface Props {
   task: Task | null;
@@ -233,9 +232,9 @@ export function TaskPage(props: Props) {
           />
 
           {length > WARN_AT && (
-            <p className={`page-count ${length > NOTES_LIMIT ? "is-over" : ""}`}>
+            <p className={`page-count ${length >= NOTES_LIMIT ? "is-over" : ""}`}>
               {length.toLocaleString()} of {NOTES_LIMIT.toLocaleString()} characters
-              {length > NOTES_LIMIT ? " — Google will refuse to save this" : ""}
+              {length >= NOTES_LIMIT ? " — this is as much as Google will store" : ""}
             </p>
           )}
 

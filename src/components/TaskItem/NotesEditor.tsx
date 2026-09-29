@@ -16,6 +16,16 @@ import { isImageUrl, isUrl } from "../../lib/richText";
  * start. The DOM owns the text while the editor is open, and it is read once
  * when the edit finishes.
  */
+/**
+ * Google's ceiling for a description.
+ *
+ * Enforced here rather than left to the API: a 400 arrives after the text is
+ * typed, and the widget would have to either lose the overflow or show an
+ * error for something the user cannot see the shape of. Refusing the keystroke
+ * is the honest version.
+ */
+export const NOTES_LIMIT = 8192;
+
 interface Props {
   /** Markdown to start from. */
   value: string;
@@ -67,6 +77,22 @@ export function NotesEditor({
       aria-multiline="true"
       aria-label="Description"
       data-placeholder="Add details…"
+      onBeforeInput={(event) => {
+        const host = editorRef.current;
+        if (!host) return;
+
+        const native = event.nativeEvent as InputEvent;
+        // Deletions and formatting are always allowed; only new text counts.
+        const adds = native.inputType?.startsWith("insert");
+        if (!adds) return;
+
+        const selection = window.getSelection();
+        const replacing = selection?.toString().length ?? 0;
+        const incoming = native.data?.length ?? 1;
+        if (host.innerText.length - replacing + incoming > NOTES_LIMIT) {
+          event.preventDefault();
+        }
+      }}
       onInput={onInput}
       onBlur={(event) => {
         // Focus moving into the toolbar is not the user leaving the editor —
@@ -141,8 +167,17 @@ export function NotesEditor({
         // Never paste other applications' HTML: a description that arrives
         // with a stylesheet attached is not a description any more.
         event.preventDefault();
-        const text = event.clipboardData.getData("text/plain");
-        if (!text) return;
+        const host = editorRef.current;
+        let text = event.clipboardData.getData("text/plain");
+        if (!text || !host) return;
+
+        // Paste what fits rather than refusing the whole thing: most of a long
+        // paste is usually what was wanted, and the count says what happened.
+        const selection0 = window.getSelection();
+        const room =
+          NOTES_LIMIT - host.innerText.length + (selection0?.toString().length ?? 0);
+        if (room <= 0) return;
+        if (text.length > room) text = text.slice(0, room);
 
         const selection = window.getSelection();
         const hasSelection = selection ? !selection.isCollapsed : false;
