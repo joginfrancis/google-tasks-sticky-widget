@@ -695,6 +695,7 @@ pub fn open_task_page(
     task_id: String,
 ) -> Result<String, String> {
     let label = format!("{PAGE_PREFIX}{}", sanitise(&task_id));
+    log::info!("open_task_page: asked for {label} (list {task_list_id})");
 
     if let Some(existing) = app.get_webview_window(&label) {
         let _ = existing.show();
@@ -727,8 +728,12 @@ pub fn open_task_page(
         None => (PAGE_MIN.0, PAGE_MIN.1, None, None),
     };
 
+    // The page's target rides in the URL fragment rather than the query.
+    // `WebviewUrl::App` is resolved as a *path* against the bundled assets, and
+    // a query string there is not reliably preserved — which is a silent
+    // failure, since the window opens and simply does not know what to show.
     let url = format!(
-        "index.html?page={}&list={}",
+        "index.html#page={}&list={}",
         urlencode(&task_id),
         urlencode(&task_list_id)
     );

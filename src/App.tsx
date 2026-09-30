@@ -326,10 +326,13 @@ export default function App() {
   const openTaskPage = useCallback(
     (taskId: string) => {
       const listId = tasks.selectedListId;
+      uiLog(`open task page: task=${taskId} list=${listId ?? "none"}`);
       if (!listId) return;
-      invoke("open_task_page", { taskListId: listId, taskId }).catch(
-        (err: unknown) => uiLog(`open task page failed: ${String(err)}`, "error"),
-      );
+      invoke("open_task_page", { taskListId: listId, taskId })
+        .then((label) => uiLog(`open task page opened ${String(label)}`))
+        .catch((err: unknown) =>
+          uiLog(`open task page failed: ${String(err)}`, "error"),
+        );
     },
     [tasks.selectedListId],
   );

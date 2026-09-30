@@ -38,7 +38,11 @@ export function isMainNote(): boolean {
  */
 export function pageTarget(): { taskId: string; listId: string } | null {
   if (!windowLabel().startsWith("page-")) return null;
-  const params = new URLSearchParams(window.location.search);
+  // The fragment is where the window was opened with it; the query is kept as
+  // a fallback so a page opened by an older build still works.
+  const params = new URLSearchParams(
+    window.location.hash.replace(/^#/, "") || window.location.search,
+  );
   const taskId = params.get("page");
   const listId = params.get("list");
   return taskId && listId ? { taskId, listId } : null;
