@@ -6,7 +6,7 @@ import type { Settings, ThemePreference, WindowLayer } from "./types";
 import { useTasks } from "./hooks/useTasks";
 import { useUpdate } from "./hooks/useUpdate";
 import { uiLog } from "./lib/log";
-import { pageTarget, windowLabel } from "./lib/window";
+import { isPageWindow, windowLabel } from "./lib/window";
 import { TaskWidget } from "./components/TaskWidget/TaskWidget";
 import { SettingsPanel } from "./components/Settings/SettingsPanel";
 import { HelpPanel } from "./components/Settings/HelpPanel";
@@ -322,6 +322,22 @@ export default function App() {
 
   const quit = () => invoke("quit_app").catch(console.error);
 
+  /**
+   * Which task this window is a page for, asked of Rust rather than read from
+   * the URL — a window opened at `index.html?x=1` resolves to a file that does
+   * not exist, which is a blank window and no way to say why.
+   */
+  const [pageTaskId, setPageTaskId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isPageWindow()) return;
+    invoke<[string, string] | null>("page_target")
+      .then((target) => {
+        if (target) setPageTaskId(target[0]);
+        else uiLog("page window with no task recorded", "error");
+      })
+      .catch((err: unknown) => uiLog(`page target failed: ${String(err)}`, "error"));
+  }, []);
+
   /** Opens one task in a window of its own, centred on this screen. */
   const openTaskPage = useCallback(
     (taskId: string) => {
@@ -358,14 +374,13 @@ export default function App() {
 
   // A page window is the same app pointed at one task: same hook, same
   // commands, so an edit here reaches the note behind it like any other.
-  const page = pageTarget();
-  if (page) {
-    const task = tasks.tasks.find((t) => t.id === page.taskId) ?? null;
+  if (isPageWindow()) {
+    const task = pageTaskId ? (tasks.tasks.find((t) => t.id === pageTaskId) ?? null) : null;
     return (
       <TaskPage
         task={task}
-        subtasks={tasks.tasks.filter((t) => t.parentId === page.taskId)}
-        loading={tasks.tasks.length === 0 && tasks.status.state === "syncing"}
+        subtasks={tasks.tasks.filter((t) => t.parentId === pageTaskId)}
+        loading={pageTaskId === null || tasks.tasks.length === 0}
         onEdit={(id, patch) => void tasks.editTask(id, patch)}
         onSetDue={(id, due) => void tasks.editTask(id, { due })}
         onToggle={handleToggle}

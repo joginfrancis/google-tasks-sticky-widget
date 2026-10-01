@@ -48,6 +48,14 @@ export function TaskPage(props: Props) {
 
   const notesRef = useRef<HTMLDivElement>(null);
   const autosave = useRef<number | null>(null);
+  /** Set once loading has gone on long enough to be worth explaining. */
+  const [slow, setSlow] = useState(false);
+
+  useEffect(() => {
+    if (!props.loading) return;
+    const id = window.setTimeout(() => setSlow(true), 4000);
+    return () => window.clearTimeout(id);
+  }, [props.loading]);
 
   const close = () => void invoke("close_task_page").catch(() => {});
 
@@ -76,7 +84,21 @@ export function TaskPage(props: Props) {
   }, []);
 
   if (props.loading) {
-    return <div className="page is-empty" data-tauri-drag-region />;
+    // A window with no chrome and nothing in it cannot be closed by clicking
+    // anything — which is what a blank page was. After a few seconds of
+    // nothing, say so and offer the way out.
+    return (
+      <div className="page" data-tauri-drag-region>
+        <PageHead onClose={close} />
+        {slow && (
+          <p className="page-gone">
+            This task is taking a while to load.
+            <br />
+            Escape, or the × above, closes this window.
+          </p>
+        )}
+      </div>
+    );
   }
 
   if (!task) {

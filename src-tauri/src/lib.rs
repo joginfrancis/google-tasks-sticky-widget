@@ -116,6 +116,7 @@ pub fn run() {
             notes::note_set_tall,
             notes::note_grow,
             notes::open_task_page,
+            notes::page_target,
             notes::close_task_page,
             sync::note_activity,
             sync::request_sync,

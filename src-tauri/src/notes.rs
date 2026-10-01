@@ -335,6 +335,10 @@ pub async fn open_note_window(
 pub fn note_list_id(app: AppHandle, window: tauri::Window) -> Result<Option<String>, String> {
     let label = window.label().to_string();
 
+    if let Some((_, list_id)) = page_target(window.clone()) {
+        return Ok(Some(list_id));
+    }
+
     if label == MAIN_LABEL {
         return app
             .state::<AppState>()
@@ -673,6 +677,25 @@ pub fn note_grow(window: tauri::Window, extra: u32) -> Result<(), String> {
 
 /// Label prefix for the one-task page windows.
 const PAGE_PREFIX: &str = "page-";
+
+/// Which task each page window is showing, by label.
+///
+/// Carried here rather than in the window's URL. `WebviewUrl::App` is resolved
+/// as a path into the bundled assets, so `index.html?x=1` and `index.html#x=1`
+/// are both asking for a file that does not exist — the window opens, the
+/// asset is never found, and all you get is a blank rectangle.
+static PAGE_TARGETS: Mutex<Option<HashMap<String, (String, String)>>> = Mutex::new(None);
+
+/// What task this page window is for: `(task_id, task_list_id)`.
+#[tauri::command]
+pub fn page_target(window: tauri::Window) -> Option<(String, String)> {
+    PAGE_TARGETS
+        .lock()
+        .ok()?
+        .as_ref()?
+        .get(window.label())
+        .cloned()
+}
 /// How much of the screen a page takes, and the least it is worth opening at.
 const PAGE_FRACTION: f64 = 0.62;
 const PAGE_MIN: (f64, f64) = (720.0, 560.0);
@@ -728,17 +751,16 @@ pub fn open_task_page(
         None => (PAGE_MIN.0, PAGE_MIN.1, None, None),
     };
 
-    // The page's target rides in the URL fragment rather than the query.
-    // `WebviewUrl::App` is resolved as a *path* against the bundled assets, and
-    // a query string there is not reliably preserved — which is a silent
-    // failure, since the window opens and simply does not know what to show.
-    let url = format!(
-        "index.html#page={}&list={}",
-        urlencode(&task_id),
-        urlencode(&task_list_id)
-    );
+    // Recorded before the window exists, so the page can ask for its task the
+    // moment it loads.
+    PAGE_TARGETS
+        .lock()
+        .map_err(|e| e.to_string())?
+        .get_or_insert_with(HashMap::new)
+        .insert(label.clone(), (task_id.clone(), task_list_id.clone()));
 
-    let mut builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
+    let mut builder =
+        WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
         .title("Sticky Widget")
         .inner_size(width, height)
         .min_inner_size(420.0, 320.0)
@@ -777,14 +799,4 @@ fn sanitise(id: &str) -> String {
         .collect()
 }
 
-fn urlencode(value: &str) -> String {
-    value
-        .bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                (b as char).to_string()
-            }
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
-}
+
