@@ -378,6 +378,10 @@ export default function App() {
     const task = pageTaskId ? (tasks.tasks.find((t) => t.id === pageTaskId) ?? null) : null;
     return (
       <TaskPage
+        color={tasks.selectedListId ? (listColors[tasks.selectedListId] ?? null) : null}
+        listTitle={
+          tasks.taskLists.find((l) => l.id === tasks.selectedListId)?.title ?? ""
+        }
         task={task}
         subtasks={tasks.tasks.filter((t) => t.parentId === pageTaskId)}
         loading={pageTaskId === null || tasks.tasks.length === 0}

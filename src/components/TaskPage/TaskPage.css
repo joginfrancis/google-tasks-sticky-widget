@@ -18,14 +18,28 @@
   background: var(--surface);
 }
 
+/* Slim, and the same colour as the page: a grey bar across the top made the
+   window read as a dialog asking something, rather than a page to write on. */
 .page-head {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 10px;
-  padding: 7px 8px;
+  padding: 8px 10px;
   background: var(--surface-header);
   border-bottom: 1px solid var(--border);
+}
+
+.page-spacer {
+  flex: 1;
+}
+
+/* Which note this page belongs to. */
+.page-where {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* "Saving…" / "Saved", beside the close button. Small and calm: an autosave
@@ -52,8 +66,44 @@
   margin: 0 auto;
 }
 
+/* The checkbox beside the title, as in the note — a row that says "this is a
+   task", not a toolbar button labelled with a sentence. */
+.page-headline {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.page-check {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  margin-top: 5px;
+  padding: 0;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-on-accent);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.page-check:hover {
+  border-color: var(--accent);
+}
+
+.page-check[aria-checked="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
 .page-title {
-  margin: 0 0 10px;
+  flex: 1;
+  margin: 0;
   font-size: 23px;
   font-weight: 600;
   line-height: 1.25;
@@ -68,8 +118,8 @@
 }
 
 .page-title-edit {
-  width: 100%;
-  margin: 0 0 10px;
+  flex: 1;
+  margin: 0;
   padding: 2px 6px;
   border: 1px solid var(--accent);
   border-radius: var(--radius-control);
@@ -84,17 +134,16 @@
   field-sizing: content;
 }
 
+/* Quiet, and no rule beneath it: the line under the controls boxed the whole
+   page into form-like sections. */
 .page-meta {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 16px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--border);
+  gap: 6px;
+  margin: 0 0 18px 33px;
 }
 
-.page-check,
 .page-quick,
 .page-link,
 .page-done {
@@ -110,22 +159,57 @@
     color var(--duration-fast) var(--ease);
 }
 
-.page-check:hover,
 .page-quick:hover,
 .page-link:hover {
   background: var(--surface-hover);
   color: var(--text);
 }
 
-/* The description fills the column and grows with what is in it. */
+/* The description is the page, not a field on it.
+   
+   A bordered box with a placeholder inside reads as a form waiting to be
+   filled in; writing happens on paper, not in a box. So: no border, no fill,
+   nothing but the text — and a left rule only while it is focused, which says
+   "this is live" without drawing a frame around it. */
 .page .task-edit.is-notes.is-rich {
-  min-height: 240px;
-  font-size: 15px;
-  line-height: 1.6;
+  min-height: 320px;
+  padding: 0 0 0 12px;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  font-size: 15.5px;
+  line-height: 1.65;
+  transition: border-color var(--duration) var(--ease);
+}
+
+.page .task-edit.is-notes.is-rich:focus {
+  border-left-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.page .task-edit.is-notes.is-rich:empty::before {
+  color: var(--text-muted);
+  opacity: 0.75;
+}
+
+/* The format bar belongs to the text, so it sits on the same left edge and
+   stays out of the way until the pointer is near it. */
+.page .format-bar {
+  margin: 0 0 10px 10px;
+  border-color: transparent;
+  background: transparent;
+  opacity: 0.55;
+  transition: opacity var(--duration) var(--ease);
+}
+
+.page .format-bar:hover,
+.page .task-edit.is-notes.is-rich:focus ~ .format-bar,
+.page-column:focus-within .format-bar {
+  opacity: 1;
 }
 
 .page-count {
-  margin: 8px 0 0;
+  margin: 8px 0 0 12px;
   font-size: var(--font-size-sm);
   color: var(--text-muted);
 }
@@ -137,8 +221,8 @@
 /* Subtasks --------------------------------------------------------------- */
 
 .page-subtasks {
-  margin-top: 28px;
-  padding-top: 16px;
+  margin-top: 36px;
+  padding-top: 18px;
   border-top: 1px solid var(--border);
 }
 
@@ -218,7 +302,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-top: 32px;
+  margin-top: 40px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
 }
 
 .page-done {
@@ -236,4 +322,16 @@
   padding: 40px 20px;
   color: var(--text-muted);
   text-align: center;
+}
+
+/* Wider windows get a wider column, up to the point where a line stops being
+   comfortable to read. Below that the page simply uses what it has. */
+.page-body {
+  padding: 34px 24px 48px;
+}
+
+@media (min-width: 900px) {
+  .page-column {
+    max-width: 720px;
+  }
 }

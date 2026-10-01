@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Task } from "../../types";
 import { formatDue, dueDateInDays, isOverdue } from "../../lib/date";
 import { NotesEditor, NOTES_LIMIT } from "../TaskItem/NotesEditor";
+import { readableText } from "../TaskWidget/ColorBar";
 import { FormatBar } from "../TaskItem/FormatBar";
 import { DueChip } from "../TaskItem/DueChip";
 import "./TaskPage.css";
@@ -13,6 +14,10 @@ const WARN_AT = 7000;
 const AUTOSAVE_MS = 2000;
 
 interface Props {
+  /** The note's colour, so the page is plainly that note's page. */
+  color: string | null;
+  /** Which list this task belongs to, shown in the header. */
+  listTitle: string;
   task: Task | null;
   subtasks: Task[];
   /** Null while the first sync is still loading. */
@@ -39,6 +44,24 @@ interface Props {
  */
 export function TaskPage(props: Props) {
   const { task } = props;
+
+  // The same derivation the note uses, so a coloured note opens a page in its
+  // own colour rather than a white dialog with no relation to where it came
+  // from. Text is derived, never picked, so nothing can end up unreadable.
+  const themeStyle = useMemo(() => {
+    if (!props.color) return undefined;
+    const text = readableText(props.color);
+    return {
+      "--surface": props.color,
+      "--surface-header": props.color,
+      "--surface-raised": props.color,
+      "--text": text,
+      "--text-secondary": `${text}bb`,
+      "--text-muted": `${text}88`,
+      "--border": `${text}22`,
+      "--border-strong": `${text}44`,
+    } as React.CSSProperties;
+  }, [props.color]);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [dueOpen, setDueOpen] = useState(false);
@@ -88,8 +111,8 @@ export function TaskPage(props: Props) {
     // anything — which is what a blank page was. After a few seconds of
     // nothing, say so and offer the way out.
     return (
-      <div className="page" data-tauri-drag-region>
-        <PageHead onClose={close} />
+      <div className="page" style={themeStyle} data-tauri-drag-region>
+        <PageHead onClose={close} listTitle={props.listTitle} />
         {slow && (
           <p className="page-gone">
             This task is taking a while to load.
@@ -105,8 +128,8 @@ export function TaskPage(props: Props) {
     // Deleted, or completed and hidden, while the page was open. Saying so is
     // better than an empty window that looks broken.
     return (
-      <div className="page" data-tauri-drag-region>
-        <PageHead onClose={close} />
+      <div className="page" style={themeStyle} data-tauri-drag-region>
+        <PageHead onClose={close} listTitle={props.listTitle} />
         <p className="page-gone">This task is no longer in the list.</p>
       </div>
     );
@@ -153,8 +176,8 @@ export function TaskPage(props: Props) {
   };
 
   return (
-    <div className="page">
-      <PageHead onClose={close}>
+    <div className="page" style={themeStyle}>
+      <PageHead onClose={close} listTitle={props.listTitle}>
         <span className={`page-state ${saved === "idle" ? "is-quiet" : ""}`}>
           {saved === "saving" ? "Saving…" : saved === "saved" ? "Saved" : ""}
         </span>
@@ -162,6 +185,28 @@ export function TaskPage(props: Props) {
 
       <div className="page-body scroll-area">
         <div className="page-column">
+          <div className="page-headline">
+            <button
+              className="page-check"
+              role="checkbox"
+              aria-checked={done}
+              aria-label={done ? "Mark not done" : "Complete this task"}
+              title={done ? "Mark not done" : "Complete this task"}
+              onClick={() => props.onToggle(task.id)}
+            >
+              {done && (
+                <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+                  <path
+                    d="M3.5 8.5l3 3 6-6.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </button>
           {editingTitle && !done ? (
             <textarea
               className="page-title-edit"
@@ -195,17 +240,9 @@ export function TaskPage(props: Props) {
               {task.title}
             </h1>
           )}
+          </div>
 
           <div className="page-meta">
-            <button
-              className="page-check"
-              role="checkbox"
-              aria-checked={done}
-              onClick={() => props.onToggle(task.id)}
-            >
-              {done ? "Completed" : "Mark complete"}
-            </button>
-
             <DueChip
               label={task.due ? formatDue(task.due) : "Add date"}
               overdue={!done && isOverdue(task.due)}
@@ -327,13 +364,19 @@ export function TaskPage(props: Props) {
 
 function PageHead({
   onClose,
+  listTitle,
   children,
 }: {
   onClose: () => void;
+  listTitle?: string;
   children?: React.ReactNode;
 }) {
   return (
     <header className="page-head" data-tauri-drag-region>
+      {/* Which note this page belongs to. The window is detached from it, so
+          something has to say where it came from. */}
+      <span className="page-where">{listTitle}</span>
+      <span className="page-spacer" />
       {children}
       <button
         className="icon-button"
