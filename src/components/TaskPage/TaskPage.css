@@ -55,15 +55,25 @@
 }
 
 .page-body {
+  display: flex;
   flex: 1;
-  padding: 26px 20px 40px;
+  min-height: 0;
+  padding: 24px 32px 32px;
 }
 
-/* The line length, not the window width. A 900px page is welcome; a 900px line
-   of text is unreadable, which would waste the space it was given. */
+/* The page uses the window it was given.
+   
+   This started as a centred 660px column, on the reasoning that a very long
+   line is tiring to read. In a window you opened *because* you wanted room,
+   that reasoning loses: the empty margins read as waste, not as typography. So
+   the text runs to the edges, like a document, and the window itself is the
+   measure — make it narrower and the text follows. */
 .page-column {
-  max-width: 660px;
-  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
 }
 
 /* The checkbox beside the title, as in the note — a row that says "this is a
@@ -172,7 +182,8 @@
    nothing but the text — and a left rule only while it is focused, which says
    "this is live" without drawing a frame around it. */
 .page .task-edit.is-notes.is-rich {
-  min-height: 320px;
+  flex: 1 1 auto;
+  min-height: 200px;
   padding: 0 0 0 12px;
   border: none;
   border-left: 2px solid transparent;
@@ -324,14 +335,10 @@
   text-align: center;
 }
 
-/* Wider windows get a wider column, up to the point where a line stops being
-   comfortable to read. Below that the page simply uses what it has. */
-.page-body {
-  padding: 34px 24px 48px;
-}
-
-@media (min-width: 900px) {
-  .page-column {
-    max-width: 720px;
+/* Breathing room grows with the window, so a maximised page does not have its
+   text pinned against the glass. */
+@media (min-width: 1100px) {
+  .page-body {
+    padding: 28px 56px 36px;
   }
 }
