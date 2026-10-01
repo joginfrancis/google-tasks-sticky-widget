@@ -710,8 +710,13 @@ const PAGE_MIN: (f64, f64) = (720.0, 560.0);
 /// One page per task: asking twice brings the existing one forward instead of
 /// opening a second view of the same text, which would let two editors fight
 /// over one description.
+/// Async for the same reason `open_note_window` is, and it must stay that way:
+/// a synchronous command holds the main thread, and building a window needs the
+/// event loop that thread is running. Sync, this deadlocked — the window
+/// appeared as a blank rectangle that could not even be closed, and the command
+/// never returned.
 #[tauri::command]
-pub fn open_task_page(
+pub async fn open_task_page(
     app: AppHandle,
     window: tauri::Window,
     task_list_id: String,
