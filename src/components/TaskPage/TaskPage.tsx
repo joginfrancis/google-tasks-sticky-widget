@@ -45,21 +45,20 @@ interface Props {
 export function TaskPage(props: Props) {
   const { task } = props;
 
-  // The same derivation the note uses, so a coloured note opens a page in its
-  // own colour rather than a white dialog with no relation to where it came
-  // from. Text is derived, never picked, so nothing can end up unreadable.
+  /**
+   * The note's colour becomes the *desk*, not the page.
+   *
+   * Washing the whole window in it left nothing to write on: the text, the
+   * controls and the background were one flat field, and the writing area was
+   * invisible. A sheet of paper on a coloured desk is the older and better
+   * idea — the colour still says which note this came from, and the text has
+   * somewhere to sit.
+   */
   const themeStyle = useMemo(() => {
     if (!props.color) return undefined;
-    const text = readableText(props.color);
     return {
-      "--surface": props.color,
-      "--surface-header": props.color,
-      "--surface-raised": props.color,
-      "--text": text,
-      "--text-secondary": `${text}bb`,
-      "--text-muted": `${text}88`,
-      "--border": `${text}22`,
-      "--border-strong": `${text}44`,
+      "--desk": props.color,
+      "--desk-ink": readableText(props.color),
     } as React.CSSProperties;
   }, [props.color]);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -183,8 +182,8 @@ export function TaskPage(props: Props) {
         </span>
       </PageHead>
 
-      <div className="page-body scroll-area">
-        <div className="page-column">
+      <div className="page-body">
+        <div className="page-sheet scroll-area">
           <div className="page-headline">
             <button
               className="page-check"

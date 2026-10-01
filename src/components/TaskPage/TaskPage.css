@@ -1,12 +1,9 @@
-/* One task, in a window with room. Deliberately quieter than the note: this is
-   somewhere to read and write, so the chrome gets out of the way and the text
-   is the only loud thing on screen. */
-
 .page {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--surface);
+  /* The desk: the note's colour, or a neutral when the note has none. */
+  background: var(--desk, var(--surface-hover));
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--radius-window);
@@ -15,18 +12,17 @@
 }
 
 .page.is-empty {
-  background: var(--surface);
+  background: var(--desk, var(--surface));
 }
 
-/* Slim, and the same colour as the page: a grey bar across the top made the
-   window read as a dialog asking something, rather than a page to write on. */
+/* Slim and the colour of the desk, so the window reads as one object. */
 .page-head {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
-  background: var(--surface-header);
-  border-bottom: 1px solid var(--border);
+  padding: 8px 12px;
+  color: var(--desk-ink, var(--text));
+  background: transparent;
 }
 
 .page-spacer {
@@ -36,17 +32,24 @@
 /* Which note this page belongs to. */
 .page-where {
   font-size: var(--font-size-sm);
-  color: var(--text-muted);
+  opacity: 0.6;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-/* "Saving…" / "Saved", beside the close button. Small and calm: an autosave
-   that announces itself loudly is worse than one you have to trust. */
+.page-head .icon-button {
+  color: inherit;
+  opacity: 0.65;
+}
+
+.page-head .icon-button:hover {
+  opacity: 1;
+}
+
 .page-state {
   font-size: var(--font-size-sm);
-  color: var(--text-muted);
+  opacity: 0.6;
   transition: opacity var(--duration) var(--ease);
 }
 
@@ -58,26 +61,28 @@
   display: flex;
   flex: 1;
   min-height: 0;
-  padding: 24px 32px 32px;
+  padding: 0 14px 14px;
 }
 
-/* The page uses the window it was given.
-   
-   This started as a centred 660px column, on the reasoning that a very long
-   line is tiring to read. In a window you opened *because* you wanted room,
-   that reasoning loses: the empty margins read as waste, not as typography. So
-   the text runs to the edges, like a document, and the window itself is the
-   measure — make it narrower and the text follows. */
-.page-column {
+/* The paper. Everything you work on sits on this, and it is deliberately not
+   the desk colour: a writing area has to be visibly somewhere. */
+.page-sheet {
   display: flex;
   flex-direction: column;
   flex: 1;
-  width: 100%;
   min-height: 0;
+  padding: 30px 34px 26px;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.12);
 }
 
-/* The checkbox beside the title, as in the note — a row that says "this is a
-   task", not a toolbar button labelled with a sentence. */
+@media (min-width: 1100px) {
+  .page-sheet {
+    padding: 36px 56px 30px;
+  }
+}
+
 .page-headline {
   display: flex;
   align-items: flex-start;
@@ -154,6 +159,11 @@
   margin: 0 0 18px 33px;
 }
 
+/* The subtask field and the footer are furniture, not paper. */
+.page-sub-add {
+  background: color-mix(in srgb, var(--desk, var(--accent)) 10%, var(--surface));
+}
+
 .page-quick,
 .page-link,
 .page-done {
@@ -175,52 +185,56 @@
   color: var(--text);
 }
 
-/* The description is the page, not a field on it.
+/* The writing area.
    
-   A bordered box with a placeholder inside reads as a form waiting to be
-   filled in; writing happens on paper, not in a box. So: no border, no fill,
-   nothing but the text — and a left rule only while it is focused, which says
-   "this is live" without drawing a frame around it. */
+   Tinted with a wash of the desk colour so it is plainly *the* place to
+   write — against plain paper it vanished, which is exactly what you saw. The
+   tint deepens and an accent edge appears while it has focus. */
 .page .task-edit.is-notes.is-rich {
   flex: 1 1 auto;
-  min-height: 200px;
-  padding: 0 0 0 12px;
-  border: none;
-  border-left: 2px solid transparent;
-  border-radius: 0;
-  background: transparent;
+  min-height: 220px;
+  margin-top: 4px;
+  padding: 16px 18px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--desk, var(--accent)) 18%, var(--surface));
   font-size: 15.5px;
   line-height: 1.65;
-  transition: border-color var(--duration) var(--ease);
+  transition: background var(--duration) var(--ease),
+    border-color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease);
+}
+
+.page .task-edit.is-notes.is-rich:hover {
+  background: color-mix(in srgb, var(--desk, var(--accent)) 24%, var(--surface));
 }
 
 .page .task-edit.is-notes.is-rich:focus {
-  border-left-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--desk, var(--accent)) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .page .task-edit.is-notes.is-rich:empty::before {
   color: var(--text-muted);
-  opacity: 0.75;
 }
 
-/* The format bar belongs to the text, so it sits on the same left edge and
-   stays out of the way until the pointer is near it. */
+/* Belongs to the text below it, and stays quiet until wanted. */
 .page .format-bar {
-  margin: 0 0 10px 10px;
+  margin: 0;
   border-color: transparent;
   background: transparent;
-  opacity: 0.55;
+  opacity: 0.5;
   transition: opacity var(--duration) var(--ease);
 }
 
-.page .format-bar:hover,
-.page .task-edit.is-notes.is-rich:focus ~ .format-bar,
-.page-column:focus-within .format-bar {
+.page-sheet:focus-within .format-bar,
+.page .format-bar:hover {
   opacity: 1;
 }
 
 .page-count {
-  margin: 8px 0 0 12px;
+  margin: 8px 0 0;
   font-size: var(--font-size-sm);
   color: var(--text-muted);
 }
