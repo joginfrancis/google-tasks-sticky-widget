@@ -183,7 +183,8 @@ export function TaskPage(props: Props) {
       </PageHead>
 
       <div className="page-body">
-        <div className="page-sheet scroll-area">
+        <div className="page-sheet">
+          <div className="page-top">
           <div className="page-headline">
             <button
               className="page-check"
@@ -242,8 +243,11 @@ export function TaskPage(props: Props) {
           </div>
 
           <div className="page-meta">
+            {/* The chip opens the calendar, so a date of your own is always
+                one click away — the quick picks are a shortcut past it, not a
+                replacement for it. */}
             <DueChip
-              label={task.due ? formatDue(task.due) : "Add date"}
+              label={task.due ? formatDue(task.due) : "Pick a date"}
               overdue={!done && isOverdue(task.due)}
               done={done}
               open={dueOpen}
@@ -255,25 +259,30 @@ export function TaskPage(props: Props) {
                 props.onSetDue(task.id, next);
               }}
             />
-            {!task.due && (
-              <>
-                <button
-                  className="page-quick"
-                  onClick={() => props.onSetDue(task.id, dueDateInDays(0))}
-                >
-                  Today
-                </button>
-                <button
-                  className="page-quick"
-                  onClick={() => props.onSetDue(task.id, dueDateInDays(1))}
-                >
-                  Tomorrow
-                </button>
-              </>
+            <button
+              className="page-quick"
+              onClick={() => props.onSetDue(task.id, dueDateInDays(0))}
+            >
+              Today
+            </button>
+            <button
+              className="page-quick"
+              onClick={() => props.onSetDue(task.id, dueDateInDays(1))}
+            >
+              Tomorrow
+            </button>
+            {task.due && (
+              <button
+                className="page-quick"
+                onClick={() => props.onSetDue(task.id, null)}
+              >
+                Clear
+              </button>
             )}
           </div>
 
           <FormatBar editor={notesRef.current} onChanged={scheduleSave} />
+          </div>
 
           <NotesEditor
             editorRef={notesRef}
@@ -289,6 +298,7 @@ export function TaskPage(props: Props) {
             onTabBack={() => {}}
           />
 
+          <div className="page-bottom">
           {length > WARN_AT && (
             <p className={`page-count ${length >= NOTES_LIMIT ? "is-over" : ""}`}>
               {length.toLocaleString()} of {NOTES_LIMIT.toLocaleString()} characters
@@ -296,6 +306,10 @@ export function TaskPage(props: Props) {
             </p>
           )}
 
+          {/* Google Tasks is one level deep, so a subtask cannot have
+              subtasks — offering the section on one is an offer that cannot
+              be honoured. */}
+          {!task.parentId && (
           <section className="page-subtasks">
             <h2>Subtasks</h2>
             {props.subtasks.length === 0 && (
@@ -346,11 +360,17 @@ export function TaskPage(props: Props) {
               />
             )}
           </section>
+          )}
 
+          </div>
+
+          {/* On the sheet, not inside the scrolling part: the way out of a
+              page should never be something you have to scroll to find. */}
           <div className="page-foot">
             <button className="page-link" onClick={() => props.onOpenInGoogle(task.id)}>
               Open in Google Tasks
             </button>
+            <span className="page-escape">Escape closes</span>
             <button className="page-done" onClick={close}>
               Done
             </button>

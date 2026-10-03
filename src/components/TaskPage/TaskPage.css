@@ -5,10 +5,12 @@
   /* The desk: the note's colour, or a neutral when the note has none. */
   background: var(--desk, var(--surface-hover));
   color: var(--text);
-  border: 1px solid var(--border);
+  /* Hairline, not a frame: the shadow is what separates the window from the
+     desktop, and a visible border on top of it reads as a dialog. */
+  border: 1px solid color-mix(in srgb, var(--desk-ink, #000) 10%, transparent);
   border-radius: var(--radius-window);
   overflow: hidden;
-  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.24);
 }
 
 .page.is-empty {
@@ -61,7 +63,8 @@
   display: flex;
   flex: 1;
   min-height: 0;
-  padding: 0 14px 14px;
+  /* The desk shows as a narrow surround, like the card stock under a pad. */
+  padding: 0 12px 12px;
 }
 
 /* The paper. Everything you work on sits on this, and it is deliberately not
@@ -70,11 +73,40 @@
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-width: 0;
   min-height: 0;
-  padding: 30px 34px 26px;
-  border-radius: 12px;
-  background: var(--surface);
-  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.12);
+  padding: 30px 34px 22px;
+  border-radius: 10px;
+  /* Warm, not clinical. A sheet of paper is never #fff, and under a coloured
+     desk a cold white reads as a dialog box sitting on top of the note. */
+  background: color-mix(in srgb, #fffaf4 92%, var(--surface));
+  /* A sheet lifted off the desk, not a panel with an outline. */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 6px 18px rgba(0, 0, 0, 0.08);
+  /* The sheet itself never scrolls. The title, the controls and the footer
+     stay put, and only the text moves — the way a pad behaves, and the way you
+     keep your bearings in a long note. */
+  overflow: hidden;
+}
+
+.page-top {
+  flex: 0 0 auto;
+}
+
+/* Subtasks and the footer: fixed to the bottom of the sheet, with their own
+   scroll only if the subtask list grows long. */
+.page-bottom {
+  /* Never crushed to a sliver: on a short window the text gives up the room,
+     because the text can scroll and a two-line subtask list cannot. */
+  flex: 0 1 auto;
+  /* Enough for the heading, a couple of subtasks and the add field: less
+     than that and the section is a label with nothing under it. */
+  min-height: 134px;
+  max-height: 42%;
+  overflow-y: auto;
+  padding-top: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--desk-ink, #000) 20%, transparent)
+    transparent;
 }
 
 @media (min-width: 1100px) {
@@ -162,9 +194,29 @@
 /* The subtask field and the footer are furniture, not paper. */
 .page-sub-add {
   background: color-mix(in srgb, var(--desk, var(--accent)) 10%, var(--surface));
+  border-color: color-mix(in srgb, var(--desk-ink, #000) 10%, transparent);
 }
 
-.page-quick,
+/* Quieter than the title they sit under: these are occasional, and three
+   outlined buttons in a row were competing with the task's own name. */
+.page-quick {
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.page-quick:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
 .page-link,
 .page-done {
   padding: 5px 11px;
@@ -179,7 +231,6 @@
     color var(--duration-fast) var(--ease);
 }
 
-.page-quick:hover,
 .page-link:hover {
   background: var(--surface-hover);
   color: var(--text);
@@ -190,29 +241,80 @@
    Tinted with a wash of the desk colour so it is plainly *the* place to
    write — against plain paper it vanished, which is exactly what you saw. The
    tint deepens and an accent edge appears while it has focus. */
+/* The writing area: a pad on the sheet.
+   
+   Ruled, faintly, in the note's own colour — lines spaced to the text's own
+   line height, so writing sits on them rather than across them. That is what
+   makes it read as somewhere to write rather than a box that holds text. The
+   rules are part of the surface, so they do not move when the text scrolls
+   past them.
+   
+   No border at rest. A margin rule down the left marks the edge, and focus
+   deepens it — a full outline around the writing area was the "form field"
+   look again, in a different colour. */
 .page .task-edit.is-notes.is-rich {
   flex: 1 1 auto;
   min-height: 220px;
-  margin-top: 4px;
-  padding: 16px 18px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--desk, var(--accent)) 18%, var(--surface));
+  margin-top: 2px;
+  padding: 14px 16px 14px 20px;
+  border: none;
+  border-left: 2px solid color-mix(in srgb, var(--desk, var(--accent)) 55%, transparent);
+  border-radius: 0 8px 8px 0;
   font-size: 15.5px;
-  line-height: 1.65;
-  transition: background var(--duration) var(--ease),
-    border-color var(--duration) var(--ease),
-    box-shadow var(--duration) var(--ease);
+  line-height: 25px;
+  background-color: color-mix(in srgb, var(--desk, var(--accent)) 10%, var(--surface));
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 24px,
+    color-mix(in srgb, var(--desk-ink, #000) 6%, transparent) 24px,
+    color-mix(in srgb, var(--desk-ink, #000) 6%, transparent) 25px
+  );
+  /* The padding above the first line, so the first rule lands under it. */
+  background-position: 0 14px;
+  /* The only thing that scrolls. `local` keeps the ruling with the text rather
+     than letting the lines stay still while the words slide over them. */
+  overflow-y: auto;
+  background-attachment: local;
+  /* Thin, and only when there is something to scroll — a chunky bar down the
+     side of a notepad is the loudest thing on the page. */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--desk-ink, #000) 20%, transparent)
+    transparent;
+  transition: background-color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
+}
+
+/* Every block inside keeps the same rhythm, or the rules drift away from the
+   text after the first list — which looks like a mistake, because it is one.
+   24px of line plus a 1px rule is the unit everything here is built from. */
+.page .task-edit.is-notes.is-rich div,
+.page .task-edit.is-notes.is-rich p,
+.page .task-edit.is-notes.is-rich li,
+.page .task-edit.is-notes.is-rich ul,
+.page .task-edit.is-notes.is-rich ol {
+  margin: 0;
+  line-height: 25px;
+}
+
+.page .task-edit.is-notes.is-rich ul,
+.page .task-edit.is-notes.is-rich ol {
+  padding-left: 22px;
+}
+
+.page .task-edit.is-notes.is-rich img {
+  /* Images break the ruling anyway; let them sit on a whole number of lines so
+     the text after one lands back on a rule. */
+  margin: 0 0 25px;
 }
 
 .page .task-edit.is-notes.is-rich:hover {
-  background: color-mix(in srgb, var(--desk, var(--accent)) 24%, var(--surface));
+  background-color: color-mix(in srgb, var(--desk, var(--accent)) 16%, var(--surface));
 }
 
 .page .task-edit.is-notes.is-rich:focus {
-  background: color-mix(in srgb, var(--desk, var(--accent)) 12%, var(--surface));
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+  background-color: color-mix(in srgb, var(--desk, var(--accent)) 16%, var(--surface));
+  border-left-color: var(--accent);
 }
 
 .page .task-edit.is-notes.is-rich:empty::before {
@@ -323,13 +425,22 @@
 /* Foot ------------------------------------------------------------------- */
 
 .page-foot {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 40px;
-  padding-top: 16px;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
   border-top: 1px solid var(--border);
+}
+
+/* Between the two buttons, so the keyboard way out is stated once without
+   taking a button's worth of attention. */
+.page-escape {
+  flex: 1;
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
 }
 
 .page-done {

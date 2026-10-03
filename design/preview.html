@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Task page — design preview</title>
+
+    <!--
+      A preview of the task page, built from the app's *real* stylesheets.
+
+      Rebuilding the whole app to look at a border takes four minutes; this
+      takes a reload. Because it links the same CSS files the app ships, a
+      change made here is a change made to the app — there is no second copy of
+      the design to drift out of step.
+
+      The markup mirrors TaskPage.tsx. Keep it that way: a preview that lies is
+      worse than no preview.
+    -->
+    <link rel="stylesheet" href="../src/styles/tokens.css" />
+    <link rel="stylesheet" href="../src/styles/base.css" />
+    <link rel="stylesheet" href="../src/components/TaskItem/TaskItem.css" />
+    <link rel="stylesheet" href="../src/components/TaskItem/DueChip.css" />
+    <link rel="stylesheet" href="../src/components/TaskPage/TaskPage.css" />
+
+    <style>
+      /* Preview chrome only — none of this ships. */
+      body {
+        margin: 0;
+        padding: 0;
+        background: #6b6b74;
+        font-family: "Segoe UI", system-ui, sans-serif;
+      }
+      .shell {
+        height: 100vh;
+        padding: 18px;
+        box-sizing: border-box;
+      }
+      .controls {
+        position: fixed;
+        right: 14px;
+        bottom: 14px;
+        display: flex;
+        gap: 6px;
+        padding: 6px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.55);
+        color: #fff;
+        font-size: 12px;
+        z-index: 99;
+      }
+      .controls button {
+        padding: 4px 9px;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 5px;
+        background: transparent;
+        color: #fff;
+        font: inherit;
+        cursor: pointer;
+      }
+      .controls button:hover {
+        background: rgba(255, 255, 255, 0.15);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <div class="page" style="--desk: #f7d6e0; --desk-ink: #1a1a1f">
+        <header class="page-head">
+          <span class="page-where">Fab Daily</span>
+          <span class="page-spacer"></span>
+          <span class="page-state is-quiet">Saved</span>
+          <button class="icon-button" aria-label="Close">
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+              <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+          </button>
+        </header>
+
+        <div class="page-body">
+          <div class="page-sheet">
+            <div class="page-top">
+            <div class="page-headline">
+              <button class="page-check" role="checkbox" aria-checked="false"></button>
+              <h1 class="page-title">Meeting with Varun</h1>
+            </div>
+
+            <div class="page-meta">
+              <span class="due-chip">Sat 11 Oct</span>
+              <button class="page-quick">Today</button>
+              <button class="page-quick">Tomorrow</button>
+              <button class="page-quick">Clear</button>
+            </div>
+
+            <div class="format-bar">
+              <button class="format-button"><span class="fb-bold">B</span></button>
+              <button class="format-button"><span class="fb-italic">I</span></button>
+              <button class="format-button"><span class="fb-strike">ab</span></button>
+              <button class="format-button">
+                <svg viewBox="0 0 16 16" width="14" height="14"><circle cx="3" cy="4" r="1.2" fill="currentColor"/><circle cx="3" cy="8" r="1.2" fill="currentColor"/><circle cx="3" cy="12" r="1.2" fill="currentColor"/><path d="M6.5 4h7M6.5 8h7M6.5 12h7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+            </div>
+
+            <div class="task-edit is-notes is-rich" contenteditable="true">
+              <div><strong>Agenda</strong></div>
+              <ul><li>Budget for the next quarter</li><li>Who owns the launch checklist</li></ul>
+              <div><br /></div>
+              <div>Ask about the lab schedule — he mentioned moving it to Thursdays, which would clash with the review.</div>
+              <div><br /></div>
+              <div>Follow up with <a href="#">the shared document</a> afterwards.</div>
+              <div><br /></div>
+              <div>Notes from last time: the schedule slipped because the lab was double booked, and nobody had told the facilities team about the new intake.</div>
+              <div><br /></div>
+              <div>Decide whether the review moves with it or stays where it is.</div>
+              <div><br /></div>
+              <div>If it moves, the whole fortnight shifts and the report is late.</div>
+            </div>
+
+            <div class="page-bottom">
+            <section class="page-subtasks">
+              <h2>Subtasks</h2>
+              <ul>
+                <li>
+                  <button class="page-sub-check" role="checkbox" aria-checked="true">
+                    <svg viewBox="0 0 16 16" width="11" height="11"><path d="M3.5 8.5l3 3 6-6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                  <span class="is-done">Send the agenda</span>
+                </li>
+                <li>
+                  <button class="page-sub-check" role="checkbox" aria-checked="false"></button>
+                  <span>Book the room</span>
+                </li>
+              </ul>
+              <input class="page-sub-add" placeholder="Add a subtask…" />
+            </section>
+
+            </div>
+
+            <div class="page-foot">
+              <button class="page-link">Open in Google Tasks</button>
+              <span class="page-escape">Escape closes</span>
+              <button class="page-done">Done</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'">
+        Light / dark
+      </button>
+      <button onclick="for (const c of ['#f7d6e0','#d8ecd9','#fdf0c9','#d9e6f7','']) { if (!window._i) window._i = 0; } window._i = (window._i + 1) % 5; document.querySelector('.page').style.setProperty('--desk', ['#f7d6e0','#d8ecd9','#fdf0c9','#d9e6f7','#e9e9ee'][window._i])">
+        Note colour
+      </button>
+      <button onclick="document.querySelector('.task-edit').focus()">Focus the text</button>
+    </div>
+  </body>
+</html>
