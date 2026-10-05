@@ -159,8 +159,6 @@
     background var(--duration-fast) var(--ease);
 }
 
-.task-item:hover .task-menu-trigger,
-.task-item.is-menu-open .task-menu-trigger,
 .task-menu-trigger:focus-visible {
   opacity: 1;
 }
@@ -922,4 +920,86 @@ body.is-tall .task-item.is-expanded .task-notes {
 
 .task-item.is-expanded .task-edit.is-notes.is-rich:focus {
   border-left-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* Hover tools --------------------------------------------------------------- */
+
+/* Over the row rather than under it, so pointing at a task costs no height and
+   moves nothing. The row the pointer is on is the only one showing them. */
+.task-tools {
+  position: absolute;
+  top: 2px;
+  right: 5px;
+  z-index: 4;
+  display: flex;
+  gap: 1px;
+  padding: 2px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 82%, var(--surface-raised));
+  box-shadow: 0 2px 9px rgba(0, 0, 0, 0.16);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.task-item {
+  position: relative;
+}
+
+.task-item:hover .task-tools,
+.task-item.is-expanded .task-tools,
+.task-item.is-menu-open .task-tools,
+.task-tools:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.task-tool {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 1;
+  transition: background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.task-tool:hover {
+  background: var(--surface-active);
+  color: var(--text);
+}
+
+/* The title must not run under the tools while they are showing. */
+.task-item:hover .task-line,
+.task-item.is-expanded .task-line {
+  padding-right: 96px;
+}
+
+/* What the next click does ------------------------------------------------- */
+
+/* A ladder of clicks is invisible without this line: nobody discovers a second
+   step by accident, and nobody enjoys a window opening unannounced. */
+.task-next {
+  margin: 6px 0 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* The open row is the subject; the rest step back ---------------------------- */
+
+/* Not so far back that they stop being legible drop targets while a task is
+   dragged over them — 55% is the line where they read as context. */
+.task-list.has-open .task-item:not(.is-expanded) {
+  opacity: 0.55;
+  transition: opacity var(--duration) var(--ease);
+}
+
+.task-list.has-open .task-item:not(.is-expanded):hover {
+  opacity: 0.85;
 }

@@ -134,6 +134,19 @@ export function SettingsPanel(props: Props) {
         </section>
 
         <section>
+          <h2>List</h2>
+          <Toggle
+            label="Show subtasks"
+            checked={settings.showSubtasks}
+            onChange={(v) => props.onChange({ showSubtasks: v })}
+          />
+          <p className="settings-hint">
+            Off keeps the note to top-level tasks. A task you open still shows
+            its own subtasks, so nothing becomes unreachable.
+          </p>
+        </section>
+
+        <section>
           <h2>General</h2>
           <Toggle
             label="Start with Windows"

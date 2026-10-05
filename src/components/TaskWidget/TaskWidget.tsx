@@ -68,6 +68,8 @@ interface Props {
   onAddSubtask: (parentId: string, title: string) => Promise<string | null>;
   /** Opens one task in its own window. */
   onOpenPage: (id: string) => void;
+  /** Whether subtasks are listed in the note at all. */
+  showSubtasks: boolean;
   /** Adds a task right below another, at its level; returns the new id. */
   onAddBelow: (
     afterId: string,
@@ -102,13 +104,34 @@ export function TaskWidget(props: Props) {
   const [completedOpen, setCompletedOpen] = useState(false);
   // One row at a time: several open at once would push the rest off a 340px
   // panel, and the point of expanding is to look at one thing.
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const toggleExpand = (id: string) => {
+  /**
+   * Which task is open, and how far.
+   *
+   * One click shows the description, a second adds the dates and the task's
+   * own subtasks, a third opens the page. Only one task is ever open: several
+   * at once pushed the rest of a 340px note off-screen, and the point of
+   * opening one is to look at one.
+   */
+  const [open, setOpen] = useState<{ id: string; stage: 1 | 2 } | null>(null);
+  const expandedId = open?.id ?? null;
+  const stageOf = (id: string): 0 | 1 | 2 => (open?.id === id ? open.stage : 0);
+
+  const advance = (id: string) => {
     // A plain click on a task is a return to normal use, so it ends any
     // selection — the same as clicking a file without Ctrl or Shift.
     setSelection(emptySelection);
-    setExpandedId((current) => (current === id ? null : id));
+    if (open?.id !== id) {
+      setOpen({ id, stage: 1 });
+    } else if (open.stage === 1) {
+      setOpen({ id, stage: 2 });
+    } else {
+      // The top of the ladder is the window, and the row stays open behind it
+      // so closing the page leaves you where you were.
+      props.onOpenPage(id);
+    }
   };
+
+  const closeOpen = () => setOpen(null);
 
   /**
    * The row showing the "add below" field, if any. Held here rather than in
@@ -117,7 +140,7 @@ export function TaskWidget(props: Props) {
    */
   const [belowId, setBelowId] = useState<string | null>(null);
   const startAddBelow = (id: string) => {
-    setExpandedId(null);
+    closeOpen();
     setBelowId(id);
   };
   const submitBelow = async (title: string): Promise<string | null> => {
@@ -142,7 +165,7 @@ export function TaskWidget(props: Props) {
         return;
       }
       event.preventDefault();
-      setExpandedId(null);
+      closeOpen();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -165,7 +188,7 @@ export function TaskWidget(props: Props) {
       // A popup belonging to the open row — the date picker especially — is
       // part of that row even when it is drawn outside the row's own box.
       if (target?.closest("li.task-item, .due-popover, .task-menu")) return;
-      setExpandedId(null);
+      closeOpen();
     };
 
     document.addEventListener("pointerdown", onPointerDown);
@@ -206,6 +229,23 @@ export function TaskWidget(props: Props) {
    * A settling task stays put until the animation ends, so the row the user
    * just clicked doesn't jump out from under the cursor.
    */
+  /**
+   * The rows actually drawn.
+   *
+   * With subtasks switched off they are hidden — except the open task's own,
+   * which appear at its second step. Hiding them everywhere would make a
+   * checklist unreachable; showing them everywhere is what the setting is for
+   * turning off.
+   */
+  const visible = (rows: Task[]) =>
+    props.showSubtasks
+      ? rows
+      : rows.filter(
+          (t) =>
+            !t.parentId ||
+            (t.parentId === open?.id && open.stage >= 2),
+        );
+
   const { active, completed } = useMemo(() => {
     const settling = props.settlingIds;
     const isActive = (t: Task) => t.status === "needsAction" || settling.has(t.id);
@@ -286,7 +326,7 @@ export function TaskWidget(props: Props) {
   const selectIn = useCallback(
     (section: "active" | "completed") =>
       (id: string, mode: { toggle: boolean; range: boolean }) => {
-        setExpandedId(null);
+        closeOpen();
         setConfirmingDelete(false);
         const order = (section === "active" ? active : completed).map((t) => t.id);
         // Clicking into the other section starts over there rather than
@@ -689,8 +729,11 @@ export function TaskWidget(props: Props) {
               <p className="all-done">All done for now.</p>
             )}
 
-            <ul className="task-list" ref={listRef}>
-              {active.map((task) => {
+            <ul
+              className={`task-list${open ? " has-open" : ""}`}
+              ref={listRef}
+            >
+              {visible(active).map((task) => {
                 // The gap is drawn before the row currently occupying the slot,
                 // so the list shows where a drop would land rather than where
                 // the pointer is.
@@ -729,8 +772,8 @@ export function TaskWidget(props: Props) {
                   }
                   isSettling={props.settlingIds.has(task.id)}
                   error={props.errors[task.id] ?? null}
-                  isExpanded={expandedId === task.id}
-                  onToggleExpand={toggleExpand}
+                  stage={stageOf(task.id)}
+                  onAdvance={advance}
                   isSelected={selectedIds.has(task.id)}
                   onSelect={selectIn("active")}
                   onAddSubtask={props.onAddSubtask}
@@ -791,8 +834,8 @@ export function TaskWidget(props: Props) {
                         isSubtask={Boolean(task.parentId)}
                         isSettling={false}
                         error={props.errors[task.id] ?? null}
-                        isExpanded={expandedId === task.id}
-                        onToggleExpand={toggleExpand}
+                        stage={stageOf(task.id)}
+                        onAdvance={advance}
                         isSelected={selectedIds.has(task.id)}
                         onSelect={selectIn("completed")}
                         onToggle={toggleRow}

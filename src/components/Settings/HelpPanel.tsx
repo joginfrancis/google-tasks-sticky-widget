@@ -167,7 +167,17 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
           <h2>Mouse</h2>
           <dl className="help-keys help-gestures">
             <dt>Click a task</dt>
-            <dd>Opens it. Click again to close it</dd>
+            <dd>
+              Shows its description. Click again for dates and subtasks, and
+              once more to open it in a window. The row says what the next
+              click will do
+            </dd>
+
+            <dt>Hover a task</dt>
+            <dd>
+              Its tools appear at the right — date, add subtask, open in a
+              window, and the menu. They sit over the row, so nothing moves
+            </dd>
 
             <dt>Double-click a title</dt>
             <dd>Edits it, open or closed</dd>
@@ -232,6 +242,12 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
             <strong>Lines beside a task mean it has a description.</strong>{" "}
             Descriptions stay hidden while a task is closed, so every row is one
             line tall — the mark is how a task with more to say says so.
+          </p>
+
+          <p>
+            <strong>Subtasks can be hidden.</strong> Settings &rsaquo; List
+            &rsaquo; Show subtasks keeps the note to top-level tasks. A task
+            you open still shows its own, so nothing becomes unreachable.
           </p>
 
           <p>

@@ -20,6 +20,7 @@ import "./styles/base.css";
 const SETTLE_MS = 700;
 
 const THEME_KEY = "theme-preference";
+const SUBTASKS_KEY = "show-subtasks";
 
 type View = "widget" | "settings" | "help";
 
@@ -71,6 +72,26 @@ export default function App() {
     }
     return "system";
   });
+
+  /**
+   * Per-machine, like the theme: it is about how this screen looks, not about
+   * the tasks, so it does not belong in anything that syncs.
+   */
+  const [showSubtasks, setShowSubtasks] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SUBTASKS_KEY) !== "no";
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SUBTASKS_KEY, showSubtasks ? "yes" : "no");
+    } catch {
+      /* the preference still applies for this session */
+    }
+  }, [showSubtasks]);
 
   const tasks = useTasks(account?.connected ?? false);
 
@@ -402,6 +423,7 @@ export default function App() {
     globalHotkey,
     globalHotkeyEnabled,
     theme,
+    showSubtasks,
     selectedTaskListId: tasks.selectedListId,
   };
 
@@ -429,6 +451,7 @@ export default function App() {
 
           if (patch.windowLayer !== undefined) applyLayer(patch.windowLayer);
           if (patch.theme !== undefined) setTheme(patch.theme);
+          if (patch.showSubtasks !== undefined) setShowSubtasks(patch.showSubtasks);
           if (patch.selectedTaskListId) tasks.selectList(patch.selectedTaskListId);
 
           if (patch.showInTaskbar !== undefined) {
@@ -519,6 +542,7 @@ export default function App() {
       onAdd={tasks.addTask}
       onAddSubtask={tasks.addSubtask}
       onOpenPage={openTaskPage}
+      showSubtasks={showSubtasks}
       onAddBelow={tasks.addTaskBelow}
       onAddOutline={tasks.addOutline}
       onSelectList={tasks.selectList}

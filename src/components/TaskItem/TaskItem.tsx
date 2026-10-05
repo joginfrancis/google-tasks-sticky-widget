@@ -47,8 +47,17 @@ interface Props {
    * Held by the list rather than the row so only one can be open at a time —
    * several expanded rows on a 340px panel push everything else off-screen.
    */
-  isExpanded: boolean;
-  onToggleExpand: (id: string) => void;
+  /**
+   * How far this row is opened.
+   *
+   * 0 closed · 1 the description · 2 the description, dates and subtasks.
+   * A click moves up one; from 2 it opens the page. Repeated clicks rather
+   * than one big expansion, so the common case — reading the details — never
+   * pays for the controls it does not need.
+   */
+  stage: 0 | 1 | 2;
+  /** A click on the row body: advance one step, or open the page from 2. */
+  onAdvance: (id: string) => void;
   /** Part of a multi-selection. */
   isSelected?: boolean;
   /**
@@ -92,8 +101,8 @@ export function TaskItem({
   otherLists,
   onDragPress,
   isDragging,
-  isExpanded,
-  onToggleExpand,
+  stage,
+  onAdvance,
   isSelected,
   onSelect,
   onAddSubtask,
@@ -135,6 +144,10 @@ export function TaskItem({
   const expandTimer = useRef<number | null>(null);
   /** Tab's next stop after the description. */
   const dueButtonRef = useRef<HTMLButtonElement>(null);
+
+  const isExpanded = stage >= 1;
+  /** Dates, subtasks and everything else: the second step. */
+  const isFull = stage >= 2;
 
   const done = task.status === "completed";
   const overdue = !done && isOverdue(task.due);
@@ -204,7 +217,9 @@ export function TaskItem({
       if (row.scrollHeight + 16 <= body.clientHeight) return;
       setTall(true);
       window.setTimeout(
-        () => rowRef.current?.scrollIntoView({ block: "start", behavior: "auto" }),
+        // Optional call: not every environment implements it, and failing to
+        // scroll should never break opening a task.
+        () => rowRef.current?.scrollIntoView?.({ block: "start", behavior: "auto" }),
         60,
       );
     }, 0);
@@ -304,7 +319,7 @@ export function TaskItem({
     cancelPendingExpand();
     expandTimer.current = window.setTimeout(() => {
       expandTimer.current = null;
-      onToggleExpand(task.id);
+      onAdvance(task.id);
     }, DOUBLE_CLICK_GRACE_MS);
   };
 
@@ -470,7 +485,7 @@ export function TaskItem({
   }, [menuOpen, moveOpen]);
 
   const openSubtaskField = () => {
-    if (!isExpanded) onToggleExpand(task.id);
+    if (!isFull) onAdvance(task.id);
     setAddingSubtask(true);
   };
 
@@ -485,6 +500,7 @@ export function TaskItem({
         done ? "is-done" : "",
         isSettling ? "is-settling" : "",
         isExpanded ? "is-expanded" : "",
+        isFull ? "is-full" : "",
         isSelected ? "is-selected" : "",
         error ? "has-error" : "",
         menuOpen ? "is-menu-open" : "",
@@ -675,7 +691,7 @@ export function TaskItem({
 
           {/* Only offered when open — a collapsed row with no date stays clean,
               and the chip above covers the case where one is already set. */}
-          {isExpanded && !done && (
+          {isFull && !done && (
             <div className="task-date-row">
               {/* The calendar is for a date you have to look up. Today and
                   tomorrow are most of what a sticky note ever needs, and
@@ -742,101 +758,19 @@ export function TaskItem({
           )}
 
           {isExpanded && (
-            /* Icons, not words. Three labelled buttons made a row of the note
-               look like a dialog; these say the same thing in a line each and
-               leave the description the width it wants. Every one keeps its
-               name on hover and for a screen reader. */
-            <div className="task-actions">
-              {canAddSubtask && !addingSubtask && (
-                <button
-                  className="task-action"
-                  onClick={openSubtaskField}
-                  aria-label="Add subtask"
-                  title="Add subtask"
-                >
-                  <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
-                    <path
-                      d="M3 3.5v6a2 2 0 0 0 2 2h4"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.4"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M11.5 8.5v6M8.5 11.5h6"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.4"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </button>
-              )}
-              {onOpenPage && (
-                <button
-                  className="task-action"
-                  onClick={() => onOpenPage(task.id)}
-                  aria-label="Open in a window"
-                  title="Open in a window — room for the description"
-                >
-                  <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
-                    <path
-                      d="M9.5 2.5h4v4M13.5 2.5L9 7M6.5 13.5h-4v-4M2.5 13.5L7 9"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.4"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
-              )}
-              <button
-                className="task-action"
-                onClick={() => onOpenInGoogle(task.id)}
-                aria-label="Open in Google Tasks"
-                title="Open in Google Tasks — starring, repeats and attachments live there"
-              >
-                <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
-                  <path
-                    d="M8.5 3H3.5v9.5H13V7.5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M10 3h3v3M13 3L8 8"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-              <button
-                className="task-action is-danger"
-                onClick={() => onDelete(task.id)}
-                aria-label="Delete task"
-                title="Delete"
-              >
-                <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
-                  <path
-                    d="M3.5 4.5h9M6.5 4.5V3h3v1.5M5 4.5l.6 8h4.8l.6-8"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-            </div>
+            /* What the next click does.
+               
+               A ladder of clicks is invisible without this: nobody discovers a
+               second step by accident, and nobody enjoys a window opening when
+               they expected a row to close. */
+            <p className="task-next">
+              {isFull
+                ? "Click again to open it in a window"
+                : "Click again for dates and subtasks"}
+            </p>
           )}
 
-          {isExpanded && addingSubtask && canAddSubtask && (
+          {isFull && addingSubtask && canAddSubtask && (
             <div className="subtask-add">
               <input
                 className="subtask-input"
@@ -887,19 +821,101 @@ export function TaskItem({
           </button>
         )}
 
-        <button
-          ref={triggerRef}
-          className="task-menu-trigger"
-          aria-label="Task options"
-          title="Task options"
-          onClick={() => setMenuOpen(true)}
-        >
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-            <circle cx="8" cy="3" r="1.4" fill="currentColor" />
-            <circle cx="8" cy="8" r="1.4" fill="currentColor" />
-            <circle cx="8" cy="13" r="1.4" fill="currentColor" />
-          </svg>
-        </button>
+        {/* Over the row, not under it.
+            
+            As a row of buttons below the task, these cost a whole line on
+            every open task and put Delete next to the text being read. Here
+            they take no height at all, so pointing at a task never moves
+            anything, and the destructive one is behind the menu. */}
+        <div className="task-tools">
+          {!done && (
+            <button
+              className="task-tool"
+              aria-label="Set a date"
+              title="Set a date"
+              onClick={() => setDueOpen(true)}
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                <rect
+                  x="2.5"
+                  y="3.5"
+                  width="11"
+                  height="10"
+                  rx="2"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                />
+                <path
+                  d="M2.5 6.5h11M5.5 2.5v2M10.5 2.5v2"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          )}
+
+          {canAddSubtask && (
+            <button
+              className="task-tool"
+              aria-label="Add subtask"
+              title="Add subtask"
+              onClick={openSubtaskField}
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                <path
+                  d="M3 3.5v6a2 2 0 0 0 2 2h4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M11.5 8.5v6M8.5 11.5h6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          )}
+
+          {onOpenPage && (
+            <button
+              className="task-tool"
+              aria-label="Open in a window"
+              title="Open in a window"
+              onClick={() => onOpenPage(task.id)}
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                <path
+                  d="M9.5 2.5h4v4M13.5 2.5L9 7M6.5 13.5h-4v-4M2.5 13.5L7 9"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          )}
+
+          <button
+            ref={triggerRef}
+            className="task-tool task-menu-trigger"
+            aria-label="Task options"
+            title="Task options"
+            onClick={() => setMenuOpen(true)}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <circle cx="8" cy="3" r="1.4" fill="currentColor" />
+              <circle cx="8" cy="8" r="1.4" fill="currentColor" />
+              <circle cx="8" cy="13" r="1.4" fill="currentColor" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {error && <p className="task-error">{error}</p>}

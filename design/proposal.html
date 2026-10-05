@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Task UX — working prototype</title>
+
+    <!--
+      An interactive prototype of the proposed task behaviour. Click the tasks.
+
+      Nothing here is wired to the app: the data is invented and the behaviour
+      is a few dozen lines of plain JavaScript. The point is to feel the
+      interaction — how much the peek shows, how the tools behave on hover, how
+      the date popup reads — before any of it is built for real.
+
+      The app's own stylesheets are linked so the note looks exactly like your
+      note; the proposed pieces are styled in this file.
+    -->
+    <link rel="stylesheet" href="../src/styles/tokens.css" />
+    <link rel="stylesheet" href="../src/styles/base.css" />
+    <link rel="stylesheet" href="../src/components/TaskItem/TaskItem.css" />
+    <link rel="stylesheet" href="../src/components/TaskItem/DueChip.css" />
+    <link rel="stylesheet" href="../src/components/TaskWidget/TaskWidget.css" />
+
+    <style>
+      body {
+        margin: 0;
+        padding: 26px;
+        background: #5f6068;
+        color: #fff;
+        font-family: "Segoe UI", system-ui, sans-serif;
+      }
+      .lanes {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 26px;
+        align-items: flex-start;
+      }
+      .lane {
+        width: 340px;
+      }
+      .lane h2 {
+        margin: 0 0 4px;
+        font-size: 14px;
+      }
+      .lane p {
+        margin: 0 0 10px;
+        font-size: 12px;
+        line-height: 1.45;
+        opacity: 0.8;
+      }
+      .note {
+        --surface: #f7d6e0;
+        --surface-header: #f7d6e0;
+        --surface-raised: #fdeef3;
+        --text: #1a1a1f;
+        --text-secondary: #1a1a1fbb;
+        --text-muted: #1a1a1f88;
+        --border: #1a1a1f22;
+        --border-strong: #1a1a1f44;
+        border-radius: 10px;
+        overflow: visible;
+        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
+      }
+      .note .widget-body {
+        padding: 8px 4px 12px;
+      }
+
+      /* ---------- proposed behaviour, prototype styling ---------- */
+
+      .task-item {
+        position: relative;
+        border-radius: 10px;
+        transition: opacity 160ms ease, background 160ms ease;
+      }
+
+      /* Siblings step back, but not so far that they stop being targets you
+         can see while dragging something over them. */
+      .list.has-open .task-item:not(.is-open) {
+        opacity: 0.55;
+      }
+
+      .task-item.is-open {
+        background: color-mix(in srgb, var(--text) 4%, transparent);
+      }
+
+      /* The peek: animated open, and the title never moves. */
+      .peek-wrap {
+        display: grid;
+        grid-template-rows: 0fr;
+        transition: grid-template-rows 160ms ease;
+      }
+      .task-item.is-open .peek-wrap {
+        grid-template-rows: 1fr;
+      }
+      .peek-inner {
+        overflow: hidden;
+      }
+      .peek-text {
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        margin-top: 4px;
+        padding-left: 10px;
+        border-left: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+        font-size: var(--font-size-sm);
+        line-height: 1.45;
+        color: var(--text-secondary);
+      }
+      .peek-hint {
+        margin-top: 6px;
+        padding-left: 10px;
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      /* Tools, over the row rather than under it. */
+      .tools {
+        position: absolute;
+        top: 2px;
+        right: 4px;
+        display: none;
+        gap: 1px;
+        padding: 2px;
+        border-radius: 7px;
+        background: color-mix(in srgb, var(--surface) 80%, #fff);
+        box-shadow: 0 2px 9px rgba(0, 0, 0, 0.18);
+        z-index: 3;
+      }
+      .task-item:hover .tools,
+      .task-item.is-open .tools {
+        display: flex;
+      }
+      .tools button {
+        width: 24px;
+        height: 22px;
+        display: grid;
+        place-items: center;
+        border: none;
+        border-radius: 5px;
+        background: transparent;
+        color: var(--text-secondary);
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .tools button:hover {
+        background: rgba(0, 0, 0, 0.08);
+        color: var(--text);
+      }
+
+      /* Date chip and its popup. */
+      .chip {
+        margin-left: 6px;
+        padding: 1px 8px;
+        border: 1px solid var(--border-strong);
+        border-radius: 20px;
+        background: transparent;
+        font: inherit;
+        font-size: 11.5px;
+        color: var(--text-secondary);
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .chip.is-empty {
+        opacity: 0;
+        transition: opacity 140ms ease;
+      }
+      .task-item:hover .chip.is-empty,
+      .task-item.is-open .chip.is-empty {
+        opacity: 0.75;
+      }
+      .chip.is-set {
+        border-color: color-mix(in srgb, var(--text) 35%, transparent);
+        color: var(--text);
+      }
+
+      .datepop {
+        position: absolute;
+        z-index: 9;
+        width: 206px;
+        padding: 7px;
+        border-radius: 10px;
+        background: var(--surface-raised);
+        border: 1px solid var(--border);
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.26);
+      }
+      .datepop .quick {
+        display: flex;
+        gap: 4px;
+        padding-bottom: 7px;
+        margin-bottom: 7px;
+        border-bottom: 1px solid var(--border);
+      }
+      .datepop .quick button {
+        flex: 1;
+        padding: 5px 2px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: transparent;
+        font: inherit;
+        font-size: 11px;
+        color: var(--text-secondary);
+        cursor: pointer;
+      }
+      .datepop .quick button:hover {
+        background: color-mix(in srgb, var(--text) 7%, transparent);
+        color: var(--text);
+      }
+      .datepop .cal-head {
+        margin-bottom: 5px;
+        font-size: 11.5px;
+        text-align: center;
+        color: var(--text-secondary);
+      }
+      .datepop .grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+        text-align: center;
+        font-size: 11px;
+      }
+      .datepop .grid span {
+        color: var(--text-muted);
+        padding: 2px 0;
+      }
+      .datepop .grid button {
+        padding: 4px 0;
+        border: none;
+        border-radius: 5px;
+        background: transparent;
+        font: inherit;
+        font-size: 11px;
+        color: var(--text);
+        cursor: pointer;
+      }
+      .datepop .grid button:hover {
+        background: color-mix(in srgb, var(--text) 10%, transparent);
+      }
+      .datepop .clear {
+        width: 100%;
+        margin-top: 6px;
+        padding: 4px;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        font: inherit;
+        font-size: 11px;
+        color: var(--text-muted);
+        cursor: pointer;
+      }
+
+      /* Subtasks as a count that unfolds. */
+      .subs {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 5px;
+        padding: 1px 8px 1px 5px;
+        border: none;
+        border-radius: 20px;
+        background: color-mix(in srgb, var(--text) 7%, transparent);
+        font: inherit;
+        font-size: 11.5px;
+        color: var(--text-secondary);
+        cursor: pointer;
+      }
+      .sub-list {
+        margin: 4px 0 0;
+        padding: 0 0 0 10px;
+        list-style: none;
+      }
+      .sub-list li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 3px 0;
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+      }
+      .sub-list .box {
+        width: 13px;
+        height: 13px;
+        border: 1.5px solid var(--border-strong);
+        border-radius: 3px;
+      }
+
+      .legend {
+        margin-top: 18px;
+        font-size: 12px;
+        line-height: 1.6;
+        opacity: 0.85;
+      }
+      .legend b {
+        font-weight: 600;
+      }
+      kbd {
+        display: inline-block;
+        padding: 0 5px;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-bottom-width: 2px;
+        border-radius: 4px;
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="lanes">
+      <div class="lane">
+        <h2>Proposed — click the tasks</h2>
+        <p>
+          Click a row to peek. Hover for tools. Click a date chip for the
+          calendar — or use the one in the hover tools. Subtasks stay as rows,
+          because you drag them.
+          <kbd>Esc</kbd> closes.
+        </p>
+        <div class="note widget">
+          <div class="widget-body">
+            <ul class="task-list list" id="list"></ul>
+          </div>
+        </div>
+      </div>
+
+
+      <div class="lane">
+        <h2>Ladder — click, click, click</h2>
+        <p>
+          One click: the essentials. Click again: subtasks and the full
+          controls. Click once more: the page window. The row says what the
+          next click will do.
+        </p>
+        <div class="note widget">
+          <div class="widget-body">
+            <ul class="task-list list" id="ladder"></ul>
+          </div>
+        </div>
+        <p id="ladder-say" style="min-height: 18px; margin-top: 8px; opacity: 0.9"></p>
+      </div>
+      <div class="lane">
+        <h2>Today, for comparison</h2>
+        <p>The same task open in the app as it stands: four stacked rows.</p>
+        <div class="note widget">
+          <div class="widget-body">
+            <ul class="task-list">
+              <li class="task-item"><div class="task-row"><button class="checkbox" role="checkbox"></button><div class="task-main"><div class="task-line"><span class="task-title">Banglore?</span></div></div></div></li>
+              <li class="task-item is-expanded">
+                <div class="task-row">
+                  <button class="checkbox" role="checkbox"></button>
+                  <div class="task-main">
+                    <div class="task-line"><span class="task-title">Sector pending</span></div>
+                    <span class="task-notes">Chase the three that have not replied; the rest are in. Varun said the lab numbers land on Friday.</span>
+                    <div class="task-date-row">
+                      <span class="due-chip">Add date</span>
+                      <button class="task-quick-date">Today</button>
+                      <button class="task-quick-date">Tomorrow</button>
+                    </div>
+                    <div class="task-actions">
+                      <button class="task-action">↳</button>
+                      <button class="task-action">⤢</button>
+                      <button class="task-action">↗</button>
+                      <button class="task-action is-danger">🗑</button>
+                    </div>
+                  </div>
+                </div>
+              </li>
+              <li class="task-item"><div class="task-row"><button class="checkbox" role="checkbox"></button><div class="task-main"><div class="task-line"><span class="task-title">Creative Studio</span></div></div></div></li>
+              <li class="task-item"><div class="task-row"><button class="checkbox" role="checkbox"></button><div class="task-main"><div class="task-line"><span class="task-title">Yadu email</span></div></div></div></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="legend">
+      <b>What to feel for:</b> how much of the list stays visible with a task
+      open · whether the tools appearing on hover is reachable or fiddly ·
+      whether the date chip being hidden until hover is too subtle · whether
+      three lines of description is enough before you want the full page.
+      <br /><b>Dropped:</b> collapsing subtasks into a count. They have to be
+      rows — a count cannot be dragged, reordered, ticked, or dropped onto.
+    </p>
+
+    <script>
+      const tasks = [
+        { title: "Banglore?", notes: "", due: "", subs: [] },
+        {
+          title: "Sector pending",
+          notes:
+            "Chase the three that have not replied; the rest are in. Varun said the lab numbers land on Friday, so the summary can go out over the weekend without holding anyone up.",
+          due: "",
+          subs: ["Email the three", "Check the lab figures", "Draft the summary"],
+        },
+        { title: "Creative Studio + Fabricademy", notes: "Invoice goes out on the 14th.", due: "Mon", subs: [] },
+        { title: "Yadu email — password and username", notes: "", due: "", subs: ["Reset it", "Send it over"] },
+        { title: "Iedc summit travel", notes: "Train or flight? Flight is 40 minutes but the station is closer.", due: "", subs: [] },
+      ];
+
+      const list = document.getElementById("list");
+
+      function render() {
+        list.innerHTML = "";
+        tasks.forEach((task, i) => {
+          const li = document.createElement("li");
+          li.className = "task-item" + (task.open ? " is-open" : "");
+          li.draggable = true;
+
+          li.innerHTML = `
+            <div class="task-row">
+              <button class="checkbox" role="checkbox" aria-checked="false"></button>
+              <div class="task-main">
+                <div class="task-line">
+                  <span class="task-title">${task.title}</span>
+                  ${task.notes && !task.open ? '<span class="task-has-notes">≡</span>' : ""}
+                  ${task.due ? `<button class="chip is-set" data-date="${i}">${task.due}</button>` : ""}
+                </div>
+                <div class="peek-wrap"><div class="peek-inner">
+                  ${task.notes ? `<div class="peek-text">${task.notes}</div>` : '<div class="peek-hint">No details yet — click to write some</div>'}
+                  <div class="peek-hint"><kbd style="border-color: var(--border-strong); color: var(--text-muted)">Enter</kbd> opens it full size</div>
+                </div></div>
+              </div>
+            </div>
+            <div class="tools">
+              <button class="tool-date" title="Date">${calIcon}</button>
+              <button title="Add subtask">↳</button>
+              <button title="Open as a page">⤢</button>
+              <button title="More">⋮</button>
+            </div>`;
+
+          li.querySelector(".tool-date").addEventListener("click", (e) => {
+            e.stopPropagation();
+            openDatePop(e.currentTarget, task, render);
+          });
+
+          li.addEventListener("click", (event) => {
+            if (event.target.closest(".tools, .chip, .checkbox")) return;
+            const wasOpen = task.open;
+            tasks.forEach((t) => (t.open = false));
+            task.open = !wasOpen;
+            render();
+          });
+
+          list.appendChild(li);
+
+          // Subtasks are rows of their own, always on screen: they are things
+          // you drag, reorder and tick, and a count is none of those.
+          task.subs.forEach((sub) => {
+            const child = document.createElement("li");
+            child.className = "task-item is-subtask";
+            child.draggable = true;
+            child.innerHTML = `
+              <div class="task-row">
+                <button class="checkbox" role="checkbox" aria-checked="false"></button>
+                <div class="task-main"><div class="task-line"><span class="task-title">${sub}</span></div></div>
+              </div>
+              <div class="tools"><button title="Open as a page">⤢</button><button title="More">⋮</button></div>`;
+            list.appendChild(child);
+          });
+        });
+
+        list.classList.toggle("has-open", tasks.some((t) => t.open));
+
+        list.querySelectorAll("[data-date]").forEach((el) =>
+          el.addEventListener("click", (e) => {
+            e.stopPropagation();
+            openDatePop(el, tasks[Number(el.dataset.date)]);
+          }),
+        );
+      }
+
+      const calIcon = `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 6.5h11M5.5 2.5v2M10.5 2.5v2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+
+      function openDatePop(anchor, task, after = render) {
+        document.querySelectorAll(".datepop").forEach((p) => p.remove());
+
+        const pop = document.createElement("div");
+        pop.className = "datepop";
+        const days = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+        pop.innerHTML = `
+          <div class="quick">
+            <button data-set="Today">Today</button>
+            <button data-set="Tomorrow">Tomorrow</button>
+            <button data-set="Next week">Next week</button>
+          </div>
+          <div class="cal-head">October 2026</div>
+          <div class="grid">
+            <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+            ${days.map((d) => `<button data-set="${d} Oct">${d}</button>`).join("")}
+          </div>
+          ${task.due ? '<button class="clear" data-set="">Remove the date</button>' : ""}`;
+
+        document.body.appendChild(pop);
+        const box = anchor.getBoundingClientRect();
+        pop.style.left = Math.min(box.left, window.innerWidth - 220) + "px";
+        pop.style.top = box.bottom + 6 + window.scrollY + "px";
+
+        pop.querySelectorAll("[data-set]").forEach((b) =>
+          b.addEventListener("click", () => {
+            task.due = b.dataset.set;
+            pop.remove();
+            after();
+          }),
+        );
+
+        setTimeout(() => {
+          document.addEventListener("click", function away(e) {
+            if (!pop.contains(e.target)) {
+              pop.remove();
+              document.removeEventListener("click", away);
+            }
+          });
+        }, 0);
+      }
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          document.querySelectorAll(".datepop").forEach((p) => p.remove());
+          tasks.forEach((t) => (t.open = false));
+          render();
+        }
+      });
+
+      render();
+
+      /* ---- the click ladder ---- */
+
+      const ladderTasks = JSON.parse(JSON.stringify(tasks)).map((t) => ({ ...t, stage: 0 }));
+      const ladder = document.getElementById("ladder");
+      const say = document.getElementById("ladder-say");
+
+      function renderLadder() {
+        ladder.innerHTML = "";
+        ladderTasks.forEach((task) => {
+          const li = document.createElement("li");
+          li.className = "task-item" + (task.stage ? " is-open" : "");
+          li.draggable = true;
+
+          const next =
+            task.stage === 0
+              ? "Click: show the details"
+              : task.stage === 1
+                ? "Click again: subtasks and controls"
+                : "Click again: open it as a page";
+
+          li.innerHTML = `
+            <div class="task-row">
+              <button class="checkbox" role="checkbox" aria-checked="false"></button>
+              <div class="task-main">
+                <div class="task-line">
+                  <span class="task-title">${task.title}</span>
+                  ${task.notes && !task.stage ? '<span class="task-has-notes">≡</span>' : ""}
+                  ${task.due ? `<button class="chip is-set">${task.due}</button>` : ""}
+                </div>
+                ${
+                  task.stage >= 1
+                    ? `<div class="peek-text">${task.notes || "No details yet"}</div>`
+                    : ""
+                }
+                ${
+                  task.stage >= 2
+                    ? `<div class="task-date-row" style="padding-left:10px">
+                         <span class="due-chip">Pick a date</span>
+                         <button class="task-quick-date">Today</button>
+                         <button class="task-quick-date">Tomorrow</button>
+                       </div>`
+                    : ""
+                }
+                ${task.stage ? `<div class="peek-hint">${next}</div>` : ""}
+              </div>
+            </div>
+            <div class="tools">
+              <button class="tool-date" title="Date">${calIcon}</button>
+              <button title="Add subtask">↳</button>
+              <button title="Open as a page">⤢</button>
+              <button title="More">⋮</button>
+            </div>`;
+
+          li.querySelector(".tool-date").addEventListener("click", (e) => {
+            e.stopPropagation();
+            openDatePop(e.currentTarget, task, renderLadder);
+          });
+
+          li.addEventListener("click", (event) => {
+            if (event.target.closest(".tools, .chip, .checkbox")) return;
+            if (task.stage >= 2) {
+              say.textContent = "→ the page window opens (not drawn here)";
+              window.setTimeout(() => (say.textContent = ""), 2200);
+              return;
+            }
+            ladderTasks.forEach((t) => {
+              if (t !== task) t.stage = 0;
+            });
+            task.stage += 1;
+            renderLadder();
+          });
+
+          ladder.appendChild(li);
+
+          // Subtasks appear at the second step. The cost of that: a subtask
+          // cannot be dragged or ticked until its parent is opened twice.
+          if (task.stage >= 2) {
+            task.subs.forEach((sub) => {
+              const child = document.createElement("li");
+              child.className = "task-item is-subtask";
+              child.draggable = true;
+              child.innerHTML = `
+                <div class="task-row">
+                  <button class="checkbox" role="checkbox"></button>
+                  <div class="task-main"><div class="task-line"><span class="task-title">${sub}</span></div></div>
+                </div>`;
+              ladder.appendChild(child);
+            });
+          }
+        });
+
+        ladder.classList.toggle("has-open", ladderTasks.some((t) => t.stage));
+      }
+
+      renderLadder();
+    </script>
+  </body>
+</html>

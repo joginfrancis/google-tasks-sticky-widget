@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(null) }));
@@ -49,6 +49,7 @@ beforeEach(() => {
       globalHotkey: "CmdOrCtrl+Shift+G",
       globalHotkeyEnabled: true,
       theme: "system",
+      showSubtasks: true,
       selectedTaskListId: "list-1",
     },
     status: { state: "synced", lastSyncedAt: null, message: null },
@@ -73,6 +74,7 @@ beforeEach(() => {
     onAdd: noopAsync,
     onAddSubtask: noopAsync,
     onOpenPage: noop,
+    showSubtasks: true,
     update: { state: { phase: "idle" }, install: noop, dismiss: noop },
     onAddBelow: vi.fn().mockResolvedValue({ id: "new-1" }),
     onAddOutline: noopAsync,
@@ -224,5 +226,57 @@ describe("TaskWidget Escape", () => {
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(screen.getByText("Bravo").closest("li")).not.toHaveClass("is-expanded");
     vi.useRealTimers();
+  });
+});
+
+describe("TaskWidget ladder", () => {
+  const openStep = (name: string) => {
+    fireEvent.click(screen.getByText(name), { detail: 1 });
+    act(() => vi.runAllTimers());
+  };
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("shows the description first, the controls second, the page third", () => {
+    render(<TaskWidget {...props} tasks={[task("a", "Alpha")]} />);
+
+    // Step one: the row is open, but none of the controls are.
+    openStep("Alpha");
+    expect(screen.getByText("Alpha").closest("li")).toHaveClass("is-expanded");
+    expect(screen.queryByText("Tomorrow")).toBeNull();
+
+    // Step two: dates and the rest.
+    openStep("Alpha");
+    expect(screen.getByText("Tomorrow")).toBeInTheDocument();
+    expect(props.onOpenPage).not.toHaveBeenCalled();
+
+    // Step three leaves the note and opens the window.
+    openStep("Alpha");
+    expect(props.onOpenPage).toHaveBeenCalledWith("a");
+  });
+
+  it("says what the next click will do", () => {
+    render(<TaskWidget {...props} tasks={[task("a", "Alpha")]} />);
+
+    openStep("Alpha");
+    expect(screen.getByText("Click again for dates and subtasks")).toBeInTheDocument();
+
+    openStep("Alpha");
+    expect(screen.getByText("Click again to open it in a window")).toBeInTheDocument();
+  });
+
+  it("hides subtasks when asked, except under the task being worked on", () => {
+    const rows = [task("a", "Alpha"), task("a1", "Alpha child", "a"), task("b", "Bravo")];
+    render(<TaskWidget {...props} tasks={rows} showSubtasks={false} />);
+
+    expect(screen.queryByText("Alpha child")).toBeNull();
+
+    // Its own parent, at the second step, shows it again — or a checklist
+    // would be unreachable rather than merely out of the way.
+    openStep("Alpha");
+    expect(screen.queryByText("Alpha child")).toBeNull();
+    openStep("Alpha");
+    expect(screen.getByText("Alpha child")).toBeInTheDocument();
   });
 });

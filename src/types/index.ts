@@ -59,5 +59,7 @@ export interface Settings {
   globalHotkey: string;
   globalHotkeyEnabled: boolean;
   theme: ThemePreference;
+  /** List subtasks in the note, or keep them for the open task only. */
+  showSubtasks: boolean;
   selectedTaskListId: string | null;
 }

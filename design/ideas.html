@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Task UX — ideas</title>
+
+    <!--
+      Mockups for the redesign ideas. NOT the app: the proposed states are
+      drawn here with styles that exist only in this file, so nothing in src/
+      changes until a direction is chosen. The real stylesheets are linked so
+      the "now" column is honest about what the app actually looks like.
+    -->
+    <link rel="stylesheet" href="../src/styles/tokens.css" />
+    <link rel="stylesheet" href="../src/styles/base.css" />
+    <link rel="stylesheet" href="../src/components/TaskItem/TaskItem.css" />
+    <link rel="stylesheet" href="../src/components/TaskItem/DueChip.css" />
+    <link rel="stylesheet" href="../src/components/TaskWidget/TaskWidget.css" />
+
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #5f6068;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        color: #fff;
+      }
+      .row {
+        display: flex;
+        gap: 22px;
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+      .col {
+        width: 340px;
+      }
+      .cap {
+        margin: 0 0 8px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .cap small {
+        display: block;
+        font-weight: 400;
+        opacity: 0.75;
+        margin-top: 2px;
+        line-height: 1.4;
+      }
+      .note {
+        --surface: #f7d6e0;
+        --surface-header: #f7d6e0;
+        --surface-raised: #f7d6e0;
+        --text: #1a1a1f;
+        --text-secondary: #1a1a1fbb;
+        --text-muted: #1a1a1f88;
+        --border: #1a1a1f22;
+        --border-strong: #1a1a1f44;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
+      }
+      .note .widget-body {
+        padding: 6px 4px 10px;
+      }
+
+      /* ---- proposed-only styling, not in the app ---- */
+
+      /* Siblings step back while one task is open. */
+      .is-dimmed {
+        opacity: 0.45;
+      }
+
+      /* The hover toolbar: over the row, not under it, so nothing moves. */
+      .hover-tools {
+        position: absolute;
+        top: 3px;
+        right: 4px;
+        display: flex;
+        gap: 1px;
+        padding: 2px;
+        border-radius: 7px;
+        background: color-mix(in srgb, var(--surface) 86%, #fff);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+      }
+      .hover-tools button {
+        width: 24px;
+        height: 22px;
+        display: grid;
+        place-items: center;
+        border: none;
+        border-radius: 5px;
+        background: transparent;
+        color: var(--text-secondary);
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .hover-tools button:hover {
+        background: rgba(0, 0, 0, 0.07);
+      }
+      .pos {
+        position: relative;
+      }
+
+      /* Peek: the description, clamped, and nothing else. */
+      .peek {
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        margin-top: 3px;
+        padding-left: 10px;
+        border-left: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+        line-height: 1.45;
+      }
+      .peek-hint {
+        margin-top: 5px;
+        padding-left: 10px;
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      /* Subtasks as a count that unfolds. */
+      .sub-count {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 4px;
+        padding: 1px 7px 1px 4px;
+        border-radius: 20px;
+        background: color-mix(in srgb, var(--text) 7%, transparent);
+        font-size: 11.5px;
+        color: var(--text-secondary);
+        cursor: pointer;
+      }
+
+      /* Natural-language capture. */
+      .capture {
+        margin: 0 4px;
+        padding: 7px 9px;
+        border: 1px solid var(--accent);
+        border-radius: 8px;
+        background: var(--surface-raised);
+        font-size: var(--font-size-sm);
+        color: var(--text);
+      }
+      .capture .parsed {
+        background: color-mix(in srgb, var(--accent) 22%, transparent);
+        border-radius: 3px;
+        padding: 0 2px;
+      }
+      .capture-note {
+        margin: 6px 4px 0;
+        font-size: 11.5px;
+        color: var(--text-muted);
+      }
+      .keycap {
+        display: inline-block;
+        min-width: 15px;
+        padding: 0 4px;
+        border: 1px solid var(--border-strong);
+        border-bottom-width: 2px;
+        border-radius: 4px;
+        font-size: 10.5px;
+        text-align: center;
+      }
+
+      /* ---- date variants ---- */
+      .date-line {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 7px;
+        padding-left: 10px;
+      }
+      .date-word {
+        border: none;
+        background: none;
+        padding: 0;
+        font: inherit;
+        font-size: var(--font-size-sm);
+        color: var(--text-muted);
+        cursor: pointer;
+        text-decoration: underline;
+        text-decoration-color: color-mix(in srgb, var(--text) 25%, transparent);
+        text-underline-offset: 3px;
+      }
+      .date-word:hover {
+        color: var(--text);
+      }
+      .fake-popover {
+        width: 198px;
+        margin: 6px 0 4px 34px;
+        padding: 6px;
+        border-radius: 9px;
+        background: var(--surface-raised);
+        border: 1px solid var(--border);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+      }
+      .pop-quick {
+        display: flex;
+        gap: 4px;
+        padding-bottom: 6px;
+        margin-bottom: 6px;
+        border-bottom: 1px solid var(--border);
+      }
+      .pop-quick button {
+        flex: 1;
+        padding: 4px 2px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: transparent;
+        font: inherit;
+        font-size: 11px;
+        color: var(--text-secondary);
+        cursor: pointer;
+      }
+      .pop-head {
+        font-size: 11.5px;
+        text-align: center;
+        color: var(--text-secondary);
+        margin-bottom: 4px;
+      }
+      .pop-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+        text-align: center;
+        font-size: 11px;
+      }
+      .pop-grid span {
+        color: var(--text-muted);
+      }
+      .pop-grid b {
+        font-weight: 400;
+        padding: 3px 0;
+        border-radius: 5px;
+        color: var(--text);
+      }
+      .pop-grid b.sel {
+        background: var(--accent);
+        color: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="row">
+      <!-- 1. What it does now -->
+      <div class="col">
+        <p class="cap">Now <small>One open task costs four stacked rows. The description — the reason you opened it — gets one line in the middle.</small></p>
+        <div class="note widget">
+          <div class="widget-body">
+            <ul class="task-list">
+              <li class="task-item"><div class="task-row"><button class="checkbox" role="checkbox"></button><div class="task-main"><div class="task-line"><span class="task-title">Banglore?</span></div></div></div></li>
+              <li class="task-item is-expanded">
+                <div class="task-row">
+                  <button class="checkbox" role="checkbox"></button>
+                  <div class="task-main">
+                    <div class="task-line"><span class="task-title">Sector pending</span></div>
+                    <span class="task-notes">Chase the three that have not replied; the rest are in.</span>
+                    <div class="task-date-row">
+                      <span class="due-chip">Add date</span>
+                      <button class="task-quick-date">Today</button>
+                      <button class="task-quick-date">Tomorrow</button>
+                    </div>
+                    <div class="task-actions">
+                      <button class="task-action">↳</button>
+                      <button class="task-action">⤢</button>
+                      <button class="task-action">↗</button>
+                      <button class="task-action is-danger">🗑</button>
+                    </div>
+                  </div>
+                  <button class="task-menu-trigger" style="opacity:1">⋮</button>
+                </div>
+              </li>
+              <li class="task-item"><div class="task-row"><button class="checkbox" role="checkbox"></button><div class="task-main"><div class="task-line"><span class="task-title">Yadu email</span></div></div></div></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Peek -->
+      <div class="col">
+        <p class="cap">Click = peek <small>The description, clamped to three lines, and nothing else. Siblings step back. Tools appear over the row on hover, so nothing shifts.</small></p>
+        <div class="note widget">
+          <div class="widget-body">
+            <ul class="task-list">
+              <li class="task-item is-dimmed"><div class="task-row"><button class="checkbox" role="checkbox"></button><div class="task-main"><div class="task-line"><span class="task-title">Banglore?</span></div></div></div></li>
+              <li class="task-item pos" style="background: color-mix(in srgb, var(--text) 4%, transparent); border-radius: 10px">
+                <div class="task-row">
+                  <button class="checkbox" role="checkbox"></button>
+                  <div class="task-main">
+                    <div class="task-line"><span class="task-title">Sector pending</span><span class="due-chip" style="margin-left:6px">Sat</span></div>
+                    <div class="peek">Chase the three that have not replied; the rest are in. Varun said the lab numbers land on Friday, so the summary can go out over the weekend.</div>
+                    <div class="sub-count">▸ 3 subtasks</div>
+                    <div class="peek-hint"><span class="keycap">Enter</span> opens it full size</div>
+                  </div>
+                </div>
+                <div class="hover-tools">
+                  <button title="Add subtask">↳</button>
+                  <button title="Open as a page">⤢</button>
+                  <button title="More">⋮</button>
+                </div>
+              </li>
+              <li class="task-item is-dimmed"><div class="task-row"><button class="checkbox" role="checkbox"></button><div class="task-main"><div class="task-line"><span class="task-title">Yadu email</span></div></div></div></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Resting list -->
+      <div class="col">
+        <p class="cap">At rest <small>Nothing open: one line per task, a date only where there is one, a subtask count where there are children. Tools on hover only.</small></p>
+        <div class="note widget">
+          <div class="widget-body">
+            <ul class="task-list">
+              <li class="task-item"><div class="task-row"><button class="checkbox" role="checkbox"></button><div class="task-main"><div class="task-line"><span class="task-title">Banglore?</span></div></div></div></li>
+              <li class="task-item pos">
+                <div class="task-row">
+                  <button class="checkbox" role="checkbox"></button>
+                  <div class="task-main"><div class="task-line"><span class="task-title">Sector pending</span><span class="task-has-notes" title="Has details">≡</span><span class="due-chip" style="margin-left:6px">Sat</span></div></div>
+                </div>
+                <div class="hover-tools"><button>↳</button><button>⤢</button><button>⋮</button></div>
+              </li>
+              <li class="task-item"><div class="task-row"><button class="checkbox" role="checkbox"></button><div class="task-main"><div class="task-line"><span class="task-title">Creative Studio</span><span class="due-chip" style="margin-left:6px; color: var(--danger); border-color: currentColor">Mon</span></div></div></div></li>
+              <li class="task-item"><div class="task-row"><button class="checkbox" role="checkbox"></button><div class="task-main"><div class="task-line"><span class="task-title">Yadu email</span></div><div class="sub-count">▸ 2 subtasks</div></div></div></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Capture -->
+      <div class="col">
+        <p class="cap">Typing a date <small>The add box reads the date out of the sentence. No calendar, no second step — the largest single win here.</small></p>
+        <div class="note widget">
+          <div class="widget-body">
+            <div class="capture">Call Varun <span class="parsed">tomorrow 4pm</span></div>
+            <p class="capture-note">Adds “Call Varun”, due tomorrow. <span class="keycap">Esc</span> keeps the words as typed.</p>
+            <ul class="task-list" style="margin-top: 10px">
+              <li class="task-item"><div class="task-row"><button class="checkbox" role="checkbox"></button><div class="task-main"><div class="task-line"><span class="task-title">Call Varun</span><span class="due-chip" style="margin-left:6px">Tomorrow</span></div></div></div></li>
+              <li class="task-item"><div class="task-row"><button class="checkbox" role="checkbox"></button><div class="task-main"><div class="task-line"><span class="task-title">Banglore?</span></div></div></div></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top: 26px">
+      <div class="col">
+        <p class="cap">Peek, keeping the dates — A: one quiet line <small>The calendar chip and the quick picks sit on a single line under the description. Text, not buttons, so it reads as a sentence rather than a toolbar.</small></p>
+        <div class="note widget">
+          <div class="widget-body">
+            <ul class="task-list">
+              <li class="task-item is-dimmed"><div class="task-row"><button class="checkbox" role="checkbox"></button><div class="task-main"><div class="task-line"><span class="task-title">Banglore?</span></div></div></div></li>
+              <li class="task-item pos" style="background: color-mix(in srgb, var(--text) 4%, transparent); border-radius: 10px">
+                <div class="task-row">
+                  <button class="checkbox" role="checkbox"></button>
+                  <div class="task-main">
+                    <div class="task-line"><span class="task-title">Sector pending</span></div>
+                    <div class="peek">Chase the three that have not replied; the rest are in. Varun said the lab numbers land on Friday.</div>
+                    <div class="date-line">
+                      <span class="due-chip">Pick a date</span>
+                      <button class="date-word">Today</button>
+                      <button class="date-word">Tomorrow</button>
+                      <span class="sub-count" style="margin:0 0 0 auto">▸ 3</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="hover-tools"><button>↳</button><button>⤢</button><button>⋮</button></div>
+              </li>
+              <li class="task-item is-dimmed"><div class="task-row"><button class="checkbox" role="checkbox"></button><div class="task-main"><div class="task-line"><span class="task-title">Yadu email</span></div></div></div></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="col">
+        <p class="cap">B: the chip is always on the title line <small>Dated or not, every task carries one chip. Click it for the calendar; Today and Tomorrow live inside that popup as its top row, one click away.</small></p>
+        <div class="note widget">
+          <div class="widget-body">
+            <ul class="task-list">
+              <li class="task-item is-dimmed"><div class="task-row"><button class="checkbox" role="checkbox"></button><div class="task-main"><div class="task-line"><span class="task-title">Banglore?</span></div></div></div></li>
+              <li class="task-item pos" style="background: color-mix(in srgb, var(--text) 4%, transparent); border-radius: 10px">
+                <div class="task-row">
+                  <button class="checkbox" role="checkbox"></button>
+                  <div class="task-main">
+                    <div class="task-line"><span class="task-title">Sector pending</span><span class="due-chip" style="margin-left:6px">＋ date</span></div>
+                    <div class="peek">Chase the three that have not replied; the rest are in. Varun said the lab numbers land on Friday.</div>
+                    <div class="sub-count">▸ 3 subtasks</div>
+                  </div>
+                </div>
+                <div class="hover-tools"><button>↳</button><button>⤢</button><button>⋮</button></div>
+              </li>
+              <li class="task-item is-dimmed"><div class="task-row"><button class="checkbox" role="checkbox"></button><div class="task-main"><div class="task-line"><span class="task-title">Yadu email</span></div></div></div></li>
+            </ul>
+            <div class="fake-popover">
+              <div class="pop-quick"><button>Today</button><button>Tomorrow</button><button>Next week</button></div>
+              <div class="pop-cal">
+                <div class="pop-head">October 2026</div>
+                <div class="pop-grid"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+                <b>5</b><b>6</b><b>7</b><b>8</b><b class="sel">9</b><b>10</b><b>11</b></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

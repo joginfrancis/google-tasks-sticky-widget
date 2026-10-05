@@ -34,7 +34,7 @@ let handlers: {
   onSetDue: ReturnType<typeof vi.fn>;
   onOpenInGoogle: ReturnType<typeof vi.fn>;
   onMoveToList: ReturnType<typeof vi.fn>;
-  onToggleExpand: ReturnType<typeof vi.fn>;
+  onAdvance: ReturnType<typeof vi.fn>;
 };
 
 function setup(overrides: Partial<React.ComponentProps<typeof TaskItem>> = {}) {
@@ -44,7 +44,7 @@ function setup(overrides: Partial<React.ComponentProps<typeof TaskItem>> = {}) {
     isSettling: false,
     error: null,
     otherLists: [],
-    isExpanded: false,
+    stage: 0,
     ...handlers,
     ...overrides,
   } as React.ComponentProps<typeof TaskItem>;
@@ -77,7 +77,7 @@ beforeEach(() => {
     onSetDue: vi.fn(),
     onOpenInGoogle: vi.fn(),
     onMoveToList: vi.fn(),
-    onToggleExpand: vi.fn(),
+    onAdvance: vi.fn(),
   };
 });
 
@@ -85,18 +85,18 @@ describe("TaskItem expansion", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it("toggles expansion on a single click, but only after the double-click grace", () => {
+  it("opens a step on a single click, but only after the double-click grace", () => {
     setup();
     fireEvent.click(title(), { detail: 1 });
 
     // Nothing yet: the row is still waiting to see if a second click arrives.
-    expect(handlers.onToggleExpand).not.toHaveBeenCalled();
+    expect(handlers.onAdvance).not.toHaveBeenCalled();
 
     runGrace();
-    expect(handlers.onToggleExpand).toHaveBeenCalledWith("task-1");
+    expect(handlers.onAdvance).toHaveBeenCalledWith("task-1");
   });
 
-  it("enters edit mode on a double click without ever expanding", () => {
+  it("enters edit mode on a double click without ever opening", () => {
     // Without the grace period every rename would flash the row open and shut.
     setup();
     const node = title();
@@ -105,30 +105,30 @@ describe("TaskItem expansion", () => {
     fireEvent.doubleClick(node);
 
     runGrace();
-    expect(handlers.onToggleExpand).not.toHaveBeenCalled();
+    expect(handlers.onAdvance).not.toHaveBeenCalled();
     expect(screen.getByRole("textbox")).toHaveValue("Water the plants");
   });
 
-  it("does not toggle expansion when the checkbox is clicked", () => {
+  it("does not open a step when the checkbox is clicked", () => {
     // Pressing a control should do one thing, not two.
     setup();
     fireEvent.click(screen.getByRole("checkbox"));
     runGrace();
 
     expect(handlers.onToggle).toHaveBeenCalledWith("task-1");
-    expect(handlers.onToggleExpand).not.toHaveBeenCalled();
+    expect(handlers.onAdvance).not.toHaveBeenCalled();
   });
 
-  it("does not toggle expansion when the options button is clicked", () => {
+  it("does not open a step when the options button is clicked", () => {
     setup();
     fireEvent.click(screen.getByRole("button", { name: "Task options" }));
     runGrace();
 
-    expect(handlers.onToggleExpand).not.toHaveBeenCalled();
+    expect(handlers.onAdvance).not.toHaveBeenCalled();
     expect(screen.getByRole("menu")).toBeInTheDocument();
   });
 
-  it("does not treat the click that ends a drag as an expand", () => {
+  it("does not treat the click that ends a drag as an open", () => {
     // A pointer that moved more than a few pixels was a drag, and the click
     // browsers fire at the end of it is not a request to open the row.
     setup({ onDragPress: vi.fn() });
@@ -137,7 +137,7 @@ describe("TaskItem expansion", () => {
     fireEvent.click(node, { detail: 1, clientX: 60, clientY: 44 });
 
     runGrace();
-    expect(handlers.onToggleExpand).not.toHaveBeenCalled();
+    expect(handlers.onAdvance).not.toHaveBeenCalled();
   });
 });
 
@@ -148,7 +148,7 @@ describe("TaskItem notes visibility", () => {
   });
 
   it("shows notes when expanded, with a placeholder when there are none", () => {
-    setup({ isExpanded: true });
+    setup({ stage: 2 });
     expect(screen.getByText("The big one by the window")).toBeInTheDocument();
 
     // The placeholder is the one thing a collapsed row cannot express.
@@ -169,13 +169,13 @@ describe("TaskItem notes visibility", () => {
   });
 
   it("drops the mark once open, where the description speaks for itself", () => {
-    setup({ isExpanded: true });
+    setup({ stage: 2 });
     expect(screen.queryByTitle("Has details")).not.toBeInTheDocument();
   });
 
   function cleanupAndRender() {
     document.body.innerHTML = "";
-    setup({ isExpanded: true, task: { ...task, notes: null } });
+    setup({ stage: 2, task: { ...task, notes: null } });
   }
 });
 
@@ -233,7 +233,7 @@ describe("TaskItem editing", () => {
     // Ctrl+Enter. The editor is a contenteditable now — the formatting is
     // shown as formatting — so what it holds is read from the DOM.
     const user = userEvent.setup();
-    setup({ isExpanded: true });
+    setup({ stage: 2 });
     await user.click(screen.getByText("The big one by the window"));
 
     const editor = screen.getByRole("textbox", { name: "Description" });
@@ -248,7 +248,7 @@ describe("TaskItem editing", () => {
 
   it("walks Tab from the title editor into the description, committing on the way", async () => {
     const user = userEvent.setup();
-    setup({ isExpanded: true });
+    setup({ stage: 2 });
     await user.dblClick(title());
 
     const titleEditor = screen.getByRole("textbox");
@@ -265,7 +265,7 @@ describe("TaskItem editing", () => {
 
   it("walks Shift+Tab from the description back to the title", async () => {
     const user = userEvent.setup();
-    setup({ isExpanded: true });
+    setup({ stage: 2 });
     await user.click(screen.getByText("The big one by the window"));
 
     await user.tab({ shift: true });
@@ -293,7 +293,7 @@ describe("TaskItem selection clicks", () => {
     vi.advanceTimersByTime(500);
 
     expect(onSelect).toHaveBeenCalledWith(task.id, { toggle: true, range: false });
-    expect(handlers.onToggleExpand).not.toHaveBeenCalled();
+    expect(handlers.onAdvance).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
 
@@ -305,7 +305,7 @@ describe("TaskItem selection clicks", () => {
     vi.advanceTimersByTime(500);
 
     expect(onSelect).toHaveBeenCalledWith(task.id, { toggle: false, range: true });
-    expect(handlers.onToggleExpand).not.toHaveBeenCalled();
+    expect(handlers.onAdvance).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
 
@@ -323,7 +323,7 @@ describe("TaskItem add subtask", () => {
   it("offers Add subtask on an open task and adds on Enter, staying open", async () => {
     const user = userEvent.setup();
     const onAddSubtask = vi.fn().mockResolvedValue(null);
-    setup({ isExpanded: true, onAddSubtask });
+    setup({ stage: 2, onAddSubtask });
 
     await user.click(screen.getByRole("button", { name: "Add subtask" }));
     const field = screen.getByPlaceholderText("Add a subtask…");
@@ -340,7 +340,7 @@ describe("TaskItem add subtask", () => {
 
   it("does not offer it on a subtask — Google Tasks is one level deep", () => {
     setup({
-      isExpanded: true,
+      stage: 2,
       isSubtask: true,
       task: { ...task, parentId: "parent" },
       onAddSubtask: vi.fn(),
@@ -351,7 +351,7 @@ describe("TaskItem add subtask", () => {
   it("keeps what was typed when adding fails", async () => {
     const user = userEvent.setup();
     const onAddSubtask = vi.fn().mockResolvedValue("No connection");
-    setup({ isExpanded: true, onAddSubtask });
+    setup({ stage: 2, onAddSubtask });
 
     await user.click(screen.getByRole("button", { name: "Add subtask" }));
     const field = screen.getByPlaceholderText("Add a subtask…");
