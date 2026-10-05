@@ -46,7 +46,7 @@
    * legibility goes wrong. These are deliberately outside that override, so a
    * pink note opens a white task — the colour stays the note's identity, not
    * the reading surface. */
-  --paper: #fffdfa;
+  --paper: #ffffff;
   --paper-ink: #1a1a1f;
   --paper-ink-soft: #55555f;
   --paper-ink-faint: #85858f;

@@ -79,9 +79,9 @@
      room before the content does. */
   padding: clamp(14px, 3.4vh, 30px) clamp(16px, 3vw, 34px) clamp(10px, 2vh, 20px);
   border-radius: 10px;
-  /* Warm, not clinical. A sheet of paper is never #fff, and under a coloured
-     desk a cold white reads as a dialog box sitting on top of the note. */
-  background: color-mix(in srgb, #fffaf4 92%, var(--surface));
+  /* The same paper as an open task in the note, so the small version and the
+     big one are plainly the same surface. */
+  background: var(--paper);
   /* A sheet lifted off the desk, not a panel with an outline. */
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 6px 18px rgba(0, 0, 0, 0.08);
   /* The sheet itself never scrolls. The title, the controls and the footer
