@@ -167,10 +167,12 @@ export function HelpPanel({ globalHotkey, globalHotkeyEnabled, onClose }: Props)
           <h2>Mouse</h2>
           <dl className="help-keys help-gestures">
             <dt>Click a task</dt>
+            <dd>Opens it. The same click closes it again</dd>
+
+            <dt>Double-click an open task</dt>
             <dd>
-              Shows its description. Click again for dates and subtasks, and
-              once more to open it in a window. The row says what the next
-              click will do
+              Opens it in a window of its own. Escape closes that window, and
+              Escape again closes the task
             </dd>
 
             <dt>Hover a task</dt>

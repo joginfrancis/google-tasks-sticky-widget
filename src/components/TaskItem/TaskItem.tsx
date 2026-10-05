@@ -48,15 +48,11 @@ interface Props {
    * several expanded rows on a 340px panel push everything else off-screen.
    */
   /**
-   * How far this row is opened.
-   *
-   * 0 closed · 1 the description · 2 the description, dates and subtasks.
-   * A click moves up one; from 2 it opens the page. Repeated clicks rather
-   * than one big expansion, so the common case — reading the details — never
-   * pays for the controls it does not need.
+   * 0 closed, 2 open. (1 is unused now that a click opens a task outright;
+   * the type is kept so the states stay nameable if a halfway step returns.)
    */
   stage: 0 | 1 | 2;
-  /** A click on the row body: advance one step, or open the page from 2. */
+  /** A click on the row body: open this task, or close it if it is open. */
   onAdvance: (id: string) => void;
   /** Part of a multi-selection. */
   isSelected?: boolean;
@@ -328,6 +324,27 @@ export function TaskItem({
     beginEdit(field);
   };
 
+  /**
+   * A double click on an open task opens it in a window.
+   *
+   * Only when it is already open: on a closed row the same gesture would fire
+   * whenever someone clicked twice to open and close again. The text keeps its
+   * own double clicks — a title renames, a description edits — so this is
+   * everywhere else on the row.
+   */
+  const handleRowDoubleClick = (event: React.MouseEvent) => {
+    if (!isExpanded || !onOpenPage || editing) return;
+    if (
+      (event.target as HTMLElement).closest(
+        "button, input, textarea, .task-title, .task-notes, .task-edit, [contenteditable='true']",
+      )
+    ) {
+      return;
+    }
+    cancelPendingExpand();
+    onOpenPage(task.id);
+  };
+
   /** Wraps the selection in `**` or `*`, and takes it off again. */
   const applyMarker = (marker: string) => {
     const field = inputRef.current;
@@ -518,6 +535,7 @@ export function TaskItem({
         setMenuOpen(true);
       }}
       onClick={handleRowClick}
+      onDoubleClick={handleRowDoubleClick}
       onMouseDown={(event) => {
         // Shift+mousedown extends the browser's text selection across every
         // row between the last click and this one, which is not what a
@@ -763,11 +781,7 @@ export function TaskItem({
                A ladder of clicks is invisible without this: nobody discovers a
                second step by accident, and nobody enjoys a window opening when
                they expected a row to close. */
-            <p className="task-next">
-              {isFull
-                ? "Click again to open it in a window"
-                : "Click again for dates and subtasks"}
-            </p>
+            <p className="task-next">Double-click to open it in a window</p>
           )}
 
           {isFull && addingSubtask && canAddSubtask && (

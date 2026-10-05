@@ -105,12 +105,15 @@ export function TaskWidget(props: Props) {
   // One row at a time: several open at once would push the rest off a 340px
   // panel, and the point of expanding is to look at one thing.
   /**
-   * Which task is open, and how far.
+   * The one task that is open.
    *
-   * One click shows the description, a second adds the dates and the task's
-   * own subtasks, a third opens the page. Only one task is ever open: several
-   * at once pushed the rest of a 340px note off-screen, and the point of
-   * opening one is to look at one.
+   * A click opens it, the same click closes it, and a double click on an open
+   * task sends it to a window of its own. An earlier version climbed a ladder
+   * of steps on repeated clicks; it was more capable and harder to live with,
+   * because the way *back* stopped being the thing you had just done.
+   *
+   * Only one at a time: several open at once pushed the rest of a 340px note
+   * off-screen, and the point of opening one is to look at one.
    */
   const [open, setOpen] = useState<{ id: string; stage: 1 | 2 } | null>(null);
   const expandedId = open?.id ?? null;
@@ -120,15 +123,7 @@ export function TaskWidget(props: Props) {
     // A plain click on a task is a return to normal use, so it ends any
     // selection — the same as clicking a file without Ctrl or Shift.
     setSelection(emptySelection);
-    if (open?.id !== id) {
-      setOpen({ id, stage: 1 });
-    } else if (open.stage === 1) {
-      setOpen({ id, stage: 2 });
-    } else {
-      // The top of the ladder is the window, and the row stays open behind it
-      // so closing the page leaves you where you were.
-      props.onOpenPage(id);
-    }
+    setOpen((current) => (current?.id === id ? null : { id, stage: 2 }));
   };
 
   const closeOpen = () => setOpen(null);

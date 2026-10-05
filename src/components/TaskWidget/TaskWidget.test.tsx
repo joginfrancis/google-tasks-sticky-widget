@@ -229,8 +229,8 @@ describe("TaskWidget Escape", () => {
   });
 });
 
-describe("TaskWidget ladder", () => {
-  const openStep = (name: string) => {
+describe("TaskWidget opening a task", () => {
+  const clickRow = (name: string) => {
     fireEvent.click(screen.getByText(name), { detail: 1 });
     act(() => vi.runAllTimers());
   };
@@ -238,32 +238,37 @@ describe("TaskWidget ladder", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it("shows the description first, the controls second, the page third", () => {
+  it("opens on a click and closes on the next one", () => {
     render(<TaskWidget {...props} tasks={[task("a", "Alpha")]} />);
 
-    // Step one: the row is open, but none of the controls are.
-    openStep("Alpha");
+    clickRow("Alpha");
     expect(screen.getByText("Alpha").closest("li")).toHaveClass("is-expanded");
-    expect(screen.queryByText("Tomorrow")).toBeNull();
-
-    // Step two: dates and the rest.
-    openStep("Alpha");
+    // Open means open: the dates are there, not behind another click.
     expect(screen.getByText("Tomorrow")).toBeInTheDocument();
+
+    clickRow("Alpha");
+    expect(screen.getByText("Alpha").closest("li")).not.toHaveClass("is-expanded");
+  });
+
+  it("opens the window on a double click, but only once the task is open", () => {
+    render(<TaskWidget {...props} tasks={[task("a", "Alpha")]} />);
+    const row = screen.getByText("Alpha").closest("li")!;
+
+    // Closed: a double click is someone opening and closing again.
+    fireEvent.doubleClick(row);
     expect(props.onOpenPage).not.toHaveBeenCalled();
 
-    // Step three leaves the note and opens the window.
-    openStep("Alpha");
+    clickRow("Alpha");
+    fireEvent.doubleClick(row);
     expect(props.onOpenPage).toHaveBeenCalledWith("a");
   });
 
-  it("says what the next click will do", () => {
+  it("closes the open task on Escape", () => {
     render(<TaskWidget {...props} tasks={[task("a", "Alpha")]} />);
 
-    openStep("Alpha");
-    expect(screen.getByText("Click again for dates and subtasks")).toBeInTheDocument();
-
-    openStep("Alpha");
-    expect(screen.getByText("Click again to open it in a window")).toBeInTheDocument();
+    clickRow("Alpha");
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.getByText("Alpha").closest("li")).not.toHaveClass("is-expanded");
   });
 
   it("hides subtasks when asked, except under the task being worked on", () => {
@@ -272,11 +277,9 @@ describe("TaskWidget ladder", () => {
 
     expect(screen.queryByText("Alpha child")).toBeNull();
 
-    // Its own parent, at the second step, shows it again — or a checklist
-    // would be unreachable rather than merely out of the way.
-    openStep("Alpha");
-    expect(screen.queryByText("Alpha child")).toBeNull();
-    openStep("Alpha");
+    // Its own parent, open, shows it again — or a checklist would be
+    // unreachable rather than merely out of the way.
+    clickRow("Alpha");
     expect(screen.getByText("Alpha child")).toBeInTheDocument();
   });
 });
