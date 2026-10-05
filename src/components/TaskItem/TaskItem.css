@@ -892,3 +892,34 @@ body.is-tall .task-item.is-expanded .task-notes {
   background: var(--surface-raised);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
 }
+
+/* An open task is a small version of its page.
+   
+   Closed, a row is one line in a list. Open, it is the thing you are working
+   on — and it was saying so only by being taller. The same tinted panel the
+   page uses marks it out, at note scale: a wash of the note's own ink rather
+   than a new colour, so a pink note does not suddenly contain a blue card. */
+.task-item.is-expanded {
+  margin: 2px 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+.task-item.is-expanded:hover .task-row,
+.task-item.is-expanded .task-row {
+  background: transparent;
+}
+
+/* The description inside an open row: ruled, like the page, but at the note's
+   own line height so a 340px panel does not turn into stripes. */
+.task-item.is-expanded .task-notes,
+.task-item.is-expanded .task-edit.is-notes.is-rich {
+  border-left: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  border-radius: 0 6px 6px 0;
+  background-color: color-mix(in srgb, var(--text) 3%, transparent);
+}
+
+.task-item.is-expanded .task-edit.is-notes.is-rich:focus {
+  border-left-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}

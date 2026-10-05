@@ -75,7 +75,9 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-  padding: 30px 34px 22px;
+  /* Padding follows the window: on a small page the chrome should give up its
+     room before the content does. */
+  padding: clamp(14px, 3.4vh, 30px) clamp(16px, 3vw, 34px) clamp(10px, 2vh, 20px);
   border-radius: 10px;
   /* Warm, not clinical. A sheet of paper is never #fff, and under a coloured
      desk a cold white reads as a dialog box sitting on top of the note. */
@@ -98,10 +100,8 @@
   /* Never crushed to a sliver: on a short window the text gives up the room,
      because the text can scroll and a two-line subtask list cannot. */
   flex: 0 1 auto;
-  /* Enough for the heading, a couple of subtasks and the add field: less
-     than that and the section is a label with nothing under it. */
-  min-height: 134px;
-  max-height: 42%;
+  min-height: 0;
+  max-height: 38%;
   overflow-y: auto;
   padding-top: 2px;
   scrollbar-width: thin;
@@ -254,11 +254,13 @@
    look again, in a different colour. */
 .page .task-edit.is-notes.is-rich {
   flex: 1 1 auto;
-  min-height: 220px;
+  /* Shrinks as far as the window asks. The footer is not negotiable; the
+     writing area is, because it scrolls. */
+  min-height: 72px;
   margin-top: 2px;
-  padding: 14px 16px 14px 20px;
+  padding: 12px 16px 12px 18px;
   border: none;
-  border-left: 2px solid color-mix(in srgb, var(--desk, var(--accent)) 55%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--desk-ink, #000) 14%, transparent);
   border-radius: 0 8px 8px 0;
   font-size: 15.5px;
   line-height: 25px;
@@ -314,7 +316,7 @@
 
 .page .task-edit.is-notes.is-rich:focus {
   background-color: color-mix(in srgb, var(--desk, var(--accent)) 16%, var(--surface));
-  border-left-color: var(--accent);
+  border-left-color: color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
 .page .task-edit.is-notes.is-rich:empty::before {
@@ -465,5 +467,31 @@
 @media (min-width: 1100px) {
   .page-body {
     padding: 28px 56px 36px;
+  }
+}
+
+/* Short windows: the furniture shrinks first. */
+@media (max-height: 620px) {
+  .page-title,
+  .page-title-edit {
+    font-size: 19px;
+  }
+
+  .page-headline {
+    margin-bottom: 6px;
+  }
+
+  .page-meta {
+    margin-bottom: 10px;
+  }
+
+  .page-subtasks {
+    margin-top: 16px;
+    padding-top: 10px;
+  }
+
+  .page-foot {
+    margin-top: 8px;
+    padding-top: 10px;
   }
 }

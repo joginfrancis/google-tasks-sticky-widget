@@ -20,6 +20,7 @@
     <link rel="stylesheet" href="../src/components/TaskItem/TaskItem.css" />
     <link rel="stylesheet" href="../src/components/TaskItem/DueChip.css" />
     <link rel="stylesheet" href="../src/components/TaskPage/TaskPage.css" />
+    <link rel="stylesheet" href="../src/components/TaskWidget/TaskWidget.css" />
 
     <style>
       /* Preview chrome only — none of this ships. */
@@ -30,9 +31,22 @@
         font-family: "Segoe UI", system-ui, sans-serif;
       }
       .shell {
+        display: flex;
+        gap: 18px;
         height: 100vh;
         padding: 18px;
         box-sizing: border-box;
+      }
+      .shell .page {
+        flex: 1;
+        min-width: 0;
+      }
+      /* The note, at its real width, so the two can be judged side by side. */
+      .note-mock {
+        flex: 0 0 340px;
+        align-self: flex-start;
+        max-height: 100%;
+        overflow: hidden;
       }
       .controls {
         position: fixed;
@@ -141,6 +155,44 @@
               <button class="page-done">Done</button>
             </div>
           </div>
+        </div>
+      </div>
+      <div class="widget note-mock" style="--surface: #f7d6e0; --surface-header: #f7d6e0; --surface-raised: #f7d6e0; --text: #1a1a1f; --text-secondary: #1a1a1fbb; --text-muted: #1a1a1f88; --border: #1a1a1f22; --border-strong: #1a1a1f44">
+        <div class="widget-body">
+          <ul class="task-list">
+            <li class="task-item">
+              <div class="task-row">
+                <button class="checkbox" role="checkbox" aria-checked="false"></button>
+                <div class="task-main"><div class="task-line"><span class="task-title">Sector pending</span></div></div>
+              </div>
+            </li>
+            <li class="task-item is-expanded">
+              <div class="task-row">
+                <button class="checkbox" role="checkbox" aria-checked="false"></button>
+                <div class="task-main">
+                  <div class="task-line"><span class="task-title">Notion bill</span></div>
+                  <span class="task-notes">Renews on the 14th — check whether the team plan is still worth it.</span>
+                  <div class="task-date-row">
+                    <span class="due-chip">Add date</span>
+                    <button class="task-quick-date">Today</button>
+                    <button class="task-quick-date">Tomorrow</button>
+                  </div>
+                  <div class="task-actions">
+                    <button class="task-action">↳</button>
+                    <button class="task-action">⤢</button>
+                    <button class="task-action">↗</button>
+                    <button class="task-action is-danger">🗑</button>
+                  </div>
+                </div>
+              </div>
+            </li>
+            <li class="task-item">
+              <div class="task-row">
+                <button class="checkbox" role="checkbox" aria-checked="false"></button>
+                <div class="task-main"><div class="task-line"><span class="task-title">Yadu email</span></div></div>
+              </div>
+            </li>
+          </ul>
         </div>
       </div>
     </div>
