@@ -325,7 +325,10 @@ describe("TaskItem add subtask", () => {
     const onAddSubtask = vi.fn().mockResolvedValue(null);
     setup({ stage: 2, onAddSubtask });
 
-    await user.click(screen.getByRole("button", { name: "Add subtask" }));
+    // It lives in the task menu now: four tools on a 340px row left a title
+    // no width.
+    await user.click(screen.getByRole("button", { name: "Task options" }));
+    await user.click(screen.getByRole("menuitem", { name: "Add subtask" }));
     const field = screen.getByPlaceholderText("Add a subtask…");
     await user.type(field, "Step one{Enter}");
 
@@ -353,7 +356,10 @@ describe("TaskItem add subtask", () => {
     const onAddSubtask = vi.fn().mockResolvedValue("No connection");
     setup({ stage: 2, onAddSubtask });
 
-    await user.click(screen.getByRole("button", { name: "Add subtask" }));
+    // It lives in the task menu now: four tools on a 340px row left a title
+    // no width.
+    await user.click(screen.getByRole("button", { name: "Task options" }));
+    await user.click(screen.getByRole("menuitem", { name: "Add subtask" }));
     const field = screen.getByPlaceholderText("Add a subtask…");
     await user.type(field, "Step one{Enter}");
 

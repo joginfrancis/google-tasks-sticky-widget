@@ -241,6 +241,125 @@
         background: var(--accent);
         color: #fff;
       }
+
+      /* ---- "more modern" prototype styling ---- */
+      .m-note {
+        --surface: #fae0cb;
+        --surface-header: #fae0cb;
+        --surface-raised: #fff;
+        --text: #22201e;
+        --text-secondary: #22201ebb;
+        --text-muted: #22201e88;
+        --border: #22201e1f;
+        --border-strong: #22201e3d;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
+        padding-bottom: 8px;
+      }
+      .m-row {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        padding: 7px 10px;
+        border-radius: 9px;
+      }
+      .m-box {
+        flex: 0 0 auto;
+        width: 16px;
+        height: 16px;
+        margin-top: 1px;
+        border: 1.5px solid var(--border-strong);
+        border-radius: 5px;
+      }
+      .m-title {
+        font-size: 13px;
+        line-height: 1.35;
+        color: var(--text);
+      }
+      .m-card {
+        position: relative;
+        margin: 4px 6px;
+        padding: 10px 12px 12px;
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 8px 20px rgba(0,0,0,.09);
+      }
+      /* The note's colour as a spine, so the card still belongs to the note. */
+      .m-card::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 10px;
+        bottom: 10px;
+        width: 3px;
+        border-radius: 0 3px 3px 0;
+        background: #e9a06a;
+      }
+      .m-card .m-row { padding: 0 0 8px; }
+      .m-tools {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        display: flex;
+        gap: 2px;
+        padding: 3px;
+        border-radius: 9px;
+        background: rgba(255,255,255,.92);
+        box-shadow: 0 2px 10px rgba(0,0,0,.14);
+      }
+      .m-tools button {
+        width: 26px; height: 24px;
+        display: grid; place-items: center;
+        border: none; border-radius: 7px; background: transparent;
+        color: #6b6761; font-size: 13px; cursor: pointer;
+      }
+      .m-tools button:hover { background: #00000010; color: #22201e; }
+
+      /* A link as a chip: the thing it points at, not its address. */
+      .m-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        max-width: 100%;
+        margin: 2px 0 4px;
+        padding: 6px 10px 6px 7px;
+        border: 1px solid #e6e3df;
+        border-radius: 9px;
+        background: #faf9f7;
+        text-decoration: none;
+        color: inherit;
+      }
+      .m-link .m-fav {
+        flex: 0 0 auto;
+        width: 18px; height: 18px;
+        display: grid; place-items: center;
+        border-radius: 5px;
+        background: #0f9d58;
+        color: #fff;
+        font-size: 10px;
+        font-weight: 700;
+      }
+      .m-link .m-meta { min-width: 0; line-height: 1.25; }
+      .m-link .m-host { font-size: 12px; color: #22201e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .m-link .m-sub { font-size: 10.5px; color: #8a847c; }
+
+      .m-dates { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+      .m-chip {
+        padding: 3px 10px;
+        border: 1px solid #ddd8d2;
+        border-radius: 20px;
+        background: #fff;
+        font-size: 11.5px;
+        color: #4a453f;
+      }
+      .m-word {
+        border: none; background: none; padding: 2px 4px;
+        font: inherit; font-size: 11.5px; color: #8a847c; cursor: pointer;
+        border-radius: 6px;
+      }
+      .m-word:hover { background: #00000008; color: #22201e; }
+      .m-hint { margin: 8px 0 0; font-size: 10.5px; color: #a09a92; }
     </style>
   </head>
   <body>
@@ -401,6 +520,61 @@
                 <b>5</b><b>6</b><b>7</b><b>8</b><b class="sel">9</b><b>10</b><b>11</b></div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top: 26px">
+      <div class="col">
+        <p class="cap">Now <small>The title wraps three ways round the tools, the link is a wall of address, and the date row runs off the edge.</small></p>
+        <div class="note widget">
+          <div class="widget-body">
+            <ul class="task-list">
+              <li class="task-item"><div class="task-row"><button class="checkbox" role="checkbox"></button><div class="task-main"><div class="task-line"><span class="task-title">Assistant international email</span></div></div></div></li>
+              <li class="task-item is-expanded">
+                <div class="task-row">
+                  <button class="checkbox" role="checkbox"></button>
+                  <div class="task-main">
+                    <div class="task-line" style="padding-right:96px"><span class="task-title">Creative Studio + Fabricademhy</span></div>
+                    <span class="task-notes">https://docs.google.com/spreadsheets/d/13_IJ6ACRdzuRNP58MsgMBJ2sbZBg2oNa-B9bN-os9CU/edit?gid=210347526</span>
+                    <div class="task-date-row"><span class="due-chip">Add date</span><button class="task-quick-date">Today</button><button class="task-quick-date">Tomorrow</button></div>
+                  </div>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="col">
+        <p class="cap">Proposed <small>A link becomes what it points at. The title keeps its width because the tools only clear space while they are showing. The note's colour survives as a spine on the card.</small></p>
+        <div class="m-note">
+          <div style="padding: 8px 4px 0">
+            <div class="m-row"><span class="m-box"></span><span class="m-title">Assistant international email</span></div>
+            <div class="m-row"><span class="m-box"></span><span class="m-title">Notion bill</span></div>
+
+            <div class="m-card">
+              <div class="m-tools">
+                <button title="Date">🗓</button><button title="Add subtask">↳</button><button title="Open in a window">⤢</button><button title="More">⋮</button>
+              </div>
+              <div class="m-row"><span class="m-box"></span><span class="m-title" style="font-weight:600">Creative Studio + Fabricademhy</span></div>
+              <a class="m-link" href="#">
+                <span class="m-fav">S</span>
+                <span class="m-meta">
+                  <span class="m-host">docs.google.com</span>
+                  <span class="m-sub">Spreadsheet · opens in your browser</span>
+                </span>
+              </a>
+              <div class="m-dates">
+                <span class="m-chip">＋ date</span>
+                <button class="m-word">Today</button>
+                <button class="m-word">Tomorrow</button>
+              </div>
+              <p class="m-hint">Double-click to open it in a window</p>
+            </div>
+
+            <div class="m-row"><span class="m-box"></span><span class="m-title">Iedc summit travel</span></div>
           </div>
         </div>
       </div>

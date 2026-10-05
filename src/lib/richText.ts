@@ -248,3 +248,46 @@ export function insertLink(
     caret: start + insert.length,
   };
 }
+
+/**
+ * What a link is, as far as a reader cares.
+ *
+ * A bare URL in a description is usually sixty characters of identifier that
+ * say nothing — `docs.google.com/spreadsheets/d/13_IJ6ACRdzu…` tells you less
+ * than "a spreadsheet" does, and takes four lines of a 340px note to do it.
+ * This is what the note shows instead; the address itself is still what is
+ * stored, and still what opens.
+ */
+export function describeLink(url: string): { host: string; kind: string } {
+  let host = url;
+  let path = "";
+  try {
+    const parsed = new URL(url);
+    host = parsed.hostname.replace(/^www\./, "");
+    path = parsed.pathname;
+  } catch {
+    // Not parseable: show it as it came, rather than guessing.
+    return { host: url, kind: "Link" };
+  }
+
+  const kind = (() => {
+    if (host === "docs.google.com") {
+      if (path.startsWith("/spreadsheets")) return "Spreadsheet";
+      if (path.startsWith("/document")) return "Document";
+      if (path.startsWith("/presentation")) return "Slides";
+      if (path.startsWith("/forms")) return "Form";
+      return "Google Docs";
+    }
+    if (host === "drive.google.com") return "Drive";
+    if (host === "calendar.google.com") return "Calendar";
+    if (host === "mail.google.com") return "Email";
+    if (host === "github.com") return "Repository";
+    if (host === "youtube.com" || host === "youtu.be") return "Video";
+    if (host === "figma.com" || host === "www.figma.com") return "Design";
+    if (host === "notion.so" || host.endsWith(".notion.site")) return "Notion page";
+    if (isImageUrl(url)) return "Image";
+    return "Link";
+  })();
+
+  return { host, kind };
+}

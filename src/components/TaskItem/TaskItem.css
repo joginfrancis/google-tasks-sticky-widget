@@ -347,6 +347,7 @@
 /* Date controls on one line: "Add date", the two quick picks, then repeat
    pushed to the far end. */
 .task-date-row {
+  flex-wrap: wrap;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -885,9 +886,10 @@ body.is-tall .task-item.is-expanded .task-notes {
    page uses marks it out, at note scale: a wash of the note's own ink rather
    than a new colour, so a pink note does not suddenly contain a blue card. */
 .task-item.is-expanded {
-  margin: 2px 0;
-  padding-bottom: 2px;
-  border-radius: 10px;
+  position: relative;
+  margin: 4px 0;
+  padding-bottom: 4px;
+  border-radius: 12px;
   /* Paper, whatever colour the note is.
      
      The note's colour is its identity; it is not a reading surface. A task
@@ -908,7 +910,25 @@ body.is-tall .task-item.is-expanded .task-notes {
   --border-strong: color-mix(in srgb, var(--paper-ink) 28%, transparent);
   background: var(--paper);
   color: var(--paper-ink);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.07), 0 4px 14px rgba(0, 0, 0, 0.08);
+  /* Two layers: a tight one that seats the card, a wide one that lifts it. */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 22px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+/* A stripe of the note down the card's edge.
+   
+   The card is paper so the text is legible; without this it is a white
+   rectangle with no tie to the note it came out of. Three pixels is enough to
+   say "this is still the pink note" without putting pink behind the words. */
+.task-item.is-expanded::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--note-tint, var(--accent));
 }
 
 .task-item.is-expanded:hover .task-row,
@@ -982,10 +1002,17 @@ body.is-tall .task-item.is-expanded .task-notes {
   color: var(--text);
 }
 
-/* The title must not run under the tools while they are showing. */
+/* The title clears the tools only while they are showing, and three buttons
+   need 80px rather than four needing 104 — on a 340px note that is the
+   difference between a title on two lines and a title on three. */
 .task-item:hover .task-line,
 .task-item.is-expanded .task-line {
-  padding-right: 96px;
+  padding-right: 80px;
+}
+
+/* Open, the title is the head of the card. */
+.task-item.is-expanded .task-title {
+  font-weight: 600;
 }
 
 /* What the next click does ------------------------------------------------- */
@@ -1068,4 +1095,64 @@ body.is-tall .task-item.is-expanded .task-notes {
   .task-expand {
     transition: none;
   }
+}
+
+/* A link as what it points at --------------------------------------------- */
+
+/* A bare address is an identifier, not a sentence: sixty characters that wrap
+   four times and say nothing. This is the same link, wearing what it is. */
+.rt-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  margin: 3px 0;
+  padding: 6px 10px 6px 6px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--paper-ink) 3%, var(--paper));
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.rt-card:hover {
+  background: color-mix(in srgb, var(--paper-ink) 6%, var(--paper));
+  border-color: var(--border-strong);
+}
+
+.rt-card-mark {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.rt-card-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.rt-card-host {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.rt-card-kind {
+  font-size: 10.5px;
+  color: var(--text-muted);
 }

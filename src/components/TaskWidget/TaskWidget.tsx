@@ -208,6 +208,9 @@ export function TaskWidget(props: Props) {
     if (!props.color) return undefined;
     const text = readableText(props.color);
     return {
+      // Kept alongside the overrides: an open task is paper, but it still
+      // carries a stripe of the note it belongs to.
+      "--note-tint": props.color,
       "--surface": props.color,
       "--surface-header": props.color,
       "--surface-raised": props.color,

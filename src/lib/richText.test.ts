@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  describeLink,
   insertLink,
   toggleBullet,
   parseBlocks,
@@ -119,5 +120,27 @@ describe("toolbar helpers", () => {
 
   it("reads strikethrough", () => {
     expect(parseInline("~~gone~~")).toEqual([{ kind: "strike", text: "gone" }]);
+  });
+});
+
+describe("describeLink", () => {
+  it("names what a Google link points at", () => {
+    expect(describeLink("https://docs.google.com/spreadsheets/d/13_IJ6/edit")).toEqual({
+      host: "docs.google.com",
+      kind: "Spreadsheet",
+    });
+    expect(describeLink("https://docs.google.com/document/d/x/edit").kind).toBe("Document");
+    expect(describeLink("https://drive.google.com/file/d/x").kind).toBe("Drive");
+  });
+
+  it("drops www and falls back to a plain Link", () => {
+    expect(describeLink("https://www.example.com/a/b")).toEqual({
+      host: "example.com",
+      kind: "Link",
+    });
+  });
+
+  it("returns the text itself when it is not a URL at all", () => {
+    expect(describeLink("not a url").host).toBe("not a url");
   });
 });

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { parseBlocks, type Inline } from "../../lib/richText";
+import { describeLink, parseBlocks, type Inline } from "../../lib/richText";
 
 /**
  * A description, rendered.
@@ -81,22 +81,42 @@ function renderInline(tokens: Inline[]) {
             title="Open in your browser"
           />
         );
-      case "link":
+      case "link": {
+        const open = (e: React.MouseEvent) => {
+          // The row would otherwise take this click as "edit me".
+          e.stopPropagation();
+          void invoke("open_link", { url: token.url }).catch(() => {});
+        };
+
+        // A link someone gave words to reads as those words. A bare address
+        // becomes a chip saying what it points at — nobody reads an id.
+        if (token.text !== token.url) {
+          return (
+            <button key={i} type="button" className="rt-link" title={token.url} onClick={open}>
+              {token.text}
+            </button>
+          );
+        }
+
+        const { host, kind } = describeLink(token.url);
         return (
           <button
             key={i}
             type="button"
-            className="rt-link"
+            className="rt-card"
             title={token.url}
-            onClick={(e) => {
-              // The row would otherwise take this click as "edit me".
-              e.stopPropagation();
-              void invoke("open_link", { url: token.url }).catch(() => {});
-            }}
+            onClick={open}
           >
-            {token.text}
+            <span className="rt-card-mark" aria-hidden="true">
+              {host.slice(0, 1).toUpperCase()}
+            </span>
+            <span className="rt-card-text">
+              <span className="rt-card-host">{host}</span>
+              <span className="rt-card-kind">{kind}</span>
+            </span>
           </button>
         );
+      }
       default:
         return <span key={i}>{token.text}</span>;
     }
