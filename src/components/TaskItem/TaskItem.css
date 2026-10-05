@@ -973,8 +973,11 @@ body.is-tall .task-item.is-expanded .task-notes {
   position: relative;
 }
 
+/* Shown while the pointer is on the row, or while something they opened is
+   still open. Deliberately *not* for the whole time a task is expanded: an
+   open card is somewhere you read, and tools parked over its title were what
+   forced the title into three wrapped lines. */
 .task-item:hover .task-tools,
-.task-item.is-expanded .task-tools,
 .task-item.is-menu-open .task-tools,
 .task-tools:focus-within {
   opacity: 1;
@@ -1002,12 +1005,12 @@ body.is-tall .task-item.is-expanded .task-notes {
   color: var(--text);
 }
 
-/* The title clears the tools only while they are showing, and three buttons
-   need 80px rather than four needing 104 — on a 340px note that is the
-   difference between a title on two lines and a title on three. */
+/* The title gives up width only while the tools are actually over it. Point
+   somewhere else and it has the whole card back. */
 .task-item:hover .task-line,
-.task-item.is-expanded .task-line {
-  padding-right: 80px;
+.task-item.is-menu-open .task-line,
+.task-item:focus-within .task-line {
+  padding-right: 104px;
 }
 
 /* Open, the title is the head of the card. */

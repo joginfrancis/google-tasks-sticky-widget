@@ -893,10 +893,32 @@ export function TaskItem({
             </button>
           )}
 
-          {/* Add subtask lives in the menu now. Four buttons on a 340px note
-              pushed the title into three wrapped lines to get out of their
-              way, and a title losing its shape costs more than a shortcut
-              saves. */}
+          {canAddSubtask && (
+            <button
+              className="task-tool"
+              aria-label="Add subtask"
+              title="Add subtask"
+              onClick={openSubtaskField}
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                <path
+                  d="M3 3.5v6a2 2 0 0 0 2 2h4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M11.5 8.5v6M8.5 11.5h6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          )}
+
           {onOpenPage && (
             <button
               className="task-tool"
