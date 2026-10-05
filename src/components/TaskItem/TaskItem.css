@@ -733,57 +733,44 @@ body.is-tall .task-item.is-expanded .task-notes {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
-/* Full width when open ----------------------------------------------------- */
+/* Width of an open row ------------------------------------------------------ */
 
-/* Everything below the title line runs the whole width of the note, at both
-   levels, so an open task and an open subtask are the same shape.
-
-   The indents that make sense on a title — the checkbox column, and the extra
-   22px that marks a row as nested — say nothing on a paragraph below it. They
-   only cost words per line, which on a 340px note is the difference between
-   reading a description and squinting at it. The row's own left padding is
-   where the text stops; nothing goes past the edge of the note.
-
-   One variable holds how far back each level has to reach, so the two cases
-   differ by a number rather than by a second set of rules. */
+/* The contents used to be pulled left, out past the checkbox column, so a
+   description could run the full width of the note. That worked while an open
+   task was just rows on the note's own background.
+   
+   It stopped working the moment the open task became a card with its own
+   paper and its own clipping: content pulled outside the card is content
+   clipped by it, which is why "Add date" arrived as "dd date" and links lost
+   their first characters. The contents now sit inside the card, and the card
+   is what reaches — a little wider than the rows around it. */
 .task-item.is-expanded {
-  --open-outdent: 25px;
-  /* The right side reaches under the options button, which is only ever on
-     the title line. */
-  --open-reach: 26px;
+  margin-left: -4px;
+  margin-right: -2px;
+  padding: 2px 6px 4px 4px;
 }
 
 .task-item.is-expanded.is-subtask {
-  --open-outdent: 47px;
+  /* A nested card keeps enough indent to read as nested, but not the full
+     30px — the card edge already says where it belongs. */
+  margin-left: 14px;
 }
 
-.task-item.is-expanded .task-notes,
-.task-item.is-expanded .task-date-row,
-.task-item.is-expanded .task-actions,
-.task-item.is-expanded .format-bar,
-.task-item.is-expanded .subtask-add {
-  margin-left: calc(var(--open-outdent) * -1);
-  width: calc(100% + var(--open-outdent) + var(--open-reach));
+.task-item.is-expanded.is-subtask .task-row {
+  padding-left: 8px;
 }
 
-/* A span by default, which would ignore the width above. */
+/* A span by default, which cannot take a width or wrap like a block. */
 .task-item.is-expanded .task-notes {
   display: block;
   box-sizing: border-box;
 }
 
+/* Long unbroken strings — a pasted URL, most often — wrap instead of pushing
+   the card sideways. */
+.task-item.is-expanded .task-notes,
 .task-item.is-expanded .task-edit.is-notes {
-  /* 5px of it is the editor's own border and padding, pulled back so the text
-     sits exactly where it sat a moment ago. */
-  margin-left: calc((var(--open-outdent) + 5px) * -1);
-  width: calc(100% + var(--open-outdent) + var(--open-reach) + 10px);
-}
-
-/* The date row and the actions are flex rows; the extra width is for the
-   description, not for spreading buttons across the note. */
-.task-item.is-expanded .task-date-row,
-.task-item.is-expanded .task-actions {
-  justify-content: flex-start;
+  overflow-wrap: anywhere;
 }
 
 /* Icon actions ------------------------------------------------------------- */
