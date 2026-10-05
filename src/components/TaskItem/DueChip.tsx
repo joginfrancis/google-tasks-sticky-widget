@@ -82,6 +82,21 @@ export function DueChip(props: Props) {
 
     place();
 
+    /**
+     * Escape belongs to the calendar while it is open.
+     *
+     * Captured, and stopped: without this the same key reached the note and
+     * closed the whole task, so dismissing a date picker took the row with it.
+     * The innermost open thing should be the one that closes.
+     */
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      props.onClose();
+    };
+    window.addEventListener("keydown", onKey, true);
+
     // On a note shorter than the calendar, clamping alone still leaves the
     // last week of the month off the bottom. Take the missing height from the
     // window and give it straight back when the calendar closes.
@@ -93,6 +108,7 @@ export function DueChip(props: Props) {
     return () => {
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
+      window.removeEventListener("keydown", onKey, true);
       release();
     };
   }, [props.open]);

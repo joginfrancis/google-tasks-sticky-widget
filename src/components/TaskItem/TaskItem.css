@@ -1045,3 +1045,40 @@ body.is-tall .task-item.is-expanded .task-notes {
 .task-item.is-expanded .task-tools {
   background: color-mix(in srgb, var(--paper) 88%, var(--paper-ink));
 }
+
+/* Opening and closing ------------------------------------------------------- */
+
+/* A grid row from 0fr to 1fr, which is how you animate to a height nobody has
+   measured. The contents stay mounted for the length of the close, or there
+   would be nothing to animate down. */
+.task-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 180ms var(--ease), opacity 140ms var(--ease);
+}
+
+.task-expand.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.task-expand-inner {
+  overflow: hidden;
+  /* The caret and the focus ring of anything inside would otherwise be clipped
+     by that overflow on the last pixel of the animation. */
+  min-width: 0;
+}
+
+/* The card itself arrives with the contents rather than a frame appearing
+   first and filling afterwards. */
+.task-item.is-expanded {
+  transition: background 160ms var(--ease), box-shadow 160ms var(--ease),
+    opacity var(--duration) var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-expand {
+    transition: none;
+  }
+}

@@ -495,3 +495,34 @@
     padding-top: 10px;
   }
 }
+
+/* The window arrives ------------------------------------------------------- */
+
+/* A window that appears fully formed reads as a jump cut. The sheet rises a
+   few pixels and fades in behind the frame, which is enough to say "this came
+   from the task you clicked" without delaying the first keystroke. */
+@keyframes page-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.page-sheet {
+  animation: page-rise 180ms var(--ease) both;
+}
+
+.page-head {
+  animation: page-rise 220ms var(--ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-sheet,
+  .page-head {
+    animation: none;
+  }
+}

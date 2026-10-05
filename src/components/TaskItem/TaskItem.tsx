@@ -142,6 +142,22 @@ export function TaskItem({
   const dueButtonRef = useRef<HTMLButtonElement>(null);
 
   const isExpanded = stage >= 1;
+  /**
+   * Whether the opened contents are in the DOM.
+   *
+   * Lags `isExpanded` on the way down: React would unmount them the instant a
+   * row closed, and a height animating down over nothing is just a gap
+   * collapsing. 200ms later they go.
+   */
+  const [renderOpen, setRenderOpen] = useState(stage >= 1);
+  useEffect(() => {
+    if (isExpanded) {
+      setRenderOpen(true);
+      return;
+    }
+    const id = window.setTimeout(() => setRenderOpen(false), 200);
+    return () => window.clearTimeout(id);
+  }, [isExpanded]);
   /** Dates, subtasks and everything else: the second step. */
   const isFull = stage >= 2;
 
@@ -647,6 +663,11 @@ export function TaskItem({
             </div>
           )}
 
+          {/* One wrapper for everything an open row adds, so the height can be
+              animated in one place. A row growing instantly reads as a layout
+              bug; the same change over 180ms reads as the row opening. */}
+          <div className={`task-expand${isExpanded ? " is-open" : ""}`}>
+            <div className="task-expand-inner">
           {editing === "notes" ? (
             <>
             {/* Above the box, not below: the buttons act on what is selected,
@@ -671,7 +692,7 @@ export function TaskItem({
               onTabBack={() => beginEdit("title")}
             />
             </>
-          ) : isExpanded ? (
+          ) : renderOpen ? (
             // Expanded always offers the notes slot, empty or not — "add
             // details" being invisible until notes exist is the main thing the
             // collapsed row cannot express.
@@ -709,7 +730,7 @@ export function TaskItem({
 
           {/* Only offered when open — a collapsed row with no date stays clean,
               and the chip above covers the case where one is already set. */}
-          {isFull && !done && (
+          {renderOpen && !done && (
             <div className="task-date-row">
               {/* The calendar is for a date you have to look up. Today and
                   tomorrow are most of what a sticky note ever needs, and
@@ -775,7 +796,7 @@ export function TaskItem({
             </div>
           )}
 
-          {isExpanded && (
+          {renderOpen && (
             /* What the next click does.
                
                A ladder of clicks is invisible without this: nobody discovers a
@@ -784,7 +805,7 @@ export function TaskItem({
             <p className="task-next">Double-click to open it in a window</p>
           )}
 
-          {isFull && addingSubtask && canAddSubtask && (
+          {renderOpen && addingSubtask && canAddSubtask && (
             <div className="subtask-add">
               <input
                 className="subtask-input"
@@ -815,6 +836,8 @@ export function TaskItem({
               {subtaskError && <p className="task-error">{subtaskError}</p>}
             </div>
           )}
+            </div>
+          </div>
         </div>
 
         {onStartAddBelow && !done && (
