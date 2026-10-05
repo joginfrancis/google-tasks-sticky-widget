@@ -38,6 +38,21 @@
   --dot-offline: #b58a3c;
   --dot-error: #c4314b;
 
+  /* Paper
+   *
+   * The surface for things that hold *content* rather than decoration: an open
+   * task, the calendar, the menus. A note's colour is set per note and can be
+   * anything; text and a calendar grid on top of an arbitrary colour is how
+   * legibility goes wrong. These are deliberately outside that override, so a
+   * pink note opens a white task — the colour stays the note's identity, not
+   * the reading surface. */
+  --paper: #fffdfa;
+  --paper-ink: #1a1a1f;
+  --paper-ink-soft: #55555f;
+  --paper-ink-faint: #85858f;
+  --paper-line: #e7e4df;
+  --paper-hover: rgba(0, 0, 0, 0.05);
+
   /* Geometry */
   --radius-window: 10px;
   --radius-row: 6px;
@@ -85,7 +100,14 @@
     --dot-error: #e87f8d;
 
     color-scheme: dark;
-  }
+  
+  --paper: #22242a;
+  --paper-ink: #ecedef;
+  --paper-ink-soft: #c0c2c6;
+  --paper-ink-faint: #8c8f95;
+  --paper-line: #343841;
+  --paper-hover: rgba(255, 255, 255, 0.07);
+}
 }
 
 :root[data-theme="dark"] {
@@ -115,6 +137,13 @@
   --dot-error: #e87f8d;
 
   color-scheme: dark;
+
+  --paper: #22242a;
+  --paper-ink: #ecedef;
+  --paper-ink-soft: #c0c2c6;
+  --paper-ink-faint: #8c8f95;
+  --paper-line: #343841;
+  --paper-hover: rgba(255, 255, 255, 0.07);
 }
 
 @media (prefers-reduced-motion: reduce) {

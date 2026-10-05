@@ -48,8 +48,20 @@
   width: 230px;
   margin-top: 4px;
   padding: 8px;
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
+  /* Paper, not the note's colour: a month grid of small numbers needs a
+     surface chosen for reading rather than one chosen for identity. */
+  --surface: var(--paper);
+  --surface-raised: var(--paper);
+  --surface-hover: var(--paper-hover);
+  --surface-active: var(--paper-hover);
+  --text: var(--paper-ink);
+  --text-secondary: var(--paper-ink-soft);
+  --text-muted: var(--paper-ink-faint);
+  --border: var(--paper-line);
+  --border-strong: color-mix(in srgb, var(--paper-ink) 28%, transparent);
+  background: var(--paper);
+  color: var(--paper-ink);
+  border: 1px solid var(--paper-line);
   border-radius: 9px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.26);
 }

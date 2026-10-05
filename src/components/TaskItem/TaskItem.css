@@ -899,9 +899,29 @@ body.is-tall .task-item.is-expanded .task-notes {
    than a new colour, so a pink note does not suddenly contain a blue card. */
 .task-item.is-expanded {
   margin: 2px 0;
+  padding-bottom: 2px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--text) 4%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 5%, transparent);
+  /* Paper, whatever colour the note is.
+     
+     The note's colour is its identity; it is not a reading surface. A task
+     opened on a strong pink or green had its description, its date controls
+     and its calendar all sitting on that colour, and the text fought it. The
+     variables are re-pointed here rather than only the background, so
+     everything inside — chips, inputs, menus — follows the paper rather than
+     the note. */
+  --surface: var(--paper);
+  --surface-header: var(--paper);
+  --surface-raised: var(--paper);
+  --surface-hover: var(--paper-hover);
+  --surface-active: var(--paper-hover);
+  --text: var(--paper-ink);
+  --text-secondary: var(--paper-ink-soft);
+  --text-muted: var(--paper-ink-faint);
+  --border: var(--paper-line);
+  --border-strong: color-mix(in srgb, var(--paper-ink) 28%, transparent);
+  background: var(--paper);
+  color: var(--paper-ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.07), 0 4px 14px rgba(0, 0, 0, 0.08);
 }
 
 .task-item.is-expanded:hover .task-row,
@@ -913,9 +933,9 @@ body.is-tall .task-item.is-expanded .task-notes {
    own line height so a 340px panel does not turn into stripes. */
 .task-item.is-expanded .task-notes,
 .task-item.is-expanded .task-edit.is-notes.is-rich {
-  border-left: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--paper-ink) 12%, transparent);
   border-radius: 0 6px 6px 0;
-  background-color: color-mix(in srgb, var(--text) 3%, transparent);
+  background-color: color-mix(in srgb, var(--paper-ink) 3%, transparent);
 }
 
 .task-item.is-expanded .task-edit.is-notes.is-rich:focus {
@@ -1002,4 +1022,26 @@ body.is-tall .task-item.is-expanded .task-notes {
 
 .task-list.has-open .task-item:not(.is-expanded):hover {
   opacity: 0.85;
+}
+
+/* The menus and the calendar are paper too, for the same reason: a month grid
+   on a strong note colour is a legibility problem, not a flourish. */
+.task-menu,
+.due-popover {
+  --surface: var(--paper);
+  --surface-raised: var(--paper);
+  --surface-hover: var(--paper-hover);
+  --surface-active: var(--paper-hover);
+  --text: var(--paper-ink);
+  --text-secondary: var(--paper-ink-soft);
+  --text-muted: var(--paper-ink-faint);
+  --border: var(--paper-line);
+  --border-strong: color-mix(in srgb, var(--paper-ink) 28%, transparent);
+  background: var(--paper);
+  color: var(--paper-ink);
+}
+
+/* The tools panel sits on the row, so it follows whatever that row is. */
+.task-item.is-expanded .task-tools {
+  background: color-mix(in srgb, var(--paper) 88%, var(--paper-ink));
 }
