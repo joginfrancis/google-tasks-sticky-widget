@@ -87,9 +87,12 @@ export function TaskPage(props: Props) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       const target = event.target;
+      // The date picker closes itself first; the description editor saves and
+      // then calls back. Everything else here — including the subtask field —
+      // treats Escape as "I am done with this window".
       if (
         target instanceof Element &&
-        target.closest("input, [contenteditable='true'], .due-popover")
+        target.closest("[contenteditable='true'], .due-popover")
       ) {
         return;
       }
@@ -294,6 +297,7 @@ export function TaskPage(props: Props) {
                 props.onEdit(task.id, { notes: markdown });
               }
             }}
+            onEscape={close}
             onTabOut={() => {}}
             onTabBack={() => {}}
           />

@@ -38,6 +38,14 @@ interface Props {
   onTabBack: () => void;
   /** The content changed shape, so the note may need to grow. */
   onInput: () => void;
+  /**
+   * What Escape should do beyond saving.
+   *
+   * In a note it is enough to close the editor. In a page window the editor
+   * holds focus from the moment the window opens, so without this Escape was
+   * swallowed here and the window never closed.
+   */
+  onEscape?: () => void;
   editorRef: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -48,6 +56,7 @@ export function NotesEditor({
   onTabOut,
   onTabBack,
   onInput,
+  onEscape,
   editorRef,
 }: Props) {
   useEffect(() => {
@@ -115,6 +124,7 @@ export function NotesEditor({
           event.preventDefault();
           event.stopPropagation();
           commit();
+          onEscape?.();
           return;
         }
 
