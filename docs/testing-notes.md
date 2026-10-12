@@ -168,3 +168,46 @@ window.
   default is to keep or delete.
 - Power-off test: arrange notes, pull the plug, start again — expect right notes
   and lists, possibly stale positions.
+
+---
+
+## 5. Auto-layout for the open notes
+
+**Asked for:** a way to have the notes arrange themselves rather than being
+dragged into place one at a time.
+
+**Today:** placement is manual, with one assist — a new note opens *beside* the
+note it was opened from, to the right if there is room, to the left if not,
+cascading only when neither fits (`open_note_labelled`). Positions are saved per
+label by the window-state plugin, so an arrangement survives a restart. Nothing
+tidies an arrangement that has drifted, and nothing lays out a fresh set.
+
+**Shapes this could take, roughly in order of usefulness:**
+
+- **Arrange now** — a tray item, or one in the ⋮ menu: lay every open note out
+  in columns from one edge of the work area, 340px wide, a gap between them,
+  wrapping to a second column when the screen runs out. The screenshot of five
+  notes along the right-hand side is already this arrangement, built by hand.
+- **Pick an edge** — the same thing, but left/right/top-left as a choice, since
+  which side is free depends on what else is on screen.
+- **Equal heights** — notes in a column share the height available rather than
+  each keeping whatever height it was dragged to.
+- **Keep tidy** — re-run the arrangement whenever a note opens or closes. This
+  is the one to be careful with: it overrides deliberate placement, so it should
+  be a setting that is off by default, not the behaviour.
+
+**What it would take:**
+- The work area of the monitor each note is on (already used by `note_set_tall`
+  and `note_grow`), and the DPI scale per monitor for a multi-screen desk.
+- A pass that assigns positions in label order, so the result is stable: running
+  it twice produces the same layout.
+- The existing `animate` helper can move each window, so notes slide into place
+  rather than teleporting.
+- **Undo matters more than the layout.** Arranging destroys an arrangement
+  somebody may have spent time on. Positions should be captured before the move
+  and restorable from the same menu for as long as the app is running.
+- Notes on a second monitor need a rule: arrange per-monitor where they already
+  are, rather than dragging everything onto the primary screen.
+
+**Size:** about half a day for *Arrange now* with undo; the "keep tidy" setting
+is another couple of hours on top, and is the part most likely to annoy.
