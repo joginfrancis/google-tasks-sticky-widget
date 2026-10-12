@@ -42,3 +42,64 @@ selection too.
 
 **Size:** roughly half a day, most of it in the partial-failure behaviour rather
 than the dragging.
+
+---
+
+## 2. A closed note comes back on the shortcut
+
+**Seen:** the left-hand *Fab Daily* note has been closed many times and
+reappears every time `Ctrl+Shift+G` is pressed.
+
+**Cause, confirmed in the code:** that note is the `main` window, and `main`
+does not close. `WindowEvent::CloseRequested` calls `api.prevent_close()` and
+hides it instead (`src-tauri/src/lib.rs`). The shortcut's show branch then shows
+*every* note window, hidden or not (`src-tauri/src/hotkey.rs`), so a window that
+was only ever hidden comes straight back.
+
+It is not a stale-state bug and no amount of closing will fix it: pressing × on
+the main note and pressing the shortcut are, as written today, opposite halves
+of the same pair.
+
+**Why `main` was made special:** the app runs with `skipTaskbar`, so if the last
+window really closed there would be nothing on screen and nothing in the
+taskbar — only the tray icon. Hiding rather than closing was the guard against
+"the app has vanished".
+
+**Related, visible in the same screenshot:** *Fab Daily* is open twice — the
+`main` window and a second note on the same list. Two windows showing one list is
+allowed by design, but when one of them cannot be closed it reads as a bug
+rather than a choice.
+
+---
+
+## 3. Closing a note should remove it from the layout
+
+**Asked for:** closing a note takes it out of the arrangement for good. The list
+itself stays in the dropdown, so it can be opened again deliberately — but the
+next show/hide cycle brings back only the notes that are still open.
+
+**Today:** closing an *extra* note does exactly this already — it is removed
+from the registry and from `open_notes`, so it does not return
+(`persist_open_notes`). Only `main` misbehaves, for the reason in §2.
+
+**What it would take:**
+- `main` stops being special: closing it closes it, and it leaves `open_notes`
+  like any other note.
+- The guard that made it special needs replacing, or closing the last note
+  leaves the app running with nothing on screen. Options:
+  - the shortcut, pressed with no notes open, reopens the last arrangement —
+    which makes it "show my notes" rather than "unhide windows";
+  - or the tray menu grows an explicit *Open a note*, and the shortcut does
+    nothing when there is nothing to show;
+  - or closing the last note quits, which is honest but surprising for a widget
+    that lives in the tray.
+- The hotkey's show branch must distinguish *hidden* from *closed*. It currently
+  shows every window it can find, which is the half of the bug that makes a
+  hidden window indistinguishable from an open one.
+- `restore_session` on launch should reopen exactly what was open, with no
+  implicit main note. It already reads `open_notes`; the main window is created
+  by the Tauri config before that runs, which is the other place "main is
+  special" is written down.
+
+**Size:** half a day, nearly all of it in deciding what the shortcut means when
+nothing is open — the code change is small and the behaviour change is not.
