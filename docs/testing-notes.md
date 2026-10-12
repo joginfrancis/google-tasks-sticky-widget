@@ -103,3 +103,26 @@ from the registry and from `open_notes`, so it does not return
 
 **Size:** half a day, nearly all of it in deciding what the shortcut means when
 nothing is open — the code change is small and the behaviour change is not.
+
+**Decided, 12 October:**
+
+- **× removes a note from the layout.** Not from Google, not from the list
+  dropdown — the list stays there to be opened again. `main` loses its exemption
+  and closes like any other note.
+- **The shortcut means "show my notes".** Pressed when nothing is open, it
+  reopens the arrangement that was last on screen. If there is no arrangement to
+  reopen — first run, or every note closed and the record emptied — it opens one
+  note on the default list.
+- **It never opens a second copy of something already on screen.** Reopening
+  the arrangement skips any note already there and focuses the set rather than
+  duplicating it. The duplicate *Fab Daily* in the screenshot is the shape of
+  that mistake.
+
+So there are three states and the shortcut handles each: notes visible → hide
+them; notes hidden → show them; nothing open → reopen the last arrangement, or
+the default note if there was none.
+
+The record to reopen from is `open_notes` in `window.json`, which already holds
+label → list id and is written after every open and close. What it needs is to
+survive the closing of the *last* note rather than being emptied by it — the
+arrangement is what the user wants back, and emptying it is what would lose it.
