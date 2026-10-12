@@ -260,49 +260,120 @@ pub fn persist_open_notes(app: &AppHandle) {
     crate::settings::save(app, &settings);
 }
 
-/// Reopens the notes that were showing when the app last exited.
+/// Every note window on screen, hidden or not.
+pub fn note_windows(app: &AppHandle) -> Vec<(String, tauri::WebviewWindow)> {
+    app.webview_windows()
+        .into_iter()
+        .filter(|(label, _)| is_note_label(label))
+        .collect()
+}
+
+/// Opens the arrangement the user last had, or one note if there is none.
 ///
-/// Runs during setup, before the event loop starts, which is why it can build
-/// windows synchronously — the deadlock that makes `open_note_window` async
-/// only applies to commands invoked while the loop is running.
+/// This is what "show my notes" means when nothing is on screen: the set that
+/// was open before, minus anything already up, and a single note on the
+/// default list when the arrangement is empty — a first run, or every note
+/// having been closed.
 ///
-/// A note whose list no longer exists is dropped rather than opened empty.
-pub fn restore_session(app: &AppHandle, known_lists: &[String]) {
+/// Returns how many windows it opened.
+pub fn open_layout(app: &AppHandle, known_lists: &[String]) -> usize {
     let saved = match app.state::<AppState>().settings.lock() {
         Ok(settings) => settings.open_notes.clone(),
-        Err(_) => return,
+        Err(_) => return 0,
     };
 
-    if saved.is_empty() {
-        return;
-    }
-
-    // Continue the label sequence past anything restored, so a new note cannot
-    // collide with a restored one and inherit its geometry.
-    let highest = saved
+    // Labels continue past anything restored, so a new note cannot collide
+    // with a restored one and inherit its geometry.
+    if let Some(highest) = saved
         .keys()
         .filter_map(|l| l.strip_prefix(NOTE_PREFIX))
         .filter_map(|n| n.parse::<u32>().ok())
-        .max();
-    if let Some(highest) = highest {
+        .max()
+    {
         app.state::<NoteRegistry>()
             .next_id
             .store(highest + 1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    let mut restored = 0;
+    let mut opened = 0;
     for (label, list_id) in saved {
+        // Already on screen: show it rather than opening a second view of the
+        // same list, which is how duplicate notes appeared.
+        if let Some(existing) = app.get_webview_window(&label) {
+            let _ = existing.show();
+            continue;
+        }
         if !known_lists.is_empty() && !known_lists.contains(&list_id) {
-            log::info!("restore: skipping note for a list that no longer exists");
+            log::info!("layout: skipping note for a list that no longer exists");
             continue;
         }
         match open_note_labelled(app, &list_id, None, Some(&label)) {
-            Ok(_) => restored += 1,
-            Err(err) => log::warn!("restore: could not reopen {label}: {err}"),
+            Ok(_) => opened += 1,
+            Err(err) => log::warn!("layout: could not open {label}: {err}"),
         }
     }
 
-    log::info!("restore: reopened {restored} note(s)");
+    if opened == 0 && note_windows(app).is_empty() {
+        opened += open_default_note(app, known_lists);
+    }
+
+    log::info!("layout: opened {opened} note(s)");
+    opened
+}
+
+/// One note on the list the user last chose, for when there is no arrangement
+/// to restore. Takes the `main` label so it inherits whatever geometry that
+/// note has had since the first run.
+fn open_default_note(app: &AppHandle, known_lists: &[String]) -> usize {
+    let chosen = {
+        let state = app.state::<AppState>();
+        let selected = state
+            .settings
+            .lock()
+            .ok()
+            .and_then(|s| s.selected_task_list_id.clone());
+
+        match selected {
+            Some(id) if known_lists.is_empty() || known_lists.contains(&id) => Some(id),
+            _ => known_lists.first().cloned(),
+        }
+    };
+
+    let Some(list_id) = chosen else {
+        log::warn!("layout: no list to open a note on");
+        return 0;
+    };
+
+    let label = if app.get_webview_window(MAIN_LABEL).is_none() {
+        Some(MAIN_LABEL)
+    } else {
+        None
+    };
+
+    match open_note_labelled(app, &list_id, None, label) {
+        Ok(_) => 1,
+        Err(err) => {
+            log::warn!("layout: could not open the default note: {err}");
+            0
+        }
+    }
+}
+
+/// Reopens the notes that were showing when the app last exited.
+///
+/// Runs during setup, before the event loop starts, which is why it can build
+/// windows synchronously — the deadlock that makes `open_note_window` async
+/// only applies to commands invoked while the loop is running.
+pub fn restore_session(app: &AppHandle, known_lists: &[String]) {
+    open_layout(app, known_lists);
+}
+
+/// The list of lists this account has, for deciding what can be opened.
+pub fn known_list_ids(app: &AppHandle) -> Vec<String> {
+    app.try_state::<crate::store::Store>()
+        .and_then(|store| store.task_lists().ok())
+        .map(|lists| lists.into_iter().map(|l| l.id).collect())
+        .unwrap_or_default()
 }
 
 /* -- Commands ------------------------------------------------------------- */
@@ -358,14 +429,10 @@ pub fn note_list_id(app: AppHandle, window: tauri::Window) -> Result<Option<Stri
 /// deadlock.
 #[tauri::command]
 pub async fn close_note_window(app: AppHandle, window: tauri::Window) -> Result<(), String> {
+    // Every note closes the same way, `main` included: × takes a note out of
+    // the arrangement. The list it was showing is untouched and can be opened
+    // again from any note's list menu.
     let label = window.label().to_string();
-
-    if label == MAIN_LABEL {
-        if let Some(win) = crate::window::main_window(&app) {
-            crate::window::hide(&win);
-        }
-        return Ok(());
-    }
 
     app.state::<NoteRegistry>().remove(&label);
     persist_open_notes(&app);

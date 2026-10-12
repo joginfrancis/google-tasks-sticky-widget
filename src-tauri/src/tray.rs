@@ -71,11 +71,7 @@ pub fn build(app: &App<Wry>) -> tauri::Result<()> {
         // what Windows users expect from a tray icon.
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
-            MENU_TOGGLE => {
-                if let Some(win) = window::main_window(app) {
-                    window::toggle_visibility(&win);
-                }
-            }
+            MENU_TOGGLE => crate::hotkey::on_pressed(app),
             MENU_ALWAYS_ON_TOP => {
                 let _ = commands::toggle_top_from_tray(app);
             }
@@ -85,12 +81,19 @@ pub fn build(app: &App<Wry>) -> tauri::Result<()> {
             MENU_SETTINGS => {
                 // Settings lives in the WebView, so the window has to be up
                 // before the event can land anywhere useful.
-                if let Some(win) = window::main_window(app) {
-                    window::show_and_focus(&win);
+                // Settings lives in the WebView, so a window has to be up
+                // before the event can land anywhere useful — and with every
+                // note closable, there may not be one.
+                if crate::notes::note_windows(app).is_empty() {
+                    let known = crate::notes::known_list_ids(app);
+                    crate::notes::open_layout(app, &known);
+                }
+                if let Some((_, win)) = crate::notes::note_windows(app).first() {
+                    window::show_and_focus(win);
                 }
                 let _ = tauri::Emitter::emit(app, "ui:open-settings", ());
             }
-            MENU_QUIT => app.exit(0),
+            MENU_QUIT => commands::begin_quit(app),
             other => log::warn!("unhandled tray menu id: {other}"),
         })
         .on_tray_icon_event(|tray, event| {
@@ -100,9 +103,7 @@ pub fn build(app: &App<Wry>) -> tauri::Result<()> {
                 ..
             } = event
             {
-                if let Some(win) = window::main_window(tray.app_handle()) {
-                    window::toggle_visibility(&win);
-                }
+                crate::hotkey::on_pressed(tray.app_handle());
             }
         })
         .build(app)?;

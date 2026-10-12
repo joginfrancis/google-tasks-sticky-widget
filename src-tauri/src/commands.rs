@@ -123,7 +123,9 @@ pub fn toggle_top_from_tray(app: &AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn set_show_in_taskbar(app: AppHandle, value: bool) -> Result<(), String> {
-    if let Some(win) = window::main_window(&app) {
+    // Every note, not only `main`: the setting is about the app's presence in
+    // the taskbar, and applying it to one window of five is not that.
+    for (_, win) in crate::notes::note_windows(&app) {
         win.set_skip_taskbar(!value)
             .map_err(|e| format!("Windows wouldn't change the taskbar button: {e}"))?;
     }
@@ -339,15 +341,33 @@ pub fn set_selected_task_list(app: AppHandle, task_list_id: String) -> Result<()
 
 #[tauri::command]
 pub fn hide_to_tray(app: AppHandle) -> Result<(), String> {
-    if let Some(win) = window::main_window(&app) {
+    // Every note, not just `main`: hiding one of five and calling it "hide to
+    // tray" leaves four on screen and a user wondering what the menu did.
+    for (_, win) in crate::notes::note_windows(&app) {
         window::hide(&win);
     }
     Ok(())
 }
 
+/// Set while the app is deliberately quitting.
+///
+/// Closing the last note no longer ends the app — it stays in the tray, and the
+/// shortcut brings the notes back — so the exit handler needs a way to tell a
+/// real quit from the last window closing.
+static QUITTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn is_quitting(_app: &AppHandle) -> bool {
+    QUITTING.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+pub fn begin_quit(app: &AppHandle) {
+    QUITTING.store(true, std::sync::atomic::Ordering::SeqCst);
+    app.exit(0);
+}
+
 #[tauri::command]
 pub fn quit_app(app: AppHandle) {
-    app.exit(0);
+    begin_quit(&app);
 }
 
 /// Lets the WebView write into the same log file as the Rust side.

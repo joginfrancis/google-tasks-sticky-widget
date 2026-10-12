@@ -29,9 +29,16 @@ pub fn run() {
         // stacks of windows on top of each other — which reads as the app being
         // frozen, because you clean up one instance while looking at another.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            log::info!("second launch requested; focusing the existing window");
-            if let Some(win) = window::main_window(app) {
-                window::show_and_focus(&win);
+            log::info!("second launch requested; showing the notes");
+            // Launching again is a request to see the app: if every note was
+            // closed, put the arrangement back rather than doing nothing
+            // visible and looking like a failed launch.
+            if notes::note_windows(app).is_empty() {
+                let known = notes::known_list_ids(app);
+                notes::open_layout(app, &known);
+            }
+            if let Some((_, win)) = notes::note_windows(app).first() {
+                window::show_and_focus(win);
             }
         }))
         .plugin(
@@ -153,7 +160,6 @@ pub fn run() {
 
             let loaded = settings::load(&handle);
             let start_hidden = loaded.start_hidden;
-            let layer = loaded.layer_for(notes::MAIN_LABEL);
             let show_in_taskbar = loaded.show_in_taskbar;
             let selected_list = loaded.selected_task_list_id.clone();
             let hotkey_accelerator = loaded.effective_hotkey();
@@ -178,47 +184,48 @@ pub fn run() {
 
             tray::build(app)?;
 
-            if let Some(win) = window::main_window(&handle) {
-                // The window-state plugin has already restored geometry by now,
-                // so this is the moment to sanity-check it.
+            // Nothing is declared in tauri.conf any more, so this is what puts
+            // the app on screen: the arrangement that was open last time, or a
+            // single note when there is none. No window exists implicitly, which
+            // is what lets every note — `main` included — really close.
+            //
+            // Safe to build windows synchronously here: setup runs before the
+            // event loop starts, so the deadlock that forces `open_note_window`
+            // to be async does not apply.
+            let known_lists = notes::known_list_ids(&handle);
+            notes::restore_session(&handle, &known_lists);
+
+            // Every note gets the same treatment the main one used to: checked
+            // against the screen it claims to be on, given its own pin state,
+            // and hidden on launch when the user asked for that.
+            for (label, win) in notes::note_windows(&handle) {
                 window::ensure_on_screen(&win);
 
-                // The main note has its own pin state like any other.
-                match layer {
-                    settings::WindowLayer::Top => {
-                        let _ = win.set_always_on_top(true);
-                    }
-                    settings::WindowLayer::Normal => {
-                        let _ = win.set_always_on_top(false);
-                    }
-                    settings::WindowLayer::Bottom => {
-                        let _ = win.set_always_on_top(false);
-                        let _ = win.set_always_on_bottom(true);
-                    }
+                match handle.state::<settings::AppState>().settings.lock() {
+                    Ok(settings) => match settings.layer_for(&label) {
+                        settings::WindowLayer::Top => {
+                            let _ = win.set_always_on_top(true);
+                        }
+                        settings::WindowLayer::Normal => {
+                            let _ = win.set_always_on_top(false);
+                        }
+                        settings::WindowLayer::Bottom => {
+                            let _ = win.set_always_on_top(false);
+                            let _ = win.set_always_on_bottom(true);
+                        }
+                    },
+                    Err(_) => continue,
                 }
 
                 let _ = win.set_skip_taskbar(!show_in_taskbar);
 
                 // The "Start hidden" setting alone decides. Launching from the
                 // Windows startup entry used to force this as well, which made
-                // "Start with Windows" silently mean "start in the tray" and
-                // left the Start hidden switch with nothing to do.
+                // "Start with Windows" silently mean "start in the tray".
                 if start_hidden {
                     let _ = win.hide();
                 }
             }
-
-            // Reopen whatever was on screen last time. Safe to build windows
-            // synchronously here: setup runs before the event loop starts, so
-            // the deadlock that forces `open_note_window` to be async does not
-            // apply. Lists are validated against the cache so a note for a
-            // deleted list is dropped rather than opened empty.
-            let known_lists: Vec<String> = handle
-                .state::<store::Store>()
-                .task_lists()
-                .map(|lists| lists.into_iter().map(|l| l.id).collect())
-                .unwrap_or_default();
-            notes::restore_session(&handle, &known_lists);
 
             Ok(())
         })
@@ -230,19 +237,20 @@ pub fn run() {
                 // ever after.
                 notes::restore_all_sizes(win.app_handle());
 
-                if win.label() == notes::MAIN_LABEL {
-                    // The main note hides rather than closing. With skipTaskbar
-                    // on, exiting here would strand the user with a
-                    // running-but-invisible app.
-                    api.prevent_close();
-                    let _ = win.hide();
-                } else {
-                    // Extra notes really close — they can be reopened from any
-                    // window's list menu, so nothing is lost.
-                    win.state::<notes::NoteRegistry>().remove(win.label());
-                    win.state::<sync::SyncManager>()
-                        .refresh_lists(win.app_handle());
-                }
+                // Every note closes, `main` included. Closing one takes it out
+                // of the arrangement — not out of Google, and not out of the
+                // list menu, so it can be opened again whenever it is wanted.
+                //
+                // `main` used to hide instead, on the reasoning that closing
+                // the last window with `skipTaskbar` on would strand the user
+                // with an invisible app. The shortcut now reopens the
+                // arrangement when nothing is on screen, so that guard has a
+                // better home than an exception nobody could see.
+                let _ = api;
+                win.state::<notes::NoteRegistry>().remove(win.label());
+                notes::persist_open_notes(win.app_handle());
+                win.state::<sync::SyncManager>()
+                    .refresh_lists(win.app_handle());
 
                 // Cadence follows the app, not one window: only slow down once
                 // nothing is on screen.
@@ -271,11 +279,17 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app, event| {
-            // Quitting from the tray never passes through CloseRequested, so
-            // the same restore has to happen on the way out.
-            if let tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit = event {
+        .run(|app, event| match event {
+            // Closing the last note must not end the app: it lives in the tray,
+            // and the shortcut brings the notes back. Quit goes through the
+            // tray or the menu, which sets the flag below first.
+            tauri::RunEvent::ExitRequested { api, .. } => {
                 notes::restore_all_sizes(app);
+                if !commands::is_quitting(app) {
+                    api.prevent_exit();
+                }
             }
+            tauri::RunEvent::Exit => notes::restore_all_sizes(app),
+            _ => {}
         });
 }

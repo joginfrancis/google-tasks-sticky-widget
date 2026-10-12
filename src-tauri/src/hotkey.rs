@@ -94,13 +94,20 @@ pub fn apply(app: &AppHandle, accelerator: Option<&str>) -> Result<(), String> {
 ///    Tracking the last action instead means unpinning that note and pressing
 ///    the shortcut shows everything, which is what the user expects.
 pub fn on_pressed(app: &AppHandle) {
-    let notes: Vec<(String, tauri::WebviewWindow)> = app
-        .webview_windows()
-        .into_iter()
-        .filter(|(label, _)| crate::notes::is_note_label(label))
-        .collect();
+    let notes = crate::notes::note_windows(app);
 
+    // Nothing on screen at all: the shortcut means "show my notes", so it puts
+    // the arrangement back rather than doing nothing. Closing every note is
+    // therefore recoverable without finding the tray.
     if notes.is_empty() {
+        let known = crate::notes::known_list_ids(app);
+        let opened = crate::notes::open_layout(app, &known);
+        log::info!("hotkey: nothing was open; opened {opened} note(s)");
+        if let Some(status) = app.try_state::<HotkeyStatus>() {
+            if let Ok(mut hidden) = status.hidden.lock() {
+                *hidden = false;
+            }
+        }
         return;
     }
 
@@ -111,7 +118,11 @@ pub fn on_pressed(app: &AppHandle) {
         return;
     };
 
-    if *hidden {
+    let any_visible = notes
+        .iter()
+        .any(|(_, win)| win.is_visible().unwrap_or(false));
+
+    if *hidden || !any_visible {
         log::info!("hotkey: showing {} note(s)", notes.len());
         for (_, win) in &notes {
             let _ = win.show();
@@ -119,6 +130,8 @@ pub fn on_pressed(app: &AppHandle) {
         }
         // Focus one, so the set comes back ready to type into rather than
         // merely visible.
+        // Whichever note is there: `main` is no longer guaranteed to exist,
+        // since every note can be closed.
         if let Some(main) = window::main_window(app) {
             let _ = main.set_focus();
         } else if let Some((_, first)) = notes.first() {
