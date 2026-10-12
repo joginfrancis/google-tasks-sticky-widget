@@ -126,3 +126,45 @@ The record to reopen from is `open_notes` in `window.json`, which already holds
 label → list id and is written after every open and close. What it needs is to
 survive the closing of the *last* note rather than being emptied by it — the
 arrangement is what the user wants back, and emptying it is what would lose it.
+
+---
+
+## 4. Does the layout survive a shutdown or a reinstall?
+
+**Today: yes, with one gap.** None of it lives in the installed folder, so
+uninstalling and reinstalling does not touch it:
+
+| What | Where |
+| --- | --- |
+| Which notes are open, and on which list | `%APPDATA%\in.startupmission.stickywidget\window.json` (`openNotes`) |
+| Each note's position and size | `%LOCALAPPDATA%\in.startupmission.stickywidget\.window-state.json` |
+| Note colours, pins, preferences | `window.json` |
+| The Google sign-in | Windows Credential Manager |
+| The task cache | `%LOCALAPPDATA%\…\cache.sqlite` |
+
+This has been exercised by accident: the app has been uninstalled and
+reinstalled several times during development and the notes, their lists and the
+sign-in came back every time.
+
+**When it is written:** `openNotes` is written after *every* open and close, not
+at exit — deliberately, so a crash or a power cut cannot lose the arrangement.
+Window geometry is different: the window-state plugin writes on close and on
+exit, so a hard power-off can lose the last *move or resize* while still keeping
+the right notes on the right lists.
+
+**The gap:** uninstalling through Windows runs the NSIS uninstaller, which can
+offer to remove application data. Answering yes to that would take the lot —
+layout, colours, cache. The sign-in would survive, since it is in Credential
+Manager rather than a folder. Worth checking what that prompt actually says
+before telling anyone else "reinstalling is safe".
+
+**Related, and the reason this matters for §3:** if closing the last note
+empties `openNotes`, then "survives a shutdown" and "reopens the last
+arrangement" both break in the same move. The record has to outlive the last
+window.
+
+**To verify (not yet done):**
+- Uninstall via Settings → Apps and read the prompt wording; note whether the
+  default is to keep or delete.
+- Power-off test: arrange notes, pull the plug, start again — expect right notes
+  and lists, possibly stale positions.
