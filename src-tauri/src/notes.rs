@@ -268,7 +268,23 @@ static LAYOUT_BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBoo
 static GEOMETRY_DIRTY: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
+/// When the last move or resize was seen, as milliseconds since the app
+/// started. Saving waits for this to go quiet.
+static LAST_CHANGE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 use std::sync::atomic::Ordering;
+
+fn millis_since_start() -> u64 {
+    use std::sync::OnceLock;
+    static START: OnceLock<std::time::Instant> = OnceLock::new();
+    START.get_or_init(std::time::Instant::now).elapsed().as_millis() as u64
+}
+
+/// Records that the arrangement has just changed.
+fn touch_geometry() {
+    GEOMETRY_DIRTY.store(true, Ordering::Relaxed);
+    LAST_CHANGE_MS.store(millis_since_start(), Ordering::Relaxed);
+}
 
 /// Notes that the arrangement has changed. The write happens later, once.
 ///
@@ -277,37 +293,43 @@ use std::sync::atomic::Ordering;
 /// under a running app. So it is written while the app runs — but on a timer,
 /// not on every pixel of a drag.
 pub fn persist_geometry(_app: &AppHandle) {
-    if LAYOUT_BUSY.load(Ordering::Relaxed) {
-        return;
-    }
-    GEOMETRY_DIRTY.store(true, Ordering::Relaxed);
+    touch_geometry();
 }
 
-/// Writes the arrangement at most this often, and only when it has changed.
-const GEOMETRY_SAVE_EVERY: std::time::Duration = std::time::Duration::from_secs(2);
+/// How often the writer looks, and how long the windows must have been still.
+const GEOMETRY_SAVE_EVERY: std::time::Duration = std::time::Duration::from_millis(700);
+const GEOMETRY_QUIET_MS: u64 = 1_200;
 
 /// Starts the one thread that writes window geometry.
 pub fn start_geometry_writer(app: &AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || loop {
         std::thread::sleep(GEOMETRY_SAVE_EVERY);
-        if GEOMETRY_DIRTY.swap(false, Ordering::Relaxed)
-            && !LAYOUT_BUSY.load(Ordering::Relaxed)
-        {
-            let _ = app.save_window_state(StateFlags::POSITION | StateFlags::SIZE);
+
+        if !GEOMETRY_DIRTY.load(Ordering::Relaxed) || LAYOUT_BUSY.load(Ordering::Relaxed) {
+            continue;
         }
+
+        // Only once nothing has moved for a moment. Saving mid-drag, or in the
+        // middle of an arrange, is what deadlocked the main thread: the save
+        // and the window events it generates want the same lock.
+        let quiet = millis_since_start()
+            .saturating_sub(LAST_CHANGE_MS.load(Ordering::Relaxed))
+            >= GEOMETRY_QUIET_MS;
+        if !quiet {
+            continue;
+        }
+
+        GEOMETRY_DIRTY.store(false, Ordering::Relaxed);
+        let _ = app.save_window_state(StateFlags::POSITION | StateFlags::SIZE);
+        log::debug!("geometry: saved");
     });
 }
 
 /// Writes the arrangement right now — for the end of a layout operation.
-fn save_geometry_now(app: &AppHandle) {
-    GEOMETRY_DIRTY.store(false, Ordering::Relaxed);
-    // Off the calling thread: saving asks every window where it is, and a
-    // request like that made from the main thread waits on the main thread.
-    let app = app.clone();
-    std::thread::spawn(move || {
-        let _ = app.save_window_state(StateFlags::POSITION | StateFlags::SIZE);
-    });
+/// Asks for the arrangement to be written once the windows are still.
+fn save_geometry_now(_app: &AppHandle) {
+    touch_geometry();
 }
 
 pub fn persist_open_notes(app: &AppHandle) {
@@ -981,11 +1003,101 @@ fn place_windows(
 
         log::info!("place: done");
         LAYOUT_BUSY.store(false, Ordering::Relaxed);
-        GEOMETRY_DIRTY.store(false, Ordering::Relaxed);
-        let _ = handle.save_window_state(StateFlags::POSITION | StateFlags::SIZE);
+
+        // Deliberately *not* saving here.
+        //
+        // `save_window_state` asks every window where it is, and the plugin
+        // takes its own lock while doing so — the same lock its event hook
+        // takes for each `Moved`/`Resized` the moves have just generated. Save
+        // into that storm and the main thread stops answering: the app froze
+        // while its background threads carried on, which is exactly what the
+        // logs showed. The writer below picks this up once the dust settles.
+        touch_geometry();
     });
 
     count
+}
+
+/// Brings a saved position onto a screen that exists.
+///
+/// A layout saved with a second monitor attached names coordinates that are
+/// nowhere once it is unplugged, and a note placed there is invisible with no
+/// way back. Rather than refusing to restore, the position is carried onto the
+/// nearest screen as a proportion of the one it was saved on: a note two
+/// thirds across and half way down stays two thirds across and half way down.
+fn fit_to_screen(
+    app: &AppHandle,
+    note: &crate::settings::LayoutNote,
+) -> (tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>) {
+    let saved_pos = tauri::PhysicalPosition::new(note.x, note.y);
+    let saved_size = tauri::PhysicalSize::new(note.width, note.height);
+
+    let monitors = app.available_monitors().unwrap_or_default();
+    if monitors.is_empty() {
+        return (saved_pos, saved_size);
+    }
+
+    // On a screen it still fits: leave it exactly where it was saved.
+    let fits = monitors.iter().any(|m| {
+        let area = m.work_area();
+        note.x >= area.position.x
+            && note.y >= area.position.y
+            && note.x + note.width as i32 <= area.position.x + area.size.width as i32
+            && note.y + note.height as i32 <= area.position.y + area.size.height as i32
+    });
+    if fits {
+        return (saved_pos, saved_size);
+    }
+
+    let Some(primary) = app.primary_monitor().ok().flatten().or_else(|| monitors.first().cloned())
+    else {
+        return (saved_pos, saved_size);
+    };
+    let area = *primary.work_area();
+
+    // The screen it was saved on, so the proportions mean something. Nothing
+    // records which that was, so the monitor whose span contains the saved
+    // position is the best guess; failing that, the one it is nearest to.
+    let source = monitors
+        .iter()
+        .find(|m| {
+            let a = m.work_area();
+            note.x >= a.position.x && note.x < a.position.x + a.size.width as i32
+        })
+        .map(|m| *m.work_area())
+        .unwrap_or(area);
+
+    let fx = (note.x - source.position.x) as f64 / source.size.width.max(1) as f64;
+    let fy = (note.y - source.position.y) as f64 / source.size.height.max(1) as f64;
+    let fh = (note.height as f64 / source.size.height.max(1) as f64).min(1.0);
+
+    let width = note.width.min(area.size.width.saturating_sub(2 * TILE_GAP as u32));
+    let height = ((fh * area.size.height as f64).round() as u32)
+        .min(area.size.height.saturating_sub(2 * TILE_GAP as u32))
+        .max(200);
+
+    let x = area.position.x + (fx * area.size.width as f64).round() as i32;
+    let y = area.position.y + (fy * area.size.height as f64).round() as i32;
+
+    let x = x.clamp(
+        area.position.x + TILE_GAP,
+        (area.position.x + area.size.width as i32 - width as i32 - TILE_GAP)
+            .max(area.position.x + TILE_GAP),
+    );
+    let y = y.clamp(
+        area.position.y + TILE_GAP,
+        (area.position.y + area.size.height as i32 - height as i32 - TILE_GAP)
+            .max(area.position.y + TILE_GAP),
+    );
+
+    log::info!(
+        "layout: {} was off-screen; brought to {x},{y} at {width}x{height}",
+        note.label
+    );
+    (
+        tauri::PhysicalPosition::new(x, y),
+        tauri::PhysicalSize::new(width, height),
+    )
 }
 
 /// Where every open note is, right now.
@@ -1133,11 +1245,8 @@ pub async fn apply_layout(app: AppHandle, name: String) -> Result<usize, String>
         };
 
         let _ = window;
-        moves.push((
-            note.label.clone(),
-            tauri::PhysicalPosition::new(note.x, note.y),
-            tauri::PhysicalSize::new(note.width, note.height),
-        ));
+        let (pos, size) = fit_to_screen(&app, &note);
+        moves.push((note.label.clone(), pos, size));
         placed += 1;
     }
 
@@ -1234,7 +1343,10 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
             let column = index / per_column;
             let row = index % per_column;
 
-            let x = area.position.x + TILE_GAP + column * (width + TILE_GAP);
+            // Filling from the right-hand edge: a desktop's left side holds
+            // whatever is being worked on, and notes belong at its margin.
+            let right = area.position.x + area.size.width as i32 - TILE_GAP;
+            let x = right - (column + 1) * width - column * TILE_GAP;
             let y = area.position.y + TILE_GAP + row * (height + TILE_GAP);
 
             moves.push((
@@ -1333,37 +1445,48 @@ pub async fn snap_notes(app: AppHandle) -> Result<usize, String> {
             .min(area.size.width as i32 - TILE_GAP * 2);
 
         let column_pitch = width + TILE_GAP;
-        let left = area.position.x + TILE_GAP;
         let top = area.position.y + TILE_GAP;
         let bottom = area.position.y + area.size.height as i32 - TILE_GAP;
         let columns = ((area.size.width as i32 - TILE_GAP) / column_pitch).max(1);
 
-        // Which column each note is nearest to, and where in it.
-        group.sort_by_key(|(_, pos, _, _)| (pos.x, pos.y));
+        // Columns are counted from the right, because that is where arranging
+        // puts them and the two should agree.
+        let right_edge = area.position.x + area.size.width as i32 - TILE_GAP;
 
-        let mut next_free: Vec<i32> = vec![top; columns as usize];
+        let column_of = |x: i32| -> i32 {
+            (((right_edge - x - width) as f64 / column_pitch as f64).round() as i32)
+                .clamp(0, columns - 1)
+        };
+
+        // Sorted by column, then down the screen, so a column is filled top to
+        // bottom in the order the notes already appear in it.
+        group.sort_by_key(|(_, pos, _, _)| (column_of(pos.x), pos.y));
+
+        let mut column_counts: Vec<i32> = vec![0; columns as usize];
+        for (_, pos, _, _) in &group {
+            column_counts[column_of(pos.x) as usize] += 1;
+        }
+
+        let mut placed_in_column: Vec<i32> = vec![0; columns as usize];
+        let next_free: Vec<i32> = vec![top; columns as usize];
 
         for (label, pos, size, _) in group {
-            let column = (((pos.x - left) as f64 / column_pitch as f64).round() as i32)
-                .clamp(0, columns - 1);
+            let column = column_of(pos.x);
 
-            let height = {
-                let steps = ((size.height as i32) as f64 / SNAP_STEP as f64).round() as i32;
-                (steps.max(4) * SNAP_STEP).min(bottom - top)
-            };
+            // Each column is divided evenly between the notes in it: one
+            // note fills the height, two take half each, three a third. That
+            // is what "the closest tidy version of this" means for a column,
+            // and it leaves no ragged ends.
+            let in_column = column_counts[column as usize].max(1);
+            let share = (bottom - top - TILE_GAP * (in_column - 1)) / in_column;
+            let height = share.max(SNAP_STEP * 4);
 
-            let wanted = {
-                let steps = ((pos.y - top) as f64 / SNAP_STEP as f64).round() as i32;
-                top + steps.max(0) * SNAP_STEP
-            };
+            let index = placed_in_column[column as usize];
+            let y = top + index * (height + TILE_GAP);
+            placed_in_column[column as usize] += 1;
 
-            // Never on top of the note above it in the same column, and never
-            // off the bottom of the screen.
-            let slot = next_free[column as usize].max(wanted);
-            let y = slot.min((bottom - height).max(top));
-
-            let x = left + column * column_pitch;
-            next_free[column as usize] = y + height + TILE_GAP;
+            let x = right_edge - (column + 1) * width - column * TILE_GAP;
+            let _ = (size, next_free.len());
 
             moves.push((
                 label,
