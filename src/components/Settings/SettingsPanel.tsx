@@ -283,6 +283,16 @@ function Layout() {
   const [screens, setScreens] = useState<
     { name: string; label: string; primary: boolean; hasNotes: boolean }[]
   >([]);
+  /**
+   * The screen last chosen here.
+   *
+   * The dropdown cannot be driven by where the notes are: the windows move on
+   * a background thread, so asking straight afterwards still answers with the
+   * old screen, the control snaps back to it, and the next choice is "the
+   * value it already has" — which fires no change at all. Hence moving worked
+   * exactly once.
+   */
+  const [screenChoice, setScreenChoice] = useState<string | null>(null);
 
   /** Arranged but not yet kept — the save marks pick this up. */
   const [dirty, setDirty] = useState(false);
@@ -387,21 +397,23 @@ function Layout() {
           <select
             className="settings-select"
             // The one the notes are on, or the main one if they are spread.
-            value={screens.find((s) => s.hasNotes)?.name ?? ""}
+            value={screenChoice ?? screens.find((s) => s.hasNotes)?.name ?? ""}
             onChange={(e) => {
               const name = e.target.value;
               const screen = screens.find((s) => s.name === name);
+              setScreenChoice(name);
               say("Moving the notes…");
               invoke<number>("move_notes_to_screen", { name })
                 .then((n) => {
                   setDirty(true);
-                  // Which screen holds the notes has changed, so the list that
-                  // says so has to be asked again — otherwise the dropdown
-                  // snaps back to the old answer and the next choice looks
-                  // like it did nothing.
-                  void invoke<typeof screens>("list_screens")
-                    .then(setScreens)
-                    .catch(() => {});
+                  // Asked again once the windows have actually moved: the
+                  // placing happens on its own thread, so an immediate answer
+                  // still describes where they were.
+                  window.setTimeout(() => {
+                    void invoke<typeof screens>("list_screens")
+                      .then(setScreens)
+                      .catch(() => {});
+                  }, 900);
                   say(
                     "Moved " +
                       n +

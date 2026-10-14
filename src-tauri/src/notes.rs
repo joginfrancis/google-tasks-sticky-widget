@@ -328,10 +328,6 @@ pub fn start_geometry_writer(app: &AppHandle) {
 }
 
 /// Writes the arrangement right now — for the end of a layout operation.
-/// Asks for the arrangement to be written once the windows are still.
-fn save_geometry_now(_app: &AppHandle) {
-    touch_geometry();
-}
 
 pub fn persist_open_notes(app: &AppHandle) {
     let notes = match app.state::<NoteRegistry>().by_label.lock() {
@@ -1244,6 +1240,67 @@ fn capture_layout(app: &AppHandle) -> Vec<crate::settings::LayoutNote> {
     layout
 }
 
+/// Fits a whole arrangement onto one screen, keeping its shape.
+///
+/// The bounding box of every note is scaled by a single factor — the smaller
+/// of the width and height ratios, so nothing is squashed — and centred on the
+/// target. One scale for everything is the point: scaling each note by its own
+/// fractions stretches the gaps between them while leaving the notes alone,
+/// and five tidy columns arrive as five columns with uneven spaces.
+fn fit_arrangement(
+    items: Vec<(String, tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>)>,
+    to: &tauri::PhysicalPosition<i32>,
+    to_size: &tauri::PhysicalSize<u32>,
+) -> Vec<(String, tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>)> {
+    if items.is_empty() {
+        return items;
+    }
+
+    let left = items.iter().map(|(_, p, _)| p.x).min().unwrap_or(0);
+    let top = items.iter().map(|(_, p, _)| p.y).min().unwrap_or(0);
+    let right = items
+        .iter()
+        .map(|(_, p, s)| p.x + s.width as i32)
+        .max()
+        .unwrap_or(0);
+    let bottom = items
+        .iter()
+        .map(|(_, p, s)| p.y + s.height as i32)
+        .max()
+        .unwrap_or(0);
+
+    let box_w = (right - left).max(1) as f64;
+    let box_h = (bottom - top).max(1) as f64;
+
+    let usable_w = (to_size.width as i32 - TILE_GAP * 2).max(1) as f64;
+    let usable_h = (to_size.height as i32 - TILE_GAP * 2).max(1) as f64;
+
+    // Never stretched beyond a third again: a small arrangement blown up to
+    // fill a large screen is not what anyone meant by "keep the layout".
+    let scale = (usable_w / box_w).min(usable_h / box_h).min(1.35);
+
+    let scaled_w = box_w * scale;
+    let scaled_h = box_h * scale;
+    let offset_x = to.x as f64 + (usable_w - scaled_w).max(0.0) / 2.0 + TILE_GAP as f64;
+    let offset_y = to.y as f64 + (usable_h - scaled_h).max(0.0) / 2.0 + TILE_GAP as f64;
+
+    items
+        .into_iter()
+        .map(|(label, pos, size)| {
+            let x = offset_x + (pos.x - left) as f64 * scale;
+            let y = offset_y + (pos.y - top) as f64 * scale;
+            let w = (size.width as f64 * scale).round().max(200.0) as u32;
+            let h = (size.height as f64 * scale).round().max(160.0) as u32;
+
+            (
+                label,
+                tauri::PhysicalPosition::new(x.round() as i32, y.round() as i32),
+                tauri::PhysicalSize::new(w, h),
+            )
+        })
+        .collect()
+}
+
 /// The set of displays attached right now, as a key.
 ///
 /// Names rather than positions: a monitor keeps its name across unplugging,
@@ -1752,54 +1809,16 @@ pub async fn move_notes_to_screen(app: AppHandle, name: String) -> Result<usize,
     }
 
     LAYOUT_BUSY.store(true, Ordering::Relaxed);
-    let mut moves = Vec::new();
 
+    let mut current = Vec::new();
     for (label, window) in notes {
         let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) else {
             continue;
         };
-
-        let from = window
-            .current_monitor()
-            .ok()
-            .flatten()
-            .map(|m| (*m.position(), *m.size()));
-
-        // Where it sits on its current screen, as fractions.
-        let (fx, fy, fh) = match from {
-            Some((origin, screen)) => (
-                (pos.x - origin.x) as f64 / screen.width.max(1) as f64,
-                (pos.y - origin.y) as f64 / screen.height.max(1) as f64,
-                size.height as f64 / screen.height.max(1) as f64,
-            ),
-            None => (0.0, 0.0, 0.6),
-        };
-
-        let width = size
-            .width
-            .min(area.size.width.saturating_sub(2 * TILE_GAP as u32))
-            .max(200);
-        let height = ((fh * area.size.height as f64).round() as u32)
-            .min(area.size.height.saturating_sub(2 * TILE_GAP as u32))
-            .max(200);
-
-        let x = (area.position.x + (fx * area.size.width as f64).round() as i32).clamp(
-            area.position.x + TILE_GAP,
-            (area.position.x + area.size.width as i32 - width as i32 - TILE_GAP)
-                .max(area.position.x + TILE_GAP),
-        );
-        let y = (area.position.y + (fy * area.size.height as f64).round() as i32).clamp(
-            area.position.y + TILE_GAP,
-            (area.position.y + area.size.height as i32 - height as i32 - TILE_GAP)
-                .max(area.position.y + TILE_GAP),
-        );
-
-        moves.push((
-            label,
-            tauri::PhysicalPosition::new(x, y),
-            tauri::PhysicalSize::new(width, height),
-        ));
+        current.push((label, pos, size));
     }
+
+    let moves = fit_arrangement(current, &area.position, &area.size);
 
     let count = moves.len();
     log::info!("screens: moving {count} note(s) to {name}");
