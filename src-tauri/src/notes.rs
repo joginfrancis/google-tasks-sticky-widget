@@ -1246,3 +1246,134 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
     log::info!("layout: arranged {arranged} note(s)");
     Ok(arranged)
 }
+
+/// The vertical grid a note snaps to. Small enough that a note barely moves,
+/// large enough that two notes nudged to "about the same height" end up
+/// exactly level.
+const SNAP_STEP: i32 = 24;
+
+/// Pulls every note onto a grid without rearranging them.
+///
+/// `arrange_notes` decides where notes go; this one keeps where they already
+/// are and makes it exact — the way icons settle onto a phone's grid. A note
+/// moves to the nearest column, its top snaps to the nearest step, and its
+/// height becomes a whole number of steps. Two notes left at roughly the same
+/// height finish exactly level, and a column of notes finishes exactly as wide
+/// as its neighbours.
+///
+/// Overlaps are resolved downwards within a column, because the alternative —
+/// leaving two notes on top of each other after an alignment — would look like
+/// the feature had failed.
+#[tauri::command]
+pub async fn snap_notes(app: AppHandle) -> Result<usize, String> {
+    let notes = note_windows(&app);
+    log::info!("snap: starting with {} note(s)", notes.len());
+    if notes.is_empty() {
+        return Err("There are no notes to align.".into());
+    }
+
+    LAYOUT_BUSY.store(true, Ordering::Relaxed);
+
+    // Current geometry, read before anything moves.
+    let mut current: Vec<(String, tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>, String)> =
+        Vec::new();
+    for (label, window) in notes {
+        let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) else {
+            continue;
+        };
+        let monitor = window
+            .current_monitor()
+            .ok()
+            .flatten()
+            .and_then(|m| m.name().cloned())
+            .unwrap_or_else(|| "primary".to_string());
+        current.push((label, pos, size, monitor));
+    }
+
+    let mut moves = Vec::new();
+
+    // Per monitor, so a second screen keeps its own grid.
+    let monitors: Vec<String> = {
+        let mut seen: Vec<String> = current.iter().map(|(_, _, _, m)| m.clone()).collect();
+        seen.sort();
+        seen.dedup();
+        seen
+    };
+
+    for monitor_name in monitors {
+        let mut group: Vec<_> = current
+            .iter()
+            .filter(|(_, _, _, m)| *m == monitor_name)
+            .cloned()
+            .collect();
+
+        let monitor = group
+            .first()
+            .and_then(|(label, _, _, _)| app.get_webview_window(label))
+            .and_then(|w| w.current_monitor().ok().flatten())
+            .or_else(|| app.primary_monitor().ok().flatten());
+        let Some(monitor) = monitor else {
+            continue;
+        };
+        // Owned before the monitor goes out of scope: `work_area` borrows it.
+        let area = *monitor.work_area();
+
+        // One width for every note: a column of notes that differ by nine
+        // pixels is the untidiness this is meant to remove.
+        let width = group
+            .iter()
+            .map(|(_, _, size, _)| size.width as i32)
+            .max()
+            .unwrap_or(340)
+            .min(area.size.width as i32 - TILE_GAP * 2);
+
+        let column_pitch = width + TILE_GAP;
+        let left = area.position.x + TILE_GAP;
+        let top = area.position.y + TILE_GAP;
+        let bottom = area.position.y + area.size.height as i32 - TILE_GAP;
+        let columns = ((area.size.width as i32 - TILE_GAP) / column_pitch).max(1);
+
+        // Which column each note is nearest to, and where in it.
+        group.sort_by_key(|(_, pos, _, _)| (pos.x, pos.y));
+
+        let mut next_free: Vec<i32> = vec![top; columns as usize];
+
+        for (label, pos, size, _) in group {
+            let column = (((pos.x - left) as f64 / column_pitch as f64).round() as i32)
+                .clamp(0, columns - 1);
+
+            let height = {
+                let steps = ((size.height as i32) as f64 / SNAP_STEP as f64).round() as i32;
+                (steps.max(4) * SNAP_STEP).min(bottom - top)
+            };
+
+            let wanted = {
+                let steps = ((pos.y - top) as f64 / SNAP_STEP as f64).round() as i32;
+                top + steps.max(0) * SNAP_STEP
+            };
+
+            // Never on top of the note above it in the same column, and never
+            // off the bottom of the screen.
+            let slot = next_free[column as usize].max(wanted);
+            let y = slot.min((bottom - height).max(top));
+
+            let x = left + column * column_pitch;
+            next_free[column as usize] = y + height + TILE_GAP;
+
+            moves.push((
+                label,
+                tauri::PhysicalPosition::new(x, y),
+                tauri::PhysicalSize::new(width as u32, height as u32),
+            ));
+        }
+    }
+
+    let count = moves.len();
+    log::info!("snap: aligning {count} note(s)");
+    place_windows(&app, moves);
+
+    LAYOUT_BUSY.store(false, Ordering::Relaxed);
+    save_geometry_now(&app);
+    log::info!("snap: aligned {count} note(s)");
+    Ok(count)
+}

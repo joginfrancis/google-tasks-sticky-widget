@@ -325,6 +325,16 @@ function Layout() {
       .catch((err: unknown) => say(String(err), true));
   };
 
+  const snap = () => {
+    say("Aligning…");
+    invoke<number>("snap_notes")
+      .then((n) => {
+        setDirty(true);
+        say("Aligned " + n + (n === 1 ? " note" : " notes") + " — keep it?", true);
+      })
+      .catch((err: unknown) => say(String(err), true));
+  };
+
   const save = (name: string) => {
     say("Saving " + name + "…");
     invoke<number>("save_layout", { name })
@@ -395,6 +405,23 @@ function Layout() {
           </button>
 
           <button
+            className="layout-tool"
+            onClick={snap}
+            title="Snap the notes onto a grid, keeping where they are"
+          >
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+              <path
+                d="M4.5 3v5a3.5 3.5 0 0 0 7 0V3"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
+              <path d="M3 3h3M10 3h3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+            </svg>
+            <span>Align</span>
+          </button>
+
+          <button
             className={"layout-tool " + (dirty && selected ? "is-wanted" : "")}
             disabled={!selected}
             onClick={() => selected && save(selected)}
@@ -455,8 +482,8 @@ function Layout() {
       <p className="settings-hint">
         {note ??
           (names.length > 0
-            ? "Pick one to put the notes back. Save keeps the current arrangement under that name."
-            : "Arrange the notes, then keep the result as a layout to come back to.")}
+            ? "Pick one to put the notes back. Align tidies what you have; Arrange starts again in columns."
+            : "Align snaps the notes where they are onto a grid; Arrange lays them out afresh in columns.")}
       </p>
     </>
   );

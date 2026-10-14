@@ -127,6 +127,7 @@ pub fn run() {
             notes::save_layout,
             notes::apply_layout,
             notes::arrange_notes,
+            notes::snap_notes,
             notes::list_layouts,
             notes::delete_layout,
             notes::close_task_page,
