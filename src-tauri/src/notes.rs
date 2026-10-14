@@ -1018,6 +1018,79 @@ fn place_windows(
     count
 }
 
+/// How often the displays are counted, and how long they must be settled.
+const SCREEN_POLL: std::time::Duration = std::time::Duration::from_secs(3);
+const SCREEN_SETTLE: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Watches for displays coming and going, and puts the notes back.
+///
+/// Unplugging a monitor makes Windows drag every note on it onto another
+/// screen, in a heap. Plugging it back in does *not* undo that — the notes
+/// stay where they were dragged, which is the friction that started all of
+/// this. So the set of displays is counted, and when it changes the last
+/// layout used is applied again a couple of seconds later, once Windows has
+/// finished rearranging things itself.
+///
+/// Polled rather than event-driven: Tauri exposes no display-change event, and
+/// a count of monitor names every three seconds costs nothing.
+pub fn watch_screens(app: &AppHandle) {
+    let app = app.clone();
+
+    std::thread::spawn(move || {
+        let names = |app: &AppHandle| -> Vec<String> {
+            let mut names: Vec<String> = app
+                .available_monitors()
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|m| m.name().cloned())
+                .collect();
+            names.sort();
+            names
+        };
+
+        let mut known = names(&app);
+
+        loop {
+            std::thread::sleep(SCREEN_POLL);
+
+            let current = names(&app);
+            if current == known {
+                continue;
+            }
+
+            log::info!(
+                "screens: changed from {} to {} display(s)",
+                known.len(),
+                current.len()
+            );
+            known = current;
+
+            // Let Windows finish moving things before moving them back.
+            std::thread::sleep(SCREEN_SETTLE);
+
+            let last = app
+                .state::<AppState>()
+                .settings
+                .lock()
+                .ok()
+                .and_then(|s| s.last_layout.clone());
+
+            let Some(name) = last else {
+                log::info!("screens: no layout to restore");
+                continue;
+            };
+
+            let handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                match apply_layout(handle, name.clone()).await {
+                    Ok(count) => log::info!("screens: restored {name} ({count} note(s))"),
+                    Err(err) => log::warn!("screens: could not restore {name}: {err}"),
+                }
+            });
+        }
+    });
+}
+
 /// Brings a saved position onto a screen that exists.
 ///
 /// A layout saved with a second monitor attached names coordinates that are
@@ -1035,6 +1108,14 @@ fn fit_to_screen(
     let monitors = app.available_monitors().unwrap_or_default();
     if monitors.is_empty() {
         return (saved_pos, saved_size);
+    }
+
+    // The display it was saved on is back: the saved coordinates are exactly
+    // right, and nothing needs adjusting.
+    if let Some(name) = &note.monitor {
+        if monitors.iter().any(|m| m.name() == Some(name)) {
+            return (saved_pos, saved_size);
+        }
     }
 
     // On a screen it still fits: leave it exactly where it was saved.
@@ -1117,6 +1198,12 @@ fn capture_layout(app: &AppHandle) -> Vec<crate::settings::LayoutNote> {
             continue;
         };
 
+        let monitor = window
+            .current_monitor()
+            .ok()
+            .flatten()
+            .and_then(|m| m.name().cloned());
+
         layout.push(crate::settings::LayoutNote {
             label,
             list_id,
@@ -1125,6 +1212,7 @@ fn capture_layout(app: &AppHandle) -> Vec<crate::settings::LayoutNote> {
             width: size.width,
             height: size.height,
             scale,
+            monitor,
         });
     }
 
@@ -1168,6 +1256,7 @@ pub async fn save_layout(app: AppHandle, name: String) -> Result<usize, String> 
             }
         }
 
+        settings.last_layout = Some(name.clone());
         crate::settings::save(&app, &settings);
     }
 
@@ -1252,6 +1341,14 @@ pub async fn apply_layout(app: AppHandle, name: String) -> Result<usize, String>
 
     place_windows(&app, moves);
     persist_open_notes(&app);
+
+    if let Ok(mut settings) = app.state::<AppState>().settings.lock() {
+        if settings.last_layout.as_deref() != Some(name.as_str()) {
+            settings.last_layout = Some(name.clone());
+            crate::settings::save(&app, &settings);
+        }
+    }
+
     log::info!("layout: applied {name} to {placed} note(s)");
     Ok(placed)
 }

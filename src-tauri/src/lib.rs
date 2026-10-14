@@ -199,6 +199,7 @@ pub fn run() {
             // event loop starts, so the deadlock that forces `open_note_window`
             // to be async does not apply.
             notes::start_geometry_writer(&handle);
+            notes::watch_screens(&handle);
 
             let known_lists = notes::known_list_ids(&handle);
             notes::restore_session(&handle, &known_lists);

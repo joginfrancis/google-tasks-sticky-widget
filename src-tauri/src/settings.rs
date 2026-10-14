@@ -28,6 +28,13 @@ pub struct LayoutNote {
     pub height: u32,
     #[serde(default = "default_scale")]
     pub scale: f64,
+    /// The display this note was on, by the name Windows gives it.
+    ///
+    /// What makes a layout survive a monitor being unplugged: with the display
+    /// absent the saved coordinates are nowhere, and with it back they are
+    /// exactly right. Absent on layouts saved before this was recorded.
+    #[serde(default)]
+    pub monitor: Option<String>,
 }
 
 fn default_scale() -> f64 {
@@ -95,6 +102,11 @@ pub struct Settings {
     #[serde(default)]
     pub layouts: Vec<Layout>,
 
+    /// The layout most recently applied or saved, re-applied by itself when
+    /// the displays change.
+    #[serde(default)]
+    pub last_layout: Option<String>,
+
     /// The single arrangement kept by the first version of this feature.
     /// Migrated into `layouts` on load and then left empty.
     ///
@@ -124,6 +136,7 @@ impl Default for Settings {
             note_layers: std::collections::HashMap::new(),
             saved_layout: Vec::new(),
             layouts: Vec::new(),
+            last_layout: None,
             selected_task_list_id: None,
         }
     }
