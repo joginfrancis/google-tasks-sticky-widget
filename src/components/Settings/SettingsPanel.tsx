@@ -265,14 +265,14 @@ export function SettingsPanel(props: Props) {
 /**
  * Keeping arrangements, and rebuilding them.
  *
- * Notes are windows, and windows drift: a restart, a monitor being unplugged,
- * or an afternoon of dragging leaves an arrangement that took effort to build
- * looking like it was dealt from a deck. A handful of named layouts covers the
- * real cases — a work arrangement, a home one, one for the laptop screen —
- * without becoming a filing system.
+ * Notes are windows, and windows drift: a restart, a monitor unplugged, or an
+ * afternoon of dragging leaves an arrangement that took effort to build
+ * looking like it was dealt from a deck.
  *
- * Saving over the selected name is how a layout is updated: arrange the notes,
- * press Save. There is no separate "update", because it is the same act.
+ * Five buttons in two rows was the first attempt, and it read as a control
+ * panel. This is the same capability as a choice and three marks: picking a
+ * layout *is* applying it, arranging happens on the press, and what is left is
+ * keeping the result — over the chosen name, or as a new one.
  */
 function Layout() {
   const [names, setNames] = useState<string[]>([]);
@@ -280,12 +280,16 @@ function Layout() {
   const [naming, setNaming] = useState(false);
   const [draft, setDraft] = useState("");
   const [note, setNote] = useState<string | null>(null);
+  /** Arranged but not yet kept — the save marks pick this up. */
+  const [dirty, setDirty] = useState(false);
 
   const refresh = (keep?: string) =>
     invoke<string[]>("list_layouts")
       .then((list) => {
         setNames(list);
-        setSelected((current) => keep ?? (list.includes(current) ? current : (list[0] ?? "")));
+        setSelected((current) =>
+          keep ?? (list.includes(current) ? current : (list[0] ?? "")),
+        );
       })
       .catch(() => {});
 
@@ -293,71 +297,66 @@ function Layout() {
     void refresh();
   }, []);
 
-  const say = (message: string) => {
+  /** Says what is happening now, and later what happened. */
+  const say = (message: string, settle = false) => {
     setNote(message);
-    window.setTimeout(() => setNote(null), 2600);
+    if (settle) window.setTimeout(() => setNote(null), 2600);
+  };
+
+  const apply = (name: string) => {
+    if (!name) return;
+    setSelected(name);
+    say("Restoring " + name + "…");
+    invoke<number>("apply_layout", { name })
+      .then((n) => {
+        setDirty(false);
+        say(name + " — " + n + (n === 1 ? " note" : " notes"), true);
+      })
+      .catch((err: unknown) => say(String(err), true));
+  };
+
+  const arrange = () => {
+    say("Arranging…");
+    invoke<number>("arrange_notes")
+      .then((n) => {
+        setDirty(true);
+        say("Arranged " + n + (n === 1 ? " note" : " notes") + " — keep it?", true);
+      })
+      .catch((err: unknown) => say(String(err), true));
   };
 
   const save = (name: string) => {
+    say("Saving " + name + "…");
     invoke<number>("save_layout", { name })
       .then((count) => {
         void refresh(name);
         setNaming(false);
         setDraft("");
-        say(`Saved ${count} note${count === 1 ? "" : "s"} as ${name}`);
+        setDirty(false);
+        say(name + " — " + count + (count === 1 ? " note" : " notes") + " saved", true);
       })
-      .catch((err: unknown) => say(String(err)));
+      .catch((err: unknown) => say(String(err), true));
   };
 
   return (
     <>
-      {names.length > 0 && (
-        <div className="settings-row">
-          <span className="settings-label">Layout</span>
-          <select
-            className="settings-select"
-            value={selected}
-            onChange={(e) => setSelected(e.target.value)}
-          >
-            {names.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {names.length > 0 && (
-        <div className="settings-actions">
-          <button
-            className="settings-button"
-            onClick={() =>
-              invoke<number>("apply_layout", { name: selected })
-                .then((n) => say(`Restored ${n} note${n === 1 ? "" : "s"}`))
-                .catch((err: unknown) => say(String(err)))
-            }
-          >
-            Use
-          </button>
-          <button className="settings-button" onClick={() => save(selected)}>
-            Save over
-          </button>
-          <button
-            className="settings-button is-danger"
-            onClick={() =>
-              invoke("delete_layout", { name: selected })
-                .then(() => {
-                  void refresh();
-                  say(`Deleted ${selected}`);
-                })
-                .catch((err: unknown) => say(String(err)))
-            }
-          >
-            Delete
-          </button>
-        </div>
-      )}
+      <div className="settings-row">
+        <span className="settings-label">Layout</span>
+        <select
+          className="settings-select"
+          value={selected}
+          // Choosing one is the whole gesture: a separate Use button asked the
+          // user to say the same thing twice.
+          onChange={(e) => apply(e.target.value)}
+        >
+          {names.length === 0 && <option value="">None saved</option>}
+          {names.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {naming ? (
         <div className="settings-actions">
@@ -382,23 +381,73 @@ function Layout() {
             disabled={!draft.trim()}
             onClick={() => save(draft.trim())}
           >
-            Save
+            Keep
           </button>
         </div>
       ) : (
-        <div className="settings-actions">
-          <button className="settings-button" onClick={() => setNaming(true)}>
-            Save this one
+        <div className="layout-tools">
+          <button className="layout-tool" onClick={arrange} title="Arrange the notes evenly">
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+              <rect x="2" y="2" width="5" height="12" rx="1.3" fill="none" stroke="currentColor" strokeWidth="1.3" />
+              <rect x="9" y="2" width="5" height="12" rx="1.3" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            </svg>
+            <span>Arrange</span>
           </button>
+
           <button
-            className="settings-button"
-            onClick={() =>
-              invoke<number>("arrange_notes")
-                .then((n) => say(`Arranged ${n} note${n === 1 ? "" : "s"}`))
-                .catch((err: unknown) => say(String(err)))
-            }
+            className={"layout-tool " + (dirty && selected ? "is-wanted" : "")}
+            disabled={!selected}
+            onClick={() => selected && save(selected)}
+            title={selected ? "Save over " + selected : "No layout selected"}
           >
-            Arrange evenly
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+              <path
+                d="M3 3.5h7.5L13 6v6.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinejoin="round"
+              />
+              <path d="M5.5 3.5v3h5M5.5 13.5v-3h5v3" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            </svg>
+            <span>Save</span>
+          </button>
+
+          <button
+            className={"layout-tool " + (dirty && !selected ? "is-wanted" : "")}
+            onClick={() => setNaming(true)}
+            title="Keep this arrangement as a new layout"
+          >
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+              <path d="M8 3.5v9M3.5 8h9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+            <span>New</span>
+          </button>
+
+          <button
+            className="layout-tool is-danger"
+            disabled={!selected}
+            onClick={() =>
+              selected &&
+              invoke("delete_layout", { name: selected })
+                .then(() => {
+                  void refresh();
+                  say("Deleted " + selected, true);
+                })
+                .catch((err: unknown) => say(String(err), true))
+            }
+            title={selected ? "Delete " + selected : "No layout selected"}
+          >
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+              <path
+                d="M3.5 4.5h9M6.5 4.5V3h3v1.5M5 4.5l.6 8h4.8l.6-8"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
         </div>
       )}
@@ -406,8 +455,8 @@ function Layout() {
       <p className="settings-hint">
         {note ??
           (names.length > 0
-            ? "Use puts the notes back, opening any that are closed. Save over keeps the current arrangement under that name."
-            : "Arrange evenly fills the screen in columns; save it, or your own arrangement, to come back to it later.")}
+            ? "Pick one to put the notes back. Save keeps the current arrangement under that name."
+            : "Arrange the notes, then keep the result as a layout to come back to.")}
       </p>
     </>
   );

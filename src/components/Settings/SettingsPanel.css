@@ -284,3 +284,48 @@
   font-size: var(--font-size-sm);
   outline: none;
 }
+
+/* Layout tools: one row, marks rather than sentences. */
+.layout-tools {
+  display: flex;
+  gap: 6px;
+  padding: 6px 4px 2px 8px;
+}
+
+.layout-tool {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.layout-tool:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.layout-tool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Just arranged: the marks that would keep it are the likely next press. */
+.layout-tool.is-wanted {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.layout-tool.is-danger:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 50%, transparent);
+}
