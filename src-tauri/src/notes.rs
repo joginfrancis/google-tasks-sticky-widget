@@ -1689,24 +1689,45 @@ pub fn list_screens(app: AppHandle) -> Vec<ScreenInfo> {
         .flatten()
         .and_then(|m| m.name().cloned());
 
-    app.available_monitors()
+    let mut screens: Vec<_> = app
+        .available_monitors()
         .unwrap_or_default()
         .into_iter()
         .filter_map(|m| {
             let name = m.name().cloned()?;
-            let size = m.size();
+            Some((name, *m.position(), *m.size(), m.scale_factor()))
+        })
+        .collect();
+
+    // Left to right, which is how someone thinks about their desk.
+    screens.sort_by_key(|(_, pos, _, _)| pos.x);
+
+    screens
+        .into_iter()
+        .enumerate()
+        .map(|(index, (name, _, size, scale))| {
             let is_primary = primary.as_deref() == Some(name.as_str());
-            Some(ScreenInfo {
+
+            // Logical pixels, which is the number Windows shows in its own
+            // display settings. Physical ones made a 125%-scaled 1536x864
+            // laptop screen read as "1920 x 1080" — identical to the monitor
+            // beside it, so the dropdown offered the same label twice and
+            // choosing either did nothing visible.
+            let logical_w = (size.width as f64 / scale).round() as u32;
+            let logical_h = (size.height as f64 / scale).round() as u32;
+
+            ScreenInfo {
                 label: format!(
-                    "{} x {}{}",
-                    size.width,
-                    size.height,
-                    if is_primary { " (main)" } else { "" }
+                    "Screen {}{} — {} × {}",
+                    index + 1,
+                    if is_primary { " (main)" } else { "" },
+                    logical_w,
+                    logical_h
                 ),
                 has_notes: occupied.contains(&name),
                 primary: is_primary,
                 name,
-            })
+            }
         })
         .collect()
 }

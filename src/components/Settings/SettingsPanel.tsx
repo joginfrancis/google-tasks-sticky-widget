@@ -395,6 +395,13 @@ function Layout() {
               invoke<number>("move_notes_to_screen", { name })
                 .then((n) => {
                   setDirty(true);
+                  // Which screen holds the notes has changed, so the list that
+                  // says so has to be asked again — otherwise the dropdown
+                  // snaps back to the old answer and the next choice looks
+                  // like it did nothing.
+                  void invoke<typeof screens>("list_screens")
+                    .then(setScreens)
+                    .catch(() => {});
                   say(
                     "Moved " +
                       n +
