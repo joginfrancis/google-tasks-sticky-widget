@@ -93,7 +93,29 @@ pub fn apply(app: &AppHandle, accelerator: Option<&str>) -> Result<(), String> {
 ///    on screen through a hide, so the next press would try to hide again.
 ///    Tracking the last action instead means unpinning that note and pressing
 ///    the shortcut shows everything, which is what the user expects.
+/// Ignore a second press within this long — see `on_pressed`.
+const REPEAT_GUARD_MS: u64 = 350;
+
+fn millis_since_start() -> u64 {
+    use std::sync::OnceLock;
+    static START: OnceLock<std::time::Instant> = OnceLock::new();
+    START.get_or_init(std::time::Instant::now).elapsed().as_millis() as u64
+}
+
 pub fn on_pressed(app: &AppHandle) {
+    // Holding the combination for even a moment makes Windows repeat it, and
+    // a toggle that fires twice is a toggle that does nothing: the notes were
+    // shown and hidden again inside the same second, which looks exactly like
+    // a shortcut that is not working. The log showed the pairs.
+    static LAST_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let now = millis_since_start();
+    let last = LAST_MS.load(std::sync::atomic::Ordering::Relaxed);
+    if now.saturating_sub(last) < REPEAT_GUARD_MS {
+        log::debug!("hotkey: ignoring a repeat {}ms after the last", now - last);
+        return;
+    }
+    LAST_MS.store(now, std::sync::atomic::Ordering::Relaxed);
+
     let notes = crate::notes::note_windows(app);
 
     // Nothing on screen at all: the shortcut means "show my notes", so it puts
