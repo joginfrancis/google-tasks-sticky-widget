@@ -1107,6 +1107,7 @@ pub async fn apply_layout(app: AppHandle, name: String) -> Result<usize, String>
 #[tauri::command]
 pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
     let notes = note_windows(&app);
+    log::info!("arrange: starting with {} note(s)", notes.len());
     if notes.is_empty() {
         return Err("There are no notes to arrange.".into());
     }
@@ -1123,6 +1124,7 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
             .flatten()
             .and_then(|m| m.name().cloned())
             .unwrap_or_else(|| "primary".to_string());
+        log::info!("arrange: {label} is on {key}");
         by_monitor.entry(key).or_default().push((label, window));
     }
 
@@ -1134,10 +1136,29 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
         let Some((_, first)) = group.first() else {
             continue;
         };
-        let Some(monitor) = first.current_monitor().ok().flatten() else {
+        // `current_monitor` can answer `None` for a window that is off-screen
+        // or on a display that has just changed; the primary monitor is a
+        // better answer than silently arranging nothing.
+        let monitor = match first.current_monitor() {
+            Ok(Some(monitor)) => Some(monitor),
+            other => {
+                log::warn!("arrange: no current monitor ({other:?}); falling back to primary");
+                app.primary_monitor().ok().flatten()
+            }
+        };
+        let Some(monitor) = monitor else {
+            log::warn!("arrange: no monitor at all; skipping this group");
             continue;
         };
         let area = monitor.work_area();
+        log::info!(
+            "arrange: {} note(s) on a {}x{} work area at {},{}",
+            group.len(),
+            area.size.width,
+            area.size.height,
+            area.position.x,
+            area.position.y
+        );
 
         // Width comes from the notes themselves: how wide a note should be is
         // a preference, and arranging is not the place to overrule it.
@@ -1162,8 +1183,12 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
             let y = area.position.y + TILE_GAP + row * (height + TILE_GAP);
 
             let _ = window.show();
-            let _ = window.set_size(tauri::PhysicalSize::new(width as u32, height as u32));
-            let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+            if let Err(err) = window.set_size(tauri::PhysicalSize::new(width as u32, height as u32)) {
+                log::warn!("arrange: could not resize: {err}");
+            }
+            if let Err(err) = window.set_position(tauri::PhysicalPosition::new(x, y)) {
+                log::warn!("arrange: could not move: {err}");
+            }
             arranged += 1;
         }
     }
