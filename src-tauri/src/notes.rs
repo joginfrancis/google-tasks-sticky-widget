@@ -256,13 +256,52 @@ pub fn is_note_label(label: &str) -> bool {
 /// Called after every open, close, and list change rather than only at exit: a
 /// crash or a force-kill would otherwise lose the arrangement, and this is a
 /// few bytes of JSON.
-/// Writes window positions and sizes to disk now rather than at exit.
+/// Set while a layout operation is moving windows itself.
+///
+/// Those moves raise the same `Moved`/`Resized` events a user drag does, and
+/// answering every one of them with a disk write is what froze the app: five
+/// notes being arranged produced hundreds of writes, each one asking the main
+/// thread for every window's position while the main thread was busy moving
+/// them.
+static LAYOUT_BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// A move has happened that has not been written yet.
+static GEOMETRY_DIRTY: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+use std::sync::atomic::Ordering;
+
+/// Notes that the arrangement has changed. The write happens later, once.
 ///
 /// The plugin saves on exit, which is no help to a machine that is switched
 /// off, a process that is killed, or an installer that replaces the binary
-/// under a running app. The arrangement is cheap to write and expensive to
-/// lose, so it is written whenever it changes.
-pub fn persist_geometry(app: &AppHandle) {
+/// under a running app. So it is written while the app runs — but on a timer,
+/// not on every pixel of a drag.
+pub fn persist_geometry(_app: &AppHandle) {
+    if LAYOUT_BUSY.load(Ordering::Relaxed) {
+        return;
+    }
+    GEOMETRY_DIRTY.store(true, Ordering::Relaxed);
+}
+
+/// Writes the arrangement at most this often, and only when it has changed.
+const GEOMETRY_SAVE_EVERY: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Starts the one thread that writes window geometry.
+pub fn start_geometry_writer(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(GEOMETRY_SAVE_EVERY);
+        if GEOMETRY_DIRTY.swap(false, Ordering::Relaxed)
+            && !LAYOUT_BUSY.load(Ordering::Relaxed)
+        {
+            let _ = app.save_window_state(StateFlags::POSITION | StateFlags::SIZE);
+        }
+    });
+}
+
+/// Writes the arrangement right now — for the end of a layout operation.
+fn save_geometry_now(app: &AppHandle) {
+    GEOMETRY_DIRTY.store(false, Ordering::Relaxed);
     let _ = app.save_window_state(StateFlags::POSITION | StateFlags::SIZE);
 }
 
@@ -961,6 +1000,7 @@ pub async fn apply_layout(app: AppHandle) -> Result<usize, String> {
         return Err("No layout has been saved yet.".into());
     }
 
+    LAYOUT_BUSY.store(true, Ordering::Relaxed);
     let known = known_list_ids(&app);
     let mut placed = 0;
 
@@ -988,17 +1028,14 @@ pub async fn apply_layout(app: AppHandle) -> Result<usize, String> {
         };
 
         let _ = window.show();
-        animate(
-            &window.as_ref().window_ref().clone(),
-            window.outer_position().unwrap_or(tauri::PhysicalPosition::new(note.x, note.y)),
-            window.outer_size().unwrap_or(tauri::PhysicalSize::new(note.width, note.height)),
-            tauri::PhysicalPosition::new(note.x, note.y),
-            tauri::PhysicalSize::new(note.width, note.height),
-        );
+        let _ = window.set_size(tauri::PhysicalSize::new(note.width, note.height));
+        let _ = window.set_position(tauri::PhysicalPosition::new(note.x, note.y));
         placed += 1;
     }
 
+    LAYOUT_BUSY.store(false, Ordering::Relaxed);
     persist_open_notes(&app);
+    save_geometry_now(&app);
     log::info!("layout: applied to {placed} note(s)");
     Ok(placed)
 }
@@ -1015,6 +1052,8 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
     if notes.is_empty() {
         return Err("There are no notes to arrange.".into());
     }
+
+    LAYOUT_BUSY.store(true, Ordering::Relaxed);
 
     // Group by monitor, keeping label order so the result is stable: running
     // it twice gives the same arrangement.
@@ -1066,17 +1105,14 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
             let y = area.position.y + TILE_GAP + row * (height + TILE_GAP);
 
             let _ = window.show();
-            animate(
-                &window.as_ref().window_ref().clone(),
-                window.outer_position().unwrap_or(tauri::PhysicalPosition::new(x, y)),
-                window.outer_size().unwrap_or(tauri::PhysicalSize::new(width as u32, height as u32)),
-                tauri::PhysicalPosition::new(x, y),
-                tauri::PhysicalSize::new(width as u32, height as u32),
-            );
+            let _ = window.set_size(tauri::PhysicalSize::new(width as u32, height as u32));
+            let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
             arranged += 1;
         }
     }
 
+    LAYOUT_BUSY.store(false, Ordering::Relaxed);
+    save_geometry_now(&app);
     log::info!("layout: arranged {arranged} note(s)");
     Ok(arranged)
 }

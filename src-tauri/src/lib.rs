@@ -196,6 +196,8 @@ pub fn run() {
             // Safe to build windows synchronously here: setup runs before the
             // event loop starts, so the deadlock that forces `open_note_window`
             // to be async does not apply.
+            notes::start_geometry_writer(&handle);
+
             let known_lists = notes::known_list_ids(&handle);
             notes::restore_session(&handle, &known_lists);
 
