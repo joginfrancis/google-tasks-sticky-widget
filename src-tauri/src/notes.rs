@@ -1662,3 +1662,126 @@ pub async fn snap_notes(app: AppHandle) -> Result<usize, String> {
     log::info!("snap: aligned {count} note(s)");
     Ok(count)
 }
+
+/// A display, as Settings needs to describe it.
+#[derive(serde::Serialize)]
+pub struct ScreenInfo {
+    /// Windows' own name, used to ask for this screen back.
+    pub name: String,
+    /// What to show a person: "1920 x 1080" and whether it is the main one.
+    pub label: String,
+    pub primary: bool,
+    /// Whether any note is on it at the moment.
+    pub has_notes: bool,
+}
+
+#[tauri::command]
+pub fn list_screens(app: AppHandle) -> Vec<ScreenInfo> {
+    let occupied: Vec<String> = note_windows(&app)
+        .iter()
+        .filter_map(|(_, w)| w.current_monitor().ok().flatten())
+        .filter_map(|m| m.name().cloned())
+        .collect();
+
+    let primary = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .and_then(|m| m.name().cloned());
+
+    app.available_monitors()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|m| {
+            let name = m.name().cloned()?;
+            let size = m.size();
+            let is_primary = primary.as_deref() == Some(name.as_str());
+            Some(ScreenInfo {
+                label: format!(
+                    "{} x {}{}",
+                    size.width,
+                    size.height,
+                    if is_primary { " (main)" } else { "" }
+                ),
+                has_notes: occupied.contains(&name),
+                primary: is_primary,
+                name,
+            })
+        })
+        .collect()
+}
+
+/// Moves every note onto one display, keeping the shape of the arrangement.
+///
+/// Each note keeps its place *proportionally*: a note two thirds across and
+/// half way down its old screen is two thirds across and half way down the new
+/// one. Width is kept where it fits, because a note's width is a preference;
+/// height is scaled with the screen, because a shorter screen cannot hold it.
+#[tauri::command]
+pub async fn move_notes_to_screen(app: AppHandle, name: String) -> Result<usize, String> {
+    let monitors = app.available_monitors().map_err(|e| e.to_string())?;
+    let Some(target) = monitors.iter().find(|m| m.name() == Some(&name)) else {
+        return Err("That screen is no longer attached.".into());
+    };
+    let area = *target.work_area();
+
+    let notes = note_windows(&app);
+    if notes.is_empty() {
+        return Err("There are no notes to move.".into());
+    }
+
+    LAYOUT_BUSY.store(true, Ordering::Relaxed);
+    let mut moves = Vec::new();
+
+    for (label, window) in notes {
+        let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) else {
+            continue;
+        };
+
+        let from = window
+            .current_monitor()
+            .ok()
+            .flatten()
+            .map(|m| (*m.position(), *m.size()));
+
+        // Where it sits on its current screen, as fractions.
+        let (fx, fy, fh) = match from {
+            Some((origin, screen)) => (
+                (pos.x - origin.x) as f64 / screen.width.max(1) as f64,
+                (pos.y - origin.y) as f64 / screen.height.max(1) as f64,
+                size.height as f64 / screen.height.max(1) as f64,
+            ),
+            None => (0.0, 0.0, 0.6),
+        };
+
+        let width = size
+            .width
+            .min(area.size.width.saturating_sub(2 * TILE_GAP as u32))
+            .max(200);
+        let height = ((fh * area.size.height as f64).round() as u32)
+            .min(area.size.height.saturating_sub(2 * TILE_GAP as u32))
+            .max(200);
+
+        let x = (area.position.x + (fx * area.size.width as f64).round() as i32).clamp(
+            area.position.x + TILE_GAP,
+            (area.position.x + area.size.width as i32 - width as i32 - TILE_GAP)
+                .max(area.position.x + TILE_GAP),
+        );
+        let y = (area.position.y + (fy * area.size.height as f64).round() as i32).clamp(
+            area.position.y + TILE_GAP,
+            (area.position.y + area.size.height as i32 - height as i32 - TILE_GAP)
+                .max(area.position.y + TILE_GAP),
+        );
+
+        moves.push((
+            label,
+            tauri::PhysicalPosition::new(x, y),
+            tauri::PhysicalSize::new(width, height),
+        ));
+    }
+
+    let count = moves.len();
+    log::info!("screens: moving {count} note(s) to {name}");
+    place_windows(&app, moves);
+    Ok(count)
+}

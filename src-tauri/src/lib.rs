@@ -133,6 +133,8 @@ pub fn run() {
             notes::apply_layout,
             notes::arrange_notes,
             notes::snap_notes,
+            notes::list_screens,
+            notes::move_notes_to_screen,
             notes::list_layouts,
             notes::delete_layout,
             notes::close_task_page,

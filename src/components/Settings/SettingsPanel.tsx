@@ -280,6 +280,10 @@ function Layout() {
   const [naming, setNaming] = useState(false);
   const [draft, setDraft] = useState("");
   const [note, setNote] = useState<string | null>(null);
+  const [screens, setScreens] = useState<
+    { name: string; label: string; primary: boolean; hasNotes: boolean }[]
+  >([]);
+
   /** Arranged but not yet kept — the save marks pick this up. */
   const [dirty, setDirty] = useState(false);
 
@@ -296,6 +300,15 @@ function Layout() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  useEffect(() => {
+    invoke<{ name: string; label: string; primary: boolean; hasNotes: boolean }[]>(
+      "list_screens",
+    )
+      .then(setScreens)
+      .catch(() => {});
+  }, []);
+
 
   /** Says what is happening now, and later what happened. */
   const say = (message: string, settle = false) => {
@@ -367,6 +380,41 @@ function Layout() {
           ))}
         </select>
       </div>
+
+      {screens.length > 1 && (
+        <div className="settings-row">
+          <span className="settings-label">Screen</span>
+          <select
+            className="settings-select"
+            // The one the notes are on, or the main one if they are spread.
+            value={screens.find((s) => s.hasNotes)?.name ?? ""}
+            onChange={(e) => {
+              const name = e.target.value;
+              const screen = screens.find((s) => s.name === name);
+              say("Moving the notes…");
+              invoke<number>("move_notes_to_screen", { name })
+                .then((n) => {
+                  setDirty(true);
+                  say(
+                    "Moved " +
+                      n +
+                      (n === 1 ? " note" : " notes") +
+                      " to " +
+                      (screen?.label ?? "that screen"),
+                    true,
+                  );
+                })
+                .catch((err: unknown) => say(String(err), true));
+            }}
+          >
+            {screens.map((screen) => (
+              <option key={screen.name} value={screen.name}>
+                {screen.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {naming ? (
         <div className="settings-actions">
