@@ -942,13 +942,22 @@ fn sanitise(id: &str) -> String {
 /// Gap between notes when they are arranged, and from the edge of the screen.
 const TILE_GAP: i32 = 10;
 
-/// Applies a set of positions and sizes, on the main thread, in one go.
+/// Applies a set of positions and sizes, on a thread of its own.
 ///
-/// Each `set_size`/`set_position` called from a command thread is a blocking
-/// dispatch to the main thread and waits for it. A run of them — five notes,
-/// two calls each — is where arranging stalled. Handing the whole set to the
-/// main thread as one closure removes the waiting entirely: nothing dispatches,
-/// because it is already there.
+/// Three attempts to get this right, so the reasoning is worth keeping:
+///
+/// 1. One `set_size` per window from the command thread. Each call is a
+///    blocking request to the main thread, and a run of them jammed it.
+/// 2. The whole set handed to the main thread with `run_on_main_thread`. That
+///    deadlocked *harder*: the calls themselves post to the event loop and wait
+///    for it, and the event loop was busy running the closure that made them.
+///    The command returned and logged success while the app froze behind it.
+/// 3. A plain OS thread, which is what the window animation has always used
+///    and what has always worked. The calls dispatch to an event loop that is
+///    free to answer them.
+///
+/// It returns as soon as the work is handed over: the windows move a frame or
+/// two later, which is invisible, and nothing waits on anything.
 fn place_windows(
     app: &AppHandle,
     moves: Vec<(String, tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>)>,
@@ -956,7 +965,7 @@ fn place_windows(
     let count = moves.len();
     let handle = app.clone();
 
-    let result = app.run_on_main_thread(move || {
+    std::thread::spawn(move || {
         for (label, pos, size) in moves {
             let Some(window) = handle.get_webview_window(&label) else {
                 continue;
@@ -969,12 +978,12 @@ fn place_windows(
                 log::warn!("place: could not move {label}: {err}");
             }
         }
-    });
 
-    if let Err(err) = result {
-        log::warn!("place: could not reach the main thread: {err}");
-        return 0;
-    }
+        log::info!("place: done");
+        LAYOUT_BUSY.store(false, Ordering::Relaxed);
+        GEOMETRY_DIRTY.store(false, Ordering::Relaxed);
+        let _ = handle.save_window_state(StateFlags::POSITION | StateFlags::SIZE);
+    });
 
     count
 }
@@ -1133,9 +1142,7 @@ pub async fn apply_layout(app: AppHandle, name: String) -> Result<usize, String>
     }
 
     place_windows(&app, moves);
-    LAYOUT_BUSY.store(false, Ordering::Relaxed);
     persist_open_notes(&app);
-    save_geometry_now(&app);
     log::info!("layout: applied {name} to {placed} note(s)");
     Ok(placed)
 }
@@ -1241,8 +1248,6 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
 
     log::info!("arrange: placing {} note(s)", moves.len());
     place_windows(&app, moves);
-    LAYOUT_BUSY.store(false, Ordering::Relaxed);
-    save_geometry_now(&app);
     log::info!("layout: arranged {arranged} note(s)");
     Ok(arranged)
 }
@@ -1371,9 +1376,6 @@ pub async fn snap_notes(app: AppHandle) -> Result<usize, String> {
     let count = moves.len();
     log::info!("snap: aligning {count} note(s)");
     place_windows(&app, moves);
-
-    LAYOUT_BUSY.store(false, Ordering::Relaxed);
-    save_geometry_now(&app);
     log::info!("snap: aligned {count} note(s)");
     Ok(count)
 }
