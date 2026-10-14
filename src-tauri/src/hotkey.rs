@@ -108,10 +108,14 @@ pub fn on_pressed(app: &AppHandle) {
     // a toggle that fires twice is a toggle that does nothing: the notes were
     // shown and hidden again inside the same second, which looks exactly like
     // a shortcut that is not working. The log showed the pairs.
+    // Zero means "nothing has been pressed yet". Without that distinction the
+    // very first press after launch compared 0 against 0, called itself a
+    // repeat of nothing, and was swallowed — which is why the shortcut so
+    // often needed pressing twice to start working.
     static LAST_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let now = millis_since_start();
+    let now = millis_since_start().max(1);
     let last = LAST_MS.load(std::sync::atomic::Ordering::Relaxed);
-    if now.saturating_sub(last) < REPEAT_GUARD_MS {
+    if last != 0 && now.saturating_sub(last) < REPEAT_GUARD_MS {
         log::info!("hotkey: ignored a repeat {}ms after the last", now - last);
         return;
     }
