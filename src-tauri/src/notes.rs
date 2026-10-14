@@ -1825,3 +1825,116 @@ pub async fn move_notes_to_screen(app: AppHandle, name: String) -> Result<usize,
     place_windows(&app, moves);
     Ok(count)
 }
+
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+
+    fn at(x: i32, y: i32, w: u32, h: u32) -> (tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>) {
+        (
+            tauri::PhysicalPosition::new(x, y),
+            tauri::PhysicalSize::new(w, h),
+        )
+    }
+
+    fn note_on(monitor: &str, mx: i32, x: i32, y: i32) -> crate::settings::LayoutNote {
+        crate::settings::LayoutNote {
+            label: "note-0".into(),
+            list_id: "list".into(),
+            x,
+            y,
+            width: 340,
+            height: 500,
+            scale: 1.0,
+            monitor: Some(monitor.into()),
+            monitor_x: mx,
+            monitor_y: 0,
+            monitor_width: 1920,
+            monitor_height: 1080,
+        }
+    }
+
+    #[test]
+    fn an_arrangement_keeps_its_proportions_on_a_smaller_screen() {
+        // Two columns, 20px apart, on a 1920x1080 screen.
+        let items = vec![
+            ("a".to_string(), at(0, 0, 340, 1000).0, at(0, 0, 340, 1000).1),
+            ("b".to_string(), at(360, 0, 340, 1000).0, at(360, 0, 340, 1000).1),
+        ];
+
+        let placed = fit_arrangement(
+            items,
+            &tauri::PhysicalPosition::new(0, 0),
+            &tauri::PhysicalSize::new(1536, 864),
+        );
+
+        let a = &placed[0];
+        let b = &placed[1];
+
+        // Same shape: the gap shrinks with the notes rather than staying put,
+        // which is what made tidy columns arrive unevenly spaced.
+        let gap_before = 360.0 - 340.0;
+        let gap_after = (b.1.x - (a.1.x + a.2.width as i32)) as f64;
+        let scale = a.2.width as f64 / 340.0;
+        assert!(
+            (gap_after - gap_before * scale).abs() <= 2.0,
+            "gap {gap_after} should scale with the notes ({})",
+            gap_before * scale
+        );
+
+        // Nothing is squashed: both dimensions use the same scale.
+        let scale_h = a.2.height as f64 / 1000.0;
+        assert!((scale - scale_h).abs() < 0.01, "width and height scales differ");
+    }
+
+    #[test]
+    fn an_arrangement_fits_inside_the_screen_it_is_given() {
+        let items = vec![
+            ("a".to_string(), at(0, 0, 340, 1040).0, at(0, 0, 340, 1040).1),
+            ("b".to_string(), at(1580, 0, 340, 1040).0, at(1580, 0, 340, 1040).1),
+        ];
+
+        let placed = fit_arrangement(
+            items,
+            &tauri::PhysicalPosition::new(1920, 0),
+            &tauri::PhysicalSize::new(1536, 864),
+        );
+
+        for (label, pos, size) in &placed {
+            assert!(pos.x >= 1920, "{label} starts left of the screen");
+            assert!(
+                pos.x + size.width as i32 <= 1920 + 1536,
+                "{label} runs off the right"
+            );
+            assert!(
+                pos.y + size.height as i32 <= 864,
+                "{label} runs off the bottom"
+            );
+        }
+    }
+
+    #[test]
+    fn a_single_note_is_not_blown_up_to_fill_a_screen() {
+        let items = vec![("a".to_string(), at(10, 10, 340, 400).0, at(10, 10, 340, 400).1)];
+
+        let placed = fit_arrangement(
+            items,
+            &tauri::PhysicalPosition::new(0, 0),
+            &tauri::PhysicalSize::new(3840, 2160),
+        );
+
+        // "Keep the layout" does not mean "make one note enormous".
+        assert!(placed[0].2.width <= 340 * 2, "scaled up too far");
+    }
+
+    #[test]
+    fn a_note_follows_its_display_when_the_display_moves() {
+        // Saved while the laptop screen was alone at 0,0; now it sits at
+        // 1920,0 because a monitor joined on its left. The note belongs at
+        // 1920 + 300, not at 300 — which is on the other screen entirely.
+        let note = note_on("\\\\.\\DISPLAY1", 0, 300, 50);
+        let moved_x = 1920 - note.monitor_x;
+        assert_eq!(note.x + moved_x, 2220);
+    }
+}
