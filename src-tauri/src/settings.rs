@@ -31,10 +31,25 @@ pub struct LayoutNote {
     /// The display this note was on, by the name Windows gives it.
     ///
     /// What makes a layout survive a monitor being unplugged: with the display
-    /// absent the saved coordinates are nowhere, and with it back they are
-    /// exactly right. Absent on layouts saved before this was recorded.
+    /// absent the saved coordinates are nowhere, and with it back they can be
+    /// put right. Absent on layouts saved before this was recorded.
     #[serde(default)]
     pub monitor: Option<String>,
+
+    /// Where that display was, and how big it was, when this was saved.
+    ///
+    /// Displays move: a laptop screen is at 0,0 alone and at 1920,0 once a
+    /// monitor joins to its left. Without this the saved position is read in
+    /// the new coordinate space and lands on whichever screen now occupies
+    /// it — which is how notes came back on the wrong display.
+    #[serde(default)]
+    pub monitor_x: i32,
+    #[serde(default)]
+    pub monitor_y: i32,
+    #[serde(default)]
+    pub monitor_width: u32,
+    #[serde(default)]
+    pub monitor_height: u32,
 }
 
 fn default_scale() -> f64 {

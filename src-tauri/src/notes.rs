@@ -1117,11 +1117,27 @@ fn fit_to_screen(
         return (saved_pos, saved_size);
     }
 
-    // The display it was saved on is back: the saved coordinates are exactly
-    // right, and nothing needs adjusting.
+    // The display it was saved on is here. Its coordinates may not be: a
+    // screen that was at 0,0 alone sits at 1920,0 once another joins on its
+    // left, so the saved position is read against where that display is *now*
+    // rather than taken literally.
     if let Some(name) = &note.monitor {
-        if monitors.iter().any(|m| m.name() == Some(name)) {
-            return (saved_pos, saved_size);
+        if let Some(screen) = monitors.iter().find(|m| m.name() == Some(name)) {
+            let now = screen.position();
+            let moved_x = now.x - note.monitor_x;
+            let moved_y = now.y - note.monitor_y;
+
+            if moved_x != 0 || moved_y != 0 {
+                log::info!(
+                    "layout: {} follows {name}, which moved by {moved_x},{moved_y}",
+                    note.label
+                );
+            }
+
+            return (
+                tauri::PhysicalPosition::new(note.x + moved_x, note.y + moved_y),
+                saved_size,
+            );
         }
     }
 
@@ -1205,11 +1221,9 @@ fn capture_layout(app: &AppHandle) -> Vec<crate::settings::LayoutNote> {
             continue;
         };
 
-        let monitor = window
-            .current_monitor()
-            .ok()
-            .flatten()
-            .and_then(|m| m.name().cloned());
+        let screen = window.current_monitor().ok().flatten();
+        let monitor = screen.as_ref().and_then(|m| m.name().cloned());
+        let frame = screen.as_ref().map(|m| (*m.position(), *m.size()));
 
         layout.push(crate::settings::LayoutNote {
             label,
@@ -1220,6 +1234,10 @@ fn capture_layout(app: &AppHandle) -> Vec<crate::settings::LayoutNote> {
             height: size.height,
             scale,
             monitor,
+            monitor_x: frame.map(|(p, _)| p.x).unwrap_or(0),
+            monitor_y: frame.map(|(p, _)| p.y).unwrap_or(0),
+            monitor_width: frame.map(|(_, s)| s.width).unwrap_or(0),
+            monitor_height: frame.map(|(_, s)| s.height).unwrap_or(0),
         });
     }
 
