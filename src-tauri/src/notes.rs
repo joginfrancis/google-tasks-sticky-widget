@@ -937,18 +937,12 @@ fn sanitise(id: &str) -> String {
 /// Gap between notes when they are arranged, and from the edge of the screen.
 const TILE_GAP: i32 = 10;
 
-/// Records the current arrangement as the saved layout.
-///
-/// Deliberately a single slot rather than a list of named layouts: one
-/// "this is how I like it" covers the case being complained about — a restart
-/// or a reinstall leaving the notes stacked in a corner — and a naming UI on a
-/// 340px panel would cost more than it returns.
-#[tauri::command]
-pub async fn save_layout(app: AppHandle) -> Result<usize, String> {
+/// Where every open note is, right now.
+fn capture_layout(app: &AppHandle) -> Vec<crate::settings::LayoutNote> {
     let registry = app.state::<NoteRegistry>();
     let mut layout = Vec::new();
 
-    for (label, window) in note_windows(&app) {
+    for (label, window) in note_windows(app) {
         let Some(list_id) = registry.list_for(&label) else {
             continue;
         };
@@ -971,34 +965,93 @@ pub async fn save_layout(app: AppHandle) -> Result<usize, String> {
         });
     }
 
-    let count = layout.len();
+    layout
+}
+
+/// Saves the current arrangement under a name, replacing one of that name.
+///
+/// Saving over an existing name is how a layout is *updated*: arrange the
+/// notes, pick the preset, save again. There is no separate update command,
+/// because "save as the name that is already selected" is the same act.
+#[tauri::command]
+pub async fn save_layout(app: AppHandle, name: String) -> Result<usize, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("Give the layout a name.".into());
+    }
+
+    let notes = capture_layout(&app);
+    if notes.is_empty() {
+        return Err("There are no notes open to save.".into());
+    }
+
+    let count = notes.len();
     {
         let state = app.state::<AppState>();
         let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
-        settings.saved_layout = layout;
+
+        match settings.layouts.iter_mut().find(|l| l.name == name) {
+            Some(existing) => existing.notes = notes,
+            None => {
+                if settings.layouts.len() >= crate::settings::MAX_LAYOUTS {
+                    return Err(format!(
+                        "That is {} layouts already — rename or delete one first.",
+                        crate::settings::MAX_LAYOUTS
+                    ));
+                }
+                settings
+                    .layouts
+                    .push(crate::settings::Layout { name: name.clone(), notes });
+            }
+        }
+
         crate::settings::save(&app, &settings);
     }
 
-    log::info!("layout: saved {count} note(s)");
+    log::info!("layout: saved {count} note(s) as {name}");
     Ok(count)
 }
 
-/// Puts the saved layout back: opens what is missing, moves what is there.
+/// Every saved layout's name, in the order they were made.
+#[tauri::command]
+pub fn list_layouts(app: AppHandle) -> Vec<String> {
+    app.state::<AppState>()
+        .settings
+        .lock()
+        .map(|s| s.layouts.iter().map(|l| l.name.clone()).collect())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+pub async fn delete_layout(app: AppHandle, name: String) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
+    settings.layouts.retain(|l| l.name != name);
+    crate::settings::save(&app, &settings);
+    log::info!("layout: deleted {name}");
+    Ok(())
+}
+
+/// Puts a saved layout back: opens what is missing, moves what is there.
 ///
 /// Notes not in the layout are left alone rather than closed. Closing windows
 /// the user has opened since would be a surprise, and "restore my arrangement"
 /// does not have to mean "and discard everything else".
 #[tauri::command]
-pub async fn apply_layout(app: AppHandle) -> Result<usize, String> {
+pub async fn apply_layout(app: AppHandle, name: String) -> Result<usize, String> {
     let saved = {
         let state = app.state::<AppState>();
         let settings = state.settings.lock().map_err(|e| e.to_string())?;
-        settings.saved_layout.clone()
+        settings
+            .layouts
+            .iter()
+            .find(|l| l.name == name)
+            .map(|l| l.notes.clone())
     };
 
-    if saved.is_empty() {
-        return Err("No layout has been saved yet.".into());
-    }
+    let Some(saved) = saved else {
+        return Err(format!("There is no layout called {name}."));
+    };
 
     LAYOUT_BUSY.store(true, Ordering::Relaxed);
     let known = known_list_ids(&app);
@@ -1036,9 +1089,10 @@ pub async fn apply_layout(app: AppHandle) -> Result<usize, String> {
     LAYOUT_BUSY.store(false, Ordering::Relaxed);
     persist_open_notes(&app);
     save_geometry_now(&app);
-    log::info!("layout: applied to {placed} note(s)");
+    log::info!("layout: applied {name} to {placed} note(s)");
     Ok(placed)
 }
+
 
 /// Arranges every open note in even columns down the work area.
 ///
@@ -1046,6 +1100,10 @@ pub async fn apply_layout(app: AppHandle) -> Result<usize, String> {
 /// each one readable, where a grid of short wide notes would not. Notes are
 /// arranged on the screen they are already on, so a second monitor is not
 /// emptied onto the first.
+///
+/// Nothing is saved by arranging. Arrange, look at it, and save it as a preset
+/// if it is worth keeping — that way the automatic version is a starting point
+/// rather than a thing that overwrites what you had.
 #[tauri::command]
 pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
     let notes = note_windows(&app);
@@ -1055,8 +1113,8 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
 
     LAYOUT_BUSY.store(true, Ordering::Relaxed);
 
-    // Group by monitor, keeping label order so the result is stable: running
-    // it twice gives the same arrangement.
+    // Grouped by monitor, in label order, so the result is stable: running it
+    // twice gives the same arrangement.
     let mut by_monitor: HashMap<String, Vec<(String, tauri::WebviewWindow)>> = HashMap::new();
     for (label, window) in notes {
         let key = window
@@ -1081,8 +1139,8 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
         };
         let area = monitor.work_area();
 
-        // Width comes from the notes themselves: the user's chosen width is a
-        // preference, not something an arrange should overwrite.
+        // Width comes from the notes themselves: how wide a note should be is
+        // a preference, and arranging is not the place to overrule it.
         let width = group
             .iter()
             .filter_map(|(_, w)| w.outer_size().ok())
@@ -1092,8 +1150,7 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
 
         let usable_h = area.size.height as i32 - TILE_GAP * 2;
         let columns = ((area.size.width as i32 - TILE_GAP) / (width + TILE_GAP)).max(1);
-        let per_column = (group.len() as i32 + columns - 1) / columns;
-        let per_column = per_column.max(1);
+        let per_column = ((group.len() as i32 + columns - 1) / columns).max(1);
         let height = ((usable_h - TILE_GAP * (per_column - 1)) / per_column).max(200);
 
         for (index, (_, window)) in group.iter().enumerate() {
@@ -1115,14 +1172,4 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
     save_geometry_now(&app);
     log::info!("layout: arranged {arranged} note(s)");
     Ok(arranged)
-}
-
-/// Whether a saved layout exists, so Settings can say so.
-#[tauri::command]
-pub fn has_saved_layout(app: AppHandle) -> bool {
-    app.state::<AppState>()
-        .settings
-        .lock()
-        .map(|s| !s.saved_layout.is_empty())
-        .unwrap_or(false)
 }

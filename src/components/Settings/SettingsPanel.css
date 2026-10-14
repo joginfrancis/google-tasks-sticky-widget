@@ -269,3 +269,18 @@
   font-size: var(--font-size-sm);
   line-height: 1.4;
 }
+
+/* Naming a layout: the same shape as the other controls in this panel, since
+   it appears in the row where a button was a moment ago. */
+.settings-name {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-row);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  outline: none;
+}

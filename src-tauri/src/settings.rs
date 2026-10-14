@@ -34,6 +34,21 @@ fn default_scale() -> f64 {
     1.0
 }
 
+/// A named arrangement of notes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Layout {
+    pub name: String,
+    pub notes: Vec<LayoutNote>,
+}
+
+/// How many arrangements can be kept.
+///
+/// A deliberate ceiling rather than an unbounded list: these are picked from a
+/// dropdown on a 340px panel, and a dozen of them would be a filing problem
+/// rather than a convenience.
+pub const MAX_LAYOUTS: usize = 5;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -76,7 +91,12 @@ pub struct Settings {
     /// entry here.
     #[serde(default)]
     pub note_layers: std::collections::HashMap<String, String>,
-    /// An arrangement the user chose to keep, restorable from Settings.
+    /// Named arrangements, chosen from Settings.
+    #[serde(default)]
+    pub layouts: Vec<Layout>,
+
+    /// The single arrangement kept by the first version of this feature.
+    /// Migrated into `layouts` on load and then left empty.
     ///
     /// Separate from `open_notes`, which only records what is on screen right
     /// now: a template survives closing every note, and survives the drift that
@@ -103,6 +123,7 @@ impl Default for Settings {
             open_notes: std::collections::HashMap::new(),
             note_layers: std::collections::HashMap::new(),
             saved_layout: Vec::new(),
+            layouts: Vec::new(),
             selected_task_list_id: None,
         }
     }
@@ -222,13 +243,24 @@ pub fn load(app: &AppHandle) -> Settings {
         return Settings::default();
     };
 
-    match fs::read_to_string(&path) {
+    let mut settings: Settings = match fs::read_to_string(&path) {
         Ok(raw) => serde_json::from_str(&raw).unwrap_or_else(|err| {
             log::warn!("settings file unreadable, using defaults: {err}");
             Settings::default()
         }),
         Err(_) => Settings::default(),
+    };
+
+    // The single slot became a list; anything saved under the old shape keeps
+    // working rather than quietly disappearing.
+    if settings.layouts.is_empty() && !settings.saved_layout.is_empty() {
+        settings.layouts.push(Layout {
+            name: "Saved layout".to_string(),
+            notes: std::mem::take(&mut settings.saved_layout),
+        });
     }
+
+    settings
 }
 
 pub fn save(app: &AppHandle, settings: &Settings) {

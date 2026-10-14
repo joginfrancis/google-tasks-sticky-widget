@@ -263,73 +263,151 @@ export function SettingsPanel(props: Props) {
 }
 
 /**
- * Keeping an arrangement, and rebuilding one.
+ * Keeping arrangements, and rebuilding them.
  *
- * Notes are windows, and windows drift: a restart, a second monitor being
- * unplugged, or an afternoon of dragging leaves an arrangement that took
- * effort to build looking like it was dealt from a deck. Saving one is cheap
- * insurance; arranging is for when there is nothing worth keeping.
+ * Notes are windows, and windows drift: a restart, a monitor being unplugged,
+ * or an afternoon of dragging leaves an arrangement that took effort to build
+ * looking like it was dealt from a deck. A handful of named layouts covers the
+ * real cases — a work arrangement, a home one, one for the laptop screen —
+ * without becoming a filing system.
+ *
+ * Saving over the selected name is how a layout is updated: arrange the notes,
+ * press Save. There is no separate "update", because it is the same act.
  */
 function Layout() {
-  const [saved, setSaved] = useState(false);
+  const [names, setNames] = useState<string[]>([]);
+  const [selected, setSelected] = useState("");
+  const [naming, setNaming] = useState(false);
+  const [draft, setDraft] = useState("");
   const [note, setNote] = useState<string | null>(null);
 
-  useEffect(() => {
-    invoke<boolean>("has_saved_layout")
-      .then(setSaved)
+  const refresh = (keep?: string) =>
+    invoke<string[]>("list_layouts")
+      .then((list) => {
+        setNames(list);
+        setSelected((current) => keep ?? (list.includes(current) ? current : (list[0] ?? "")));
+      })
       .catch(() => {});
+
+  useEffect(() => {
+    void refresh();
   }, []);
 
   const say = (message: string) => {
     setNote(message);
-    window.setTimeout(() => setNote(null), 2400);
+    window.setTimeout(() => setNote(null), 2600);
   };
 
-  const run = (command: string, done: (count: number) => string) => {
-    invoke<number>(command)
+  const save = (name: string) => {
+    invoke<number>("save_layout", { name })
       .then((count) => {
-        if (command === "save_layout") setSaved(count > 0);
-        say(done(count));
+        void refresh(name);
+        setNaming(false);
+        setDraft("");
+        say(`Saved ${count} note${count === 1 ? "" : "s"} as ${name}`);
       })
       .catch((err: unknown) => say(String(err)));
   };
 
   return (
     <>
-      <div className="settings-actions">
-        <button
-          className="settings-button"
-          onClick={() =>
-            run("save_layout", (n) => `Saved where ${n} note${n === 1 ? " is" : "s are"}`)
-          }
-        >
-          Save this layout
-        </button>
-        <button
-          className="settings-button"
-          disabled={!saved}
-          onClick={() => run("apply_layout", (n) => `Restored ${n} note${n === 1 ? "" : "s"}`)}
-        >
-          Restore it
-        </button>
-      </div>
+      {names.length > 0 && (
+        <div className="settings-row">
+          <span className="settings-label">Layout</span>
+          <select
+            className="settings-select"
+            value={selected}
+            onChange={(e) => setSelected(e.target.value)}
+          >
+            {names.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
-      <div className="settings-actions">
-        <button
-          className="settings-button"
-          onClick={() =>
-            run("arrange_notes", (n) => `Arranged ${n} note${n === 1 ? "" : "s"}`)
-          }
-        >
-          Arrange evenly
-        </button>
-      </div>
+      {names.length > 0 && (
+        <div className="settings-actions">
+          <button
+            className="settings-button"
+            onClick={() =>
+              invoke<number>("apply_layout", { name: selected })
+                .then((n) => say(`Restored ${n} note${n === 1 ? "" : "s"}`))
+                .catch((err: unknown) => say(String(err)))
+            }
+          >
+            Use
+          </button>
+          <button className="settings-button" onClick={() => save(selected)}>
+            Save over
+          </button>
+          <button
+            className="settings-button is-danger"
+            onClick={() =>
+              invoke("delete_layout", { name: selected })
+                .then(() => {
+                  void refresh();
+                  say(`Deleted ${selected}`);
+                })
+                .catch((err: unknown) => say(String(err)))
+            }
+          >
+            Delete
+          </button>
+        </div>
+      )}
+
+      {naming ? (
+        <div className="settings-actions">
+          <input
+            className="settings-name"
+            autoFocus
+            value={draft}
+            placeholder="Name this layout…"
+            maxLength={40}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && draft.trim()) save(draft.trim());
+              else if (e.key === "Escape") {
+                e.stopPropagation();
+                setNaming(false);
+                setDraft("");
+              }
+            }}
+          />
+          <button
+            className="settings-button"
+            disabled={!draft.trim()}
+            onClick={() => save(draft.trim())}
+          >
+            Save
+          </button>
+        </div>
+      ) : (
+        <div className="settings-actions">
+          <button className="settings-button" onClick={() => setNaming(true)}>
+            Save this one
+          </button>
+          <button
+            className="settings-button"
+            onClick={() =>
+              invoke<number>("arrange_notes")
+                .then((n) => say(`Arranged ${n} note${n === 1 ? "" : "s"}`))
+                .catch((err: unknown) => say(String(err)))
+            }
+          >
+            Arrange evenly
+          </button>
+        </div>
+      )}
 
       <p className="settings-hint">
         {note ??
-          (saved
-            ? "Restore puts your notes back where you saved them, opening any that are closed."
-            : "Save the arrangement you like, and restore it after a restart or a drag. Arrange evenly fills the screen in columns instead.")}
+          (names.length > 0
+            ? "Use puts the notes back, opening any that are closed. Save over keeps the current arrangement under that name."
+            : "Arrange evenly fills the screen in columns; save it, or your own arrangement, to come back to it later.")}
       </p>
     </>
   );
