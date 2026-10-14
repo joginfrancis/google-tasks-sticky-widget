@@ -289,6 +289,19 @@ pub fn load(app: &AppHandle) -> Settings {
         Err(_) => Settings::default(),
     };
 
+    // Positions recorded while a note was hidden: Windows reports -32000 for
+    // a parked window, and an older build wrote that down as the note's place.
+    // Dropped here so a good arrangement can replace them.
+    for notes in settings.layout_by_screens.values_mut() {
+        notes.retain(|n| n.x > -30000 && n.y > -30000 && n.width > 120 && n.height > 120);
+    }
+    settings.layout_by_screens.retain(|_, notes| !notes.is_empty());
+    for layout in &mut settings.layouts {
+        layout
+            .notes
+            .retain(|n| n.x > -30000 && n.y > -30000 && n.width > 120 && n.height > 120);
+    }
+
     // The single slot became a list; anything saved under the old shape keeps
     // working rather than quietly disappearing.
     if settings.layouts.is_empty() && !settings.saved_layout.is_empty() {

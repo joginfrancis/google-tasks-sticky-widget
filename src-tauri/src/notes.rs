@@ -1217,6 +1217,15 @@ fn capture_layout(app: &AppHandle) -> Vec<crate::settings::LayoutNote> {
             continue;
         };
 
+        // A note that is hidden — by the shortcut, or minimised — reports the
+        // parking spot rather than where it will reappear. Recording that puts
+        // the note at -32000 next time the arrangement is restored, which is
+        // how four notes went missing and one came back.
+        if !is_placeable(&pos, &size) || !window.is_visible().unwrap_or(false) {
+            log::debug!("layout: skipping {label}, which is not on screen");
+            continue;
+        }
+
         let screen = window.current_monitor().ok().flatten();
         let monitor = screen.as_ref().and_then(|m| m.name().cloned());
         let frame = screen.as_ref().map(|m| (*m.position(), *m.size()));
@@ -1238,6 +1247,15 @@ fn capture_layout(app: &AppHandle) -> Vec<crate::settings::LayoutNote> {
     }
 
     layout
+}
+
+/// Windows parks hidden and minimised windows far off-screen, at -32000. Any
+/// coordinate out there is a parking spot, not a position worth remembering.
+const PARKED: i32 = -30000;
+
+/// Whether a window's geometry is worth recording or restoring.
+fn is_placeable(pos: &tauri::PhysicalPosition<i32>, size: &tauri::PhysicalSize<u32>) -> bool {
+    pos.x > PARKED && pos.y > PARKED && size.width > 120 && size.height > 120
 }
 
 /// Fits a whole arrangement onto one screen, keeping its shape.
@@ -1329,6 +1347,14 @@ pub fn remember_arrangement(app: &AppHandle) {
         return;
     }
 
+    // Hidden notes are not captured, so a hidden set would record as a smaller
+    // arrangement and quietly lose the rest. Only a complete picture is worth
+    // remembering.
+    if notes.len() < note_windows(app).len() {
+        log::debug!("layout: not remembering a partial arrangement");
+        return;
+    }
+
     let signature = screen_signature(app);
     let state = app.state::<AppState>();
     let Ok(mut settings) = state.settings.lock() else {
@@ -1350,12 +1376,21 @@ fn apply_notes(app: &AppHandle, saved: Vec<crate::settings::LayoutNote>) -> usiz
     let known = known_list_ids(app);
     let mut placed = 0;
     let mut moves = Vec::new();
+    let mut stranded: Vec<String> = Vec::new();
 
     for note in saved {
         if !known.is_empty() && !known.contains(&note.list_id) {
             log::info!("layout: skipping a note whose list is gone");
             continue;
         }
+
+        // Written by an older build while the note was hidden. Placing it
+        // would put the note 32,000 pixels off-screen, so it is laid out with
+        // the others instead.
+        let parked = !is_placeable(
+            &tauri::PhysicalPosition::new(note.x, note.y),
+            &tauri::PhysicalSize::new(note.width, note.height),
+        );
 
         if app.get_webview_window(&note.label).is_none() {
             // Reuse the label, so the note keeps its own colour and pin.
@@ -1365,9 +1400,36 @@ fn apply_notes(app: &AppHandle, saved: Vec<crate::settings::LayoutNote>) -> usiz
             }
         }
 
+        if parked {
+            stranded.push(note.label.clone());
+            placed += 1;
+            continue;
+        }
+
         let (pos, size) = fit_to_screen(app, &note);
         moves.push((note.label.clone(), pos, size));
         placed += 1;
+    }
+
+    // A note with no usable saved position is given one: beside the notes
+    // that do have one, down the right-hand edge of the main screen.
+    if !stranded.is_empty() {
+        log::info!("layout: {} note(s) had no usable position", stranded.len());
+        if let Some(area) = app.primary_monitor().ok().flatten().map(|m| *m.work_area()) {
+            let width = 340;
+            let height = (area.size.height as i32 - TILE_GAP * 2).clamp(240, 1000) as u32;
+            for (index, label) in stranded.into_iter().enumerate() {
+                let x = area.position.x + area.size.width as i32
+                    - width
+                    - TILE_GAP
+                    - index as i32 * (width + TILE_GAP);
+                moves.push((
+                    label,
+                    tauri::PhysicalPosition::new(x.max(area.position.x + TILE_GAP), area.position.y + TILE_GAP),
+                    tauri::PhysicalSize::new(width as u32, height),
+                ));
+            }
+        }
     }
 
     place_windows(app, moves);
