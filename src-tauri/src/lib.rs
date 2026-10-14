@@ -55,6 +55,11 @@ pub fn run() {
                 .level_for("keyring", log::LevelFilter::Info)
                 .level_for("keyring_core", log::LevelFilter::Info)
                 .level_for("reqwest", log::LevelFilter::Info)
+                // The default rotates at 128KB, which on a chatty day is about
+                // twenty minutes — and the twenty minutes you want are always
+                // the ones that just scrolled away. Sync lines alone fill it.
+                .max_file_size(2_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
                 .build(),
         )
         // Only position and size. Restoring visibility or decorations here would
