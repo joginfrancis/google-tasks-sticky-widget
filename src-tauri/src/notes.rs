@@ -302,7 +302,12 @@ pub fn start_geometry_writer(app: &AppHandle) {
 /// Writes the arrangement right now — for the end of a layout operation.
 fn save_geometry_now(app: &AppHandle) {
     GEOMETRY_DIRTY.store(false, Ordering::Relaxed);
-    let _ = app.save_window_state(StateFlags::POSITION | StateFlags::SIZE);
+    // Off the calling thread: saving asks every window where it is, and a
+    // request like that made from the main thread waits on the main thread.
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let _ = app.save_window_state(StateFlags::POSITION | StateFlags::SIZE);
+    });
 }
 
 pub fn persist_open_notes(app: &AppHandle) {
@@ -937,6 +942,43 @@ fn sanitise(id: &str) -> String {
 /// Gap between notes when they are arranged, and from the edge of the screen.
 const TILE_GAP: i32 = 10;
 
+/// Applies a set of positions and sizes, on the main thread, in one go.
+///
+/// Each `set_size`/`set_position` called from a command thread is a blocking
+/// dispatch to the main thread and waits for it. A run of them — five notes,
+/// two calls each — is where arranging stalled. Handing the whole set to the
+/// main thread as one closure removes the waiting entirely: nothing dispatches,
+/// because it is already there.
+fn place_windows(
+    app: &AppHandle,
+    moves: Vec<(String, tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>)>,
+) -> usize {
+    let count = moves.len();
+    let handle = app.clone();
+
+    let result = app.run_on_main_thread(move || {
+        for (label, pos, size) in moves {
+            let Some(window) = handle.get_webview_window(&label) else {
+                continue;
+            };
+            let _ = window.show();
+            if let Err(err) = window.set_size(size) {
+                log::warn!("place: could not resize {label}: {err}");
+            }
+            if let Err(err) = window.set_position(pos) {
+                log::warn!("place: could not move {label}: {err}");
+            }
+        }
+    });
+
+    if let Err(err) = result {
+        log::warn!("place: could not reach the main thread: {err}");
+        return 0;
+    }
+
+    count
+}
+
 /// Where every open note is, right now.
 fn capture_layout(app: &AppHandle) -> Vec<crate::settings::LayoutNote> {
     let registry = app.state::<NoteRegistry>();
@@ -1056,6 +1098,7 @@ pub async fn apply_layout(app: AppHandle, name: String) -> Result<usize, String>
     LAYOUT_BUSY.store(true, Ordering::Relaxed);
     let known = known_list_ids(&app);
     let mut placed = 0;
+    let mut moves = Vec::new();
 
     for note in saved {
         if !known.is_empty() && !known.contains(&note.list_id) {
@@ -1080,12 +1123,16 @@ pub async fn apply_layout(app: AppHandle, name: String) -> Result<usize, String>
             }
         };
 
-        let _ = window.show();
-        let _ = window.set_size(tauri::PhysicalSize::new(note.width, note.height));
-        let _ = window.set_position(tauri::PhysicalPosition::new(note.x, note.y));
+        let _ = window;
+        moves.push((
+            note.label.clone(),
+            tauri::PhysicalPosition::new(note.x, note.y),
+            tauri::PhysicalSize::new(note.width, note.height),
+        ));
         placed += 1;
     }
 
+    place_windows(&app, moves);
     LAYOUT_BUSY.store(false, Ordering::Relaxed);
     persist_open_notes(&app);
     save_geometry_now(&app);
@@ -1129,6 +1176,7 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
     }
 
     let mut arranged = 0;
+    let mut moves = Vec::new();
 
     for (_, mut group) in by_monitor {
         group.sort_by(|a, b| a.0.cmp(&b.0));
@@ -1174,7 +1222,7 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
         let per_column = ((group.len() as i32 + columns - 1) / columns).max(1);
         let height = ((usable_h - TILE_GAP * (per_column - 1)) / per_column).max(200);
 
-        for (index, (_, window)) in group.iter().enumerate() {
+        for (index, (label, _)) in group.iter().enumerate() {
             let index = index as i32;
             let column = index / per_column;
             let row = index % per_column;
@@ -1182,17 +1230,17 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
             let x = area.position.x + TILE_GAP + column * (width + TILE_GAP);
             let y = area.position.y + TILE_GAP + row * (height + TILE_GAP);
 
-            let _ = window.show();
-            if let Err(err) = window.set_size(tauri::PhysicalSize::new(width as u32, height as u32)) {
-                log::warn!("arrange: could not resize: {err}");
-            }
-            if let Err(err) = window.set_position(tauri::PhysicalPosition::new(x, y)) {
-                log::warn!("arrange: could not move: {err}");
-            }
+            moves.push((
+                label.clone(),
+                tauri::PhysicalPosition::new(x, y),
+                tauri::PhysicalSize::new(width as u32, height as u32),
+            ));
             arranged += 1;
         }
     }
 
+    log::info!("arrange: placing {} note(s)", moves.len());
+    place_windows(&app, moves);
     LAYOUT_BUSY.store(false, Ordering::Relaxed);
     save_geometry_now(&app);
     log::info!("layout: arranged {arranged} note(s)");
