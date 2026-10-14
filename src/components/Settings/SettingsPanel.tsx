@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
 import type {
   Settings,
   TaskList,
@@ -134,6 +135,11 @@ export function SettingsPanel(props: Props) {
         </section>
 
         <section>
+          <h2>Layout</h2>
+          <Layout />
+        </section>
+
+        <section>
           <h2>List</h2>
           <Toggle
             label="Show subtasks"
@@ -253,6 +259,79 @@ export function SettingsPanel(props: Props) {
         </section>
       </div>
     </div>
+  );
+}
+
+/**
+ * Keeping an arrangement, and rebuilding one.
+ *
+ * Notes are windows, and windows drift: a restart, a second monitor being
+ * unplugged, or an afternoon of dragging leaves an arrangement that took
+ * effort to build looking like it was dealt from a deck. Saving one is cheap
+ * insurance; arranging is for when there is nothing worth keeping.
+ */
+function Layout() {
+  const [saved, setSaved] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    invoke<boolean>("has_saved_layout")
+      .then(setSaved)
+      .catch(() => {});
+  }, []);
+
+  const say = (message: string) => {
+    setNote(message);
+    window.setTimeout(() => setNote(null), 2400);
+  };
+
+  const run = (command: string, done: (count: number) => string) => {
+    invoke<number>(command)
+      .then((count) => {
+        if (command === "save_layout") setSaved(count > 0);
+        say(done(count));
+      })
+      .catch((err: unknown) => say(String(err)));
+  };
+
+  return (
+    <>
+      <div className="settings-actions">
+        <button
+          className="settings-button"
+          onClick={() =>
+            run("save_layout", (n) => `Saved where ${n} note${n === 1 ? " is" : "s are"}`)
+          }
+        >
+          Save this layout
+        </button>
+        <button
+          className="settings-button"
+          disabled={!saved}
+          onClick={() => run("apply_layout", (n) => `Restored ${n} note${n === 1 ? "" : "s"}`)}
+        >
+          Restore it
+        </button>
+      </div>
+
+      <div className="settings-actions">
+        <button
+          className="settings-button"
+          onClick={() =>
+            run("arrange_notes", (n) => `Arranged ${n} note${n === 1 ? "" : "s"}`)
+          }
+        >
+          Arrange evenly
+        </button>
+      </div>
+
+      <p className="settings-hint">
+        {note ??
+          (saved
+            ? "Restore puts your notes back where you saved them, opening any that are closed."
+            : "Save the arrangement you like, and restore it after a restart or a drag. Arrange evenly fills the screen in columns instead.")}
+      </p>
+    </>
   );
 }
 

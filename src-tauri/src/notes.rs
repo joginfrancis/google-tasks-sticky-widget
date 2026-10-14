@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_window_state::{AppHandleExt, StateFlags, WindowExt};
 
 use crate::settings::{AppState, WindowLayer};
 
@@ -211,6 +212,15 @@ pub fn open_note_labelled(
         format!("Could not open a new note: {e}")
     })?;
 
+    // Put the note back where it was last time.
+    //
+    // The window-state plugin restores windows declared in `tauri.conf.json`
+    // by itself, but not windows built at run time — and every note is built
+    // at run time now. Without this the saved position is written faithfully
+    // on exit and then ignored on launch, which is why a restart stacked the
+    // notes in a corner instead of rebuilding the arrangement.
+    let _ = window.restore_state(StateFlags::POSITION | StateFlags::SIZE);
+
     // Without this the new note can sit behind the one that opened it — both
     // are always-on-top, so z-order between them is otherwise arbitrary.
     let _ = window.set_focus();
@@ -246,6 +256,16 @@ pub fn is_note_label(label: &str) -> bool {
 /// Called after every open, close, and list change rather than only at exit: a
 /// crash or a force-kill would otherwise lose the arrangement, and this is a
 /// few bytes of JSON.
+/// Writes window positions and sizes to disk now rather than at exit.
+///
+/// The plugin saves on exit, which is no help to a machine that is switched
+/// off, a process that is killed, or an installer that replaces the binary
+/// under a running app. The arrangement is cheap to write and expensive to
+/// lose, so it is written whenever it changes.
+pub fn persist_geometry(app: &AppHandle) {
+    let _ = app.save_window_state(StateFlags::POSITION | StateFlags::SIZE);
+}
+
 pub fn persist_open_notes(app: &AppHandle) {
     let notes = match app.state::<NoteRegistry>().by_label.lock() {
         Ok(map) => map.clone(),
@@ -872,3 +892,201 @@ fn sanitise(id: &str) -> String {
 }
 
 
+
+/* -- Layouts --------------------------------------------------------------- */
+
+/// Gap between notes when they are arranged, and from the edge of the screen.
+const TILE_GAP: i32 = 10;
+
+/// Records the current arrangement as the saved layout.
+///
+/// Deliberately a single slot rather than a list of named layouts: one
+/// "this is how I like it" covers the case being complained about — a restart
+/// or a reinstall leaving the notes stacked in a corner — and a naming UI on a
+/// 340px panel would cost more than it returns.
+#[tauri::command]
+pub async fn save_layout(app: AppHandle) -> Result<usize, String> {
+    let registry = app.state::<NoteRegistry>();
+    let mut layout = Vec::new();
+
+    for (label, window) in note_windows(&app) {
+        let Some(list_id) = registry.list_for(&label) else {
+            continue;
+        };
+        let (Ok(pos), Ok(size), Ok(scale)) = (
+            window.outer_position(),
+            window.outer_size(),
+            window.scale_factor(),
+        ) else {
+            continue;
+        };
+
+        layout.push(crate::settings::LayoutNote {
+            label,
+            list_id,
+            x: pos.x,
+            y: pos.y,
+            width: size.width,
+            height: size.height,
+            scale,
+        });
+    }
+
+    let count = layout.len();
+    {
+        let state = app.state::<AppState>();
+        let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
+        settings.saved_layout = layout;
+        crate::settings::save(&app, &settings);
+    }
+
+    log::info!("layout: saved {count} note(s)");
+    Ok(count)
+}
+
+/// Puts the saved layout back: opens what is missing, moves what is there.
+///
+/// Notes not in the layout are left alone rather than closed. Closing windows
+/// the user has opened since would be a surprise, and "restore my arrangement"
+/// does not have to mean "and discard everything else".
+#[tauri::command]
+pub async fn apply_layout(app: AppHandle) -> Result<usize, String> {
+    let saved = {
+        let state = app.state::<AppState>();
+        let settings = state.settings.lock().map_err(|e| e.to_string())?;
+        settings.saved_layout.clone()
+    };
+
+    if saved.is_empty() {
+        return Err("No layout has been saved yet.".into());
+    }
+
+    let known = known_list_ids(&app);
+    let mut placed = 0;
+
+    for note in saved {
+        if !known.is_empty() && !known.contains(&note.list_id) {
+            log::info!("layout: skipping a note whose list is gone");
+            continue;
+        }
+
+        let window = match app.get_webview_window(&note.label) {
+            Some(existing) => existing,
+            None => {
+                // Reuse the label, so the note keeps its own colour and pin.
+                match open_note_labelled(&app, &note.list_id, None, Some(&note.label)) {
+                    Ok(_) => match app.get_webview_window(&note.label) {
+                        Some(w) => w,
+                        None => continue,
+                    },
+                    Err(err) => {
+                        log::warn!("layout: could not open {}: {err}", note.label);
+                        continue;
+                    }
+                }
+            }
+        };
+
+        let _ = window.show();
+        animate(
+            &window.as_ref().window_ref().clone(),
+            window.outer_position().unwrap_or(tauri::PhysicalPosition::new(note.x, note.y)),
+            window.outer_size().unwrap_or(tauri::PhysicalSize::new(note.width, note.height)),
+            tauri::PhysicalPosition::new(note.x, note.y),
+            tauri::PhysicalSize::new(note.width, note.height),
+        );
+        placed += 1;
+    }
+
+    persist_open_notes(&app);
+    log::info!("layout: applied to {placed} note(s)");
+    Ok(placed)
+}
+
+/// Arranges every open note in even columns down the work area.
+///
+/// Column-first, because a note is tall and narrow: filling downwards keeps
+/// each one readable, where a grid of short wide notes would not. Notes are
+/// arranged on the screen they are already on, so a second monitor is not
+/// emptied onto the first.
+#[tauri::command]
+pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
+    let notes = note_windows(&app);
+    if notes.is_empty() {
+        return Err("There are no notes to arrange.".into());
+    }
+
+    // Group by monitor, keeping label order so the result is stable: running
+    // it twice gives the same arrangement.
+    let mut by_monitor: HashMap<String, Vec<(String, tauri::WebviewWindow)>> = HashMap::new();
+    for (label, window) in notes {
+        let key = window
+            .current_monitor()
+            .ok()
+            .flatten()
+            .and_then(|m| m.name().cloned())
+            .unwrap_or_else(|| "primary".to_string());
+        by_monitor.entry(key).or_default().push((label, window));
+    }
+
+    let mut arranged = 0;
+
+    for (_, mut group) in by_monitor {
+        group.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let Some((_, first)) = group.first() else {
+            continue;
+        };
+        let Some(monitor) = first.current_monitor().ok().flatten() else {
+            continue;
+        };
+        let area = monitor.work_area();
+
+        // Width comes from the notes themselves: the user's chosen width is a
+        // preference, not something an arrange should overwrite.
+        let width = group
+            .iter()
+            .filter_map(|(_, w)| w.outer_size().ok())
+            .map(|s| s.width as i32)
+            .max()
+            .unwrap_or(340);
+
+        let usable_h = area.size.height as i32 - TILE_GAP * 2;
+        let columns = ((area.size.width as i32 - TILE_GAP) / (width + TILE_GAP)).max(1);
+        let per_column = (group.len() as i32 + columns - 1) / columns;
+        let per_column = per_column.max(1);
+        let height = ((usable_h - TILE_GAP * (per_column - 1)) / per_column).max(200);
+
+        for (index, (_, window)) in group.iter().enumerate() {
+            let index = index as i32;
+            let column = index / per_column;
+            let row = index % per_column;
+
+            let x = area.position.x + TILE_GAP + column * (width + TILE_GAP);
+            let y = area.position.y + TILE_GAP + row * (height + TILE_GAP);
+
+            let _ = window.show();
+            animate(
+                &window.as_ref().window_ref().clone(),
+                window.outer_position().unwrap_or(tauri::PhysicalPosition::new(x, y)),
+                window.outer_size().unwrap_or(tauri::PhysicalSize::new(width as u32, height as u32)),
+                tauri::PhysicalPosition::new(x, y),
+                tauri::PhysicalSize::new(width as u32, height as u32),
+            );
+            arranged += 1;
+        }
+    }
+
+    log::info!("layout: arranged {arranged} note(s)");
+    Ok(arranged)
+}
+
+/// Whether a saved layout exists, so Settings can say so.
+#[tauri::command]
+pub fn has_saved_layout(app: AppHandle) -> bool {
+    app.state::<AppState>()
+        .settings
+        .lock()
+        .map(|s| !s.saved_layout.is_empty())
+        .unwrap_or(false)
+}

@@ -124,6 +124,10 @@ pub fn run() {
             notes::note_grow,
             notes::open_task_page,
             notes::page_target,
+            notes::save_layout,
+            notes::apply_layout,
+            notes::arrange_notes,
+            notes::has_saved_layout,
             notes::close_task_page,
             sync::note_activity,
             sync::request_sync,
@@ -261,6 +265,15 @@ pub fn run() {
                     .any(|w| w.label() != win.label() && w.is_visible().unwrap_or(false));
                 if !any_visible {
                     win.state::<sync::SyncManager>().set_visible(false);
+                }
+            }
+            // A note that has been moved or resized has changed the
+            // arrangement, and the arrangement is what a restart has to
+            // rebuild. Written now rather than at exit, because exits are not
+            // always graceful.
+            WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
+                if notes::is_note_label(win.label()) {
+                    notes::persist_geometry(win.app_handle());
                 }
             }
             // Focus is the strongest signal that freshness matters right now,

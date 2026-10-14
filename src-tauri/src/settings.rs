@@ -12,6 +12,28 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
+/// One note in a saved layout: which list it shows and where it sits.
+///
+/// Positions are physical pixels, as Windows reports them, with the scale
+/// factor recorded so a layout saved on one display can be judged against
+/// another rather than applied blindly.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayoutNote {
+    pub label: String,
+    pub list_id: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    #[serde(default = "default_scale")]
+    pub scale: f64,
+}
+
+fn default_scale() -> f64 {
+    1.0
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -54,6 +76,14 @@ pub struct Settings {
     /// entry here.
     #[serde(default)]
     pub note_layers: std::collections::HashMap<String, String>,
+    /// An arrangement the user chose to keep, restorable from Settings.
+    ///
+    /// Separate from `open_notes`, which only records what is on screen right
+    /// now: a template survives closing every note, and survives the drift that
+    /// comes of dragging a window and forgetting.
+    #[serde(default)]
+    pub saved_layout: Vec<LayoutNote>,
+
     /// Which Google task list the main note shows. `None` until first sync picks
     /// one, so a fresh install does not guess at a list id that may not exist.
     #[serde(default)]
@@ -72,6 +102,7 @@ impl Default for Settings {
             list_colors: std::collections::HashMap::new(),
             open_notes: std::collections::HashMap::new(),
             note_layers: std::collections::HashMap::new(),
+            saved_layout: Vec::new(),
             selected_task_list_id: None,
         }
     }
