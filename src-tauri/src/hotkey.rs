@@ -94,7 +94,7 @@ pub fn apply(app: &AppHandle, accelerator: Option<&str>) -> Result<(), String> {
 ///    Tracking the last action instead means unpinning that note and pressing
 ///    the shortcut shows everything, which is what the user expects.
 /// Ignore a second press within this long — see `on_pressed`.
-const REPEAT_GUARD_MS: u64 = 350;
+const REPEAT_GUARD_MS: u64 = 700;
 
 fn millis_since_start() -> u64 {
     use std::sync::OnceLock;
@@ -103,6 +103,7 @@ fn millis_since_start() -> u64 {
 }
 
 pub fn on_pressed(app: &AppHandle) {
+    log::info!("hotkey: pressed");
     // Holding the combination for even a moment makes Windows repeat it, and
     // a toggle that fires twice is a toggle that does nothing: the notes were
     // shown and hidden again inside the same second, which looks exactly like
@@ -111,7 +112,7 @@ pub fn on_pressed(app: &AppHandle) {
     let now = millis_since_start();
     let last = LAST_MS.load(std::sync::atomic::Ordering::Relaxed);
     if now.saturating_sub(last) < REPEAT_GUARD_MS {
-        log::debug!("hotkey: ignoring a repeat {}ms after the last", now - last);
+        log::info!("hotkey: ignored a repeat {}ms after the last", now - last);
         return;
     }
     LAST_MS.store(now, std::sync::atomic::Ordering::Relaxed);

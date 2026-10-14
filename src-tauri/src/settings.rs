@@ -17,7 +17,7 @@ use tauri::{AppHandle, Manager};
 /// Positions are physical pixels, as Windows reports them, with the scale
 /// factor recorded so a layout saved on one display can be judged against
 /// another rather than applied blindly.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LayoutNote {
     pub label: String,
@@ -102,10 +102,19 @@ pub struct Settings {
     #[serde(default)]
     pub layouts: Vec<Layout>,
 
-    /// The layout most recently applied or saved, re-applied by itself when
-    /// the displays change.
+    /// The layout most recently applied or saved.
     #[serde(default)]
     pub last_layout: Option<String>,
+
+    /// The arrangement last seen with each set of displays, keyed by their
+    /// names.
+    ///
+    /// Remembered without being asked, because "put it back as it was" depends
+    /// on which screens were attached: the one-screen arrangement and the
+    /// two-screen one are different answers to the same request, and a single
+    /// saved layout can only give one of them.
+    #[serde(default)]
+    pub layout_by_screens: std::collections::HashMap<String, Vec<LayoutNote>>,
 
     /// The single arrangement kept by the first version of this feature.
     /// Migrated into `layouts` on load and then left empty.
@@ -137,6 +146,7 @@ impl Default for Settings {
             saved_layout: Vec::new(),
             layouts: Vec::new(),
             last_layout: None,
+            layout_by_screens: std::collections::HashMap::new(),
             selected_task_list_id: None,
         }
     }

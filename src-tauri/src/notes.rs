@@ -322,6 +322,7 @@ pub fn start_geometry_writer(app: &AppHandle) {
 
         GEOMETRY_DIRTY.store(false, Ordering::Relaxed);
         let _ = app.save_window_state(StateFlags::POSITION | StateFlags::SIZE);
+        remember_arrangement(&app);
         log::debug!("geometry: saved");
     });
 }
@@ -1068,25 +1069,31 @@ pub fn watch_screens(app: &AppHandle) {
             // Let Windows finish moving things before moving them back.
             std::thread::sleep(SCREEN_SETTLE);
 
-            let last = app
+            // What this set of displays looked like last time. Not the named
+            // layout: a layout is a preference, and this is a memory — the
+            // one-screen arrangement and the two-screen one are both wanted,
+            // each when its screens are attached.
+            let signature = screen_signature(&app);
+            let remembered = app
                 .state::<AppState>()
                 .settings
                 .lock()
                 .ok()
-                .and_then(|s| s.last_layout.clone());
+                .and_then(|s| s.layout_by_screens.get(&signature).cloned());
 
-            let Some(name) = last else {
-                log::info!("screens: no layout to restore");
-                continue;
-            };
-
-            let handle = app.clone();
-            tauri::async_runtime::spawn(async move {
-                match apply_layout(handle, name.clone()).await {
-                    Ok(count) => log::info!("screens: restored {name} ({count} note(s))"),
-                    Err(err) => log::warn!("screens: could not restore {name}: {err}"),
+            match remembered {
+                Some(notes) => {
+                    let placed = apply_notes(&app, notes);
+                    log::info!("screens: restored the arrangement for {signature} ({placed} note(s))");
                 }
-            });
+                None => {
+                    // Never seen these displays together: whatever Windows has
+                    // done with the notes becomes the arrangement for them,
+                    // and the writer records it once they settle.
+                    log::info!("screens: no arrangement remembered for {signature} yet");
+                    touch_geometry();
+                }
+            }
         }
     });
 }
@@ -1219,6 +1226,80 @@ fn capture_layout(app: &AppHandle) -> Vec<crate::settings::LayoutNote> {
     layout
 }
 
+/// The set of displays attached right now, as a key.
+///
+/// Names rather than positions: a monitor keeps its name across unplugging,
+/// where its coordinates change the moment another one joins or leaves.
+pub fn screen_signature(app: &AppHandle) -> String {
+    let mut names: Vec<String> = app
+        .available_monitors()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|m| m.name().cloned())
+        .collect();
+    names.sort();
+    if names.is_empty() {
+        return "none".to_string();
+    }
+    names.join("|")
+}
+
+/// Writes down where the notes are, against the displays they are on.
+///
+/// Called when the windows have been still for a moment, so it records a
+/// settled arrangement rather than the middle of a drag.
+pub fn remember_arrangement(app: &AppHandle) {
+    let notes = capture_layout(app);
+    if notes.is_empty() {
+        return;
+    }
+
+    let signature = screen_signature(app);
+    let state = app.state::<AppState>();
+    let Ok(mut settings) = state.settings.lock() else {
+        return;
+    };
+
+    if settings.layout_by_screens.get(&signature) == Some(&notes) {
+        return;
+    }
+
+    settings.layout_by_screens.insert(signature, notes);
+    crate::settings::save(app, &settings);
+}
+
+/// Puts a set of notes where the saved arrangement says, opening any that are
+/// closed. Shared by the named layouts and by the per-display memory.
+fn apply_notes(app: &AppHandle, saved: Vec<crate::settings::LayoutNote>) -> usize {
+    LAYOUT_BUSY.store(true, Ordering::Relaxed);
+    let known = known_list_ids(app);
+    let mut placed = 0;
+    let mut moves = Vec::new();
+
+    for note in saved {
+        if !known.is_empty() && !known.contains(&note.list_id) {
+            log::info!("layout: skipping a note whose list is gone");
+            continue;
+        }
+
+        if app.get_webview_window(&note.label).is_none() {
+            // Reuse the label, so the note keeps its own colour and pin.
+            if let Err(err) = open_note_labelled(app, &note.list_id, None, Some(&note.label)) {
+                log::warn!("layout: could not open {}: {err}", note.label);
+                continue;
+            }
+        }
+
+        let (pos, size) = fit_to_screen(app, &note);
+        moves.push((note.label.clone(), pos, size));
+        placed += 1;
+    }
+
+    place_windows(app, moves);
+    persist_open_notes(app);
+    placed
+}
+
 /// Saves the current arrangement under a name, replacing one of that name.
 ///
 /// Saving over an existing name is how a layout is *updated*: arrange the
@@ -1305,42 +1386,7 @@ pub async fn apply_layout(app: AppHandle, name: String) -> Result<usize, String>
         return Err(format!("There is no layout called {name}."));
     };
 
-    LAYOUT_BUSY.store(true, Ordering::Relaxed);
-    let known = known_list_ids(&app);
-    let mut placed = 0;
-    let mut moves = Vec::new();
-
-    for note in saved {
-        if !known.is_empty() && !known.contains(&note.list_id) {
-            log::info!("layout: skipping a note whose list is gone");
-            continue;
-        }
-
-        let window = match app.get_webview_window(&note.label) {
-            Some(existing) => existing,
-            None => {
-                // Reuse the label, so the note keeps its own colour and pin.
-                match open_note_labelled(&app, &note.list_id, None, Some(&note.label)) {
-                    Ok(_) => match app.get_webview_window(&note.label) {
-                        Some(w) => w,
-                        None => continue,
-                    },
-                    Err(err) => {
-                        log::warn!("layout: could not open {}: {err}", note.label);
-                        continue;
-                    }
-                }
-            }
-        };
-
-        let _ = window;
-        let (pos, size) = fit_to_screen(&app, &note);
-        moves.push((note.label.clone(), pos, size));
-        placed += 1;
-    }
-
-    place_windows(&app, moves);
-    persist_open_notes(&app);
+    let placed = apply_notes(&app, saved);
 
     if let Ok(mut settings) = app.state::<AppState>().settings.lock() {
         if settings.last_layout.as_deref() != Some(name.as_str()) {
@@ -1352,7 +1398,6 @@ pub async fn apply_layout(app: AppHandle, name: String) -> Result<usize, String>
     log::info!("layout: applied {name} to {placed} note(s)");
     Ok(placed)
 }
-
 
 /// Arranges every open note in even columns down the work area.
 ///
