@@ -321,7 +321,12 @@ pub fn load(app: &AppHandle) -> Settings {
     for notes in settings.layout_by_screens.values_mut() {
         notes.retain(|n| n.x > -30000 && n.y > -30000 && n.width > 120 && n.height > 120);
     }
-    settings.layout_by_screens.retain(|_, notes| !notes.is_empty());
+    // An arrangement that lost entries to the cleaning above is no longer an
+    // arrangement — restoring it would place one note and abandon the others.
+    let full = settings.relative_layout.len();
+    settings
+        .layout_by_screens
+        .retain(|_, notes| !notes.is_empty() && notes.len() >= full);
     for layout in &mut settings.layouts {
         layout
             .notes

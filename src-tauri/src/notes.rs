@@ -1077,6 +1077,31 @@ pub fn watch_screens(app: &AppHandle) {
                 .ok()
                 .and_then(|s| s.layout_by_screens.get(&signature).cloned());
 
+            // A remembered arrangement is only usable if it accounts for every
+            // note. An incomplete one — written by an older build, or left
+            // behind after bad entries were cleaned out — would restore two
+            // notes and abandon the rest, which is worse than projecting the
+            // shape onto the screen and getting all of them.
+            let expected = app
+                .state::<AppState>()
+                .settings
+                .lock()
+                .ok()
+                .map(|s| s.relative_layout.len())
+                .unwrap_or(0)
+                .max(note_windows(&app).len());
+
+            let remembered = remembered.filter(|notes| {
+                if notes.len() >= expected {
+                    return true;
+                }
+                log::info!(
+                    "screens: the arrangement for {signature} covers {} of {expected} note(s); projecting instead",
+                    notes.len()
+                );
+                false
+            });
+
             match remembered {
                 Some(notes) => {
                     let placed = apply_notes(&app, notes);
