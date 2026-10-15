@@ -356,3 +356,11 @@
   margin: 0;
   line-height: 1.45;
 }
+
+/* Two groups of marks: the arrangement, then the saved layout. */
+.layout-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 3px 3px;
+  background: var(--border);
+}

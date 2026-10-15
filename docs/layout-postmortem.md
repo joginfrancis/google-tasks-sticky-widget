@@ -205,3 +205,27 @@ In rough order of value:
    leaked into the interface.
 6. **Re-read the comments already in the file.** The async-command deadlock was
    documented above a neighbouring function and then repeated anyway.
+
+## 6. What was resolved, 15 October 2026
+
+Worked through in the order of section 3, one commit per idea. Everything here
+is in the build; what is *verified* is listed in section 4, and the additions
+below are marked honestly.
+
+| Item | Fix | How far it is verified |
+| --- | --- | --- |
+| Failure is silent | Every layout command answers with `{moved, total, skipped}` — a phrase per reason, not just a count. "Arranged 4 of 5 notes — left 1 note whose list is gone". | Rust test for the phrasing and plurals; frontend test for the sentence; not yet seen on screen. |
+| No undo | `remember_for_undo` captures the arrangement before Arrange, Align, restoring a preset or moving screens; the Undo mark puts it back, and keeps the replaced arrangement so undo is a toggle. | Compiles and the app runs with it; the button itself unclicked. |
+| Hidden notes sit out | `reveal_notes` brings hidden notes back before Arrange or Align reads positions, and a note still parked afterwards is reported rather than dropped. | Reasoned from the known −32000 behaviour; not exercised. |
+| The Screen picker lagged | Placement emits `layout:settled` when the windows have actually moved; Settings listens and re-reads. The 900ms guess is gone. | Event is emitted on every placement; the panel's reaction unobserved. |
+| Align's rules were invisible | The panel states them: Arrange fills even columns from the right; Align keeps each note where it is, one width for all, every column shared out evenly. | Text, visible on the panel. |
+| Six marks read as a control panel | A divider splits them: Arrange/Align/Undo act on the arrangement, Save/New/delete act on the named layout. No feature was removed — the deeper collapse is a decision about what to drop, which is not mine to make. | Presentation only. |
+
+**Still not verified, and worth one pass by hand**: the five minutes of
+clicking that this session could not do — screen control was declined, and
+driving the panel with synthetic keystrokes after that would not have been
+right. In order: press Arrange, then Undo (the notes should go back exactly);
+press Align twice (the second press should change nothing); hide the notes with
+the shortcut and press Arrange (they should come back and all be arranged);
+switch screens twice in a row from the dropdown; and the physical unplug test
+from section 4, which remains the one that matters most.

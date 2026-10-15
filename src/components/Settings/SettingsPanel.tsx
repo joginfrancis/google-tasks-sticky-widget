@@ -558,6 +558,14 @@ function Layout() {
             <span>Undo</span>
           </button>
 
+          {/*
+            * Left of this line: what to do with the notes as they are. Right
+            * of it: what to do with the layout named in the dropdown. Six
+            * marks in one row read as a control panel; two groups read as two
+            * decisions.
+            */}
+          <span className="layout-divider" aria-hidden="true" />
+
           <button
             className={"layout-tool " + (dirty && selected ? "is-wanted" : "")}
             disabled={!selected}
