@@ -56,6 +56,22 @@ fn default_scale() -> f64 {
     1.0
 }
 
+/// A note's place in an arrangement, as proportions rather than pixels.
+///
+/// The arrangement is described relative to its own bounding box: a note two
+/// thirds across and a third of the way down stays there whatever the screen.
+/// What makes a layout survive a change of display, where pixels cannot.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelativeNote {
+    pub label: String,
+    pub list_id: String,
+    pub fx: f64,
+    pub fy: f64,
+    pub fw: f64,
+    pub fh: f64,
+}
+
 /// A named arrangement of notes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -121,6 +137,15 @@ pub struct Settings {
     #[serde(default)]
     pub last_layout: Option<String>,
 
+    /// The shape of the arrangement, independent of any screen.
+    ///
+    /// Recorded whenever the notes settle, and projected onto whatever display
+    /// is available when the screens change. The per-display memory below is
+    /// the exact-pixel version for a configuration that has been seen before;
+    /// this is the answer for one that has not.
+    #[serde(default)]
+    pub relative_layout: Vec<RelativeNote>,
+
     /// The arrangement last seen with each set of displays, keyed by their
     /// names.
     ///
@@ -162,6 +187,7 @@ impl Default for Settings {
             layouts: Vec::new(),
             last_layout: None,
             layout_by_screens: std::collections::HashMap::new(),
+            relative_layout: Vec::new(),
             selected_task_list_id: None,
         }
     }

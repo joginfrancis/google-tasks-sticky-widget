@@ -1083,11 +1083,26 @@ pub fn watch_screens(app: &AppHandle) {
                     log::info!("screens: restored the arrangement for {signature} ({placed} note(s))");
                 }
                 None => {
-                    // Never seen these displays together: whatever Windows has
-                    // done with the notes becomes the arrangement for them,
-                    // and the writer records it once they settle.
-                    log::info!("screens: no arrangement remembered for {signature} yet");
-                    touch_geometry();
+                    // Never seen these displays together. Rather than leaving
+                    // the notes wherever Windows dropped them, the remembered
+                    // *shape* is projected onto the main screen: the same
+                    // layout at a different size, which is what a change of
+                    // display should mean.
+                    let area = app
+                        .primary_monitor()
+                        .ok()
+                        .flatten()
+                        .map(|m| { let a = *m.work_area(); (a.position, a.size) });
+
+                    match area {
+                        Some((pos, size)) => {
+                            let placed = apply_relative(&app, pos, size);
+                            log::info!(
+                                "screens: projected the layout onto the main screen ({placed} note(s))"
+                            );
+                        }
+                        None => log::warn!("screens: no main screen to project onto"),
+                    }
                 }
             }
         }
@@ -1319,6 +1334,116 @@ fn fit_arrangement(
         .collect()
 }
 
+/// Describes the current arrangement as proportions of its own bounding box.
+///
+/// Pixels are a fact about one screen; proportions are a fact about the
+/// arrangement. Keeping both means a configuration that has been seen before
+/// can be restored exactly, and one that has not can still be given the same
+/// shape.
+fn relative_from(notes: &[crate::settings::LayoutNote]) -> Vec<crate::settings::RelativeNote> {
+    if notes.is_empty() {
+        return Vec::new();
+    }
+
+    let left = notes.iter().map(|n| n.x).min().unwrap_or(0) as f64;
+    let top = notes.iter().map(|n| n.y).min().unwrap_or(0) as f64;
+    let right = notes.iter().map(|n| n.x + n.width as i32).max().unwrap_or(1) as f64;
+    let bottom = notes.iter().map(|n| n.y + n.height as i32).max().unwrap_or(1) as f64;
+
+    let w = (right - left).max(1.0);
+    let h = (bottom - top).max(1.0);
+
+    notes
+        .iter()
+        .map(|n| crate::settings::RelativeNote {
+            label: n.label.clone(),
+            list_id: n.list_id.clone(),
+            fx: (n.x as f64 - left) / w,
+            fy: (n.y as f64 - top) / h,
+            fw: n.width as f64 / w,
+            fh: n.height as f64 / h,
+        })
+        .collect()
+}
+
+/// Lays the relative arrangement out on one screen.
+///
+/// The bounding box is fitted to the work area — the whole of it, since the
+/// arrangement was built to fill a screen — and every note placed by its own
+/// proportions within that box. Nothing here reads a window's current
+/// position, which is the point: on a display change Windows has already
+/// moved them, and mapping from that heap is what shuffled the order.
+fn project_relative(
+    app: &AppHandle,
+    relative: &[crate::settings::RelativeNote],
+    area_pos: &tauri::PhysicalPosition<i32>,
+    area_size: &tauri::PhysicalSize<u32>,
+) -> Vec<(String, tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>)> {
+    let known = known_list_ids(app);
+
+    let box_x = area_pos.x as f64 + TILE_GAP as f64;
+    let box_y = area_pos.y as f64 + TILE_GAP as f64;
+    let box_w = (area_size.width as i32 - TILE_GAP * 2).max(200) as f64;
+    let box_h = (area_size.height as i32 - TILE_GAP * 2).max(200) as f64;
+
+    relative
+        .iter()
+        .filter(|note| known.is_empty() || known.contains(&note.list_id))
+        .map(|note| {
+            let x = (box_x + note.fx * box_w).round() as i32;
+            let y = (box_y + note.fy * box_h).round() as i32;
+            let w = (note.fw * box_w).round().max(220.0) as u32;
+            let h = (note.fh * box_h).round().max(180.0) as u32;
+
+            (
+                note.label.clone(),
+                tauri::PhysicalPosition::new(x, y),
+                tauri::PhysicalSize::new(w, h),
+            )
+        })
+        .collect()
+}
+
+/// Opens any note the arrangement names but which is not on screen.
+fn open_missing(app: &AppHandle, notes: &[crate::settings::RelativeNote]) {
+    let known = known_list_ids(app);
+    for note in notes {
+        if app.get_webview_window(&note.label).is_some() {
+            continue;
+        }
+        if !known.is_empty() && !known.contains(&note.list_id) {
+            continue;
+        }
+        if let Err(err) = open_note_labelled(app, &note.list_id, None, Some(&note.label)) {
+            log::warn!("layout: could not open {}: {err}", note.label);
+        }
+    }
+}
+
+/// Puts the remembered shape onto one screen, whatever its size.
+pub fn apply_relative(app: &AppHandle, area_pos: tauri::PhysicalPosition<i32>, area_size: tauri::PhysicalSize<u32>) -> usize {
+    let relative = {
+        let state = app.state::<AppState>();
+        let Ok(settings) = state.settings.lock() else {
+            return 0;
+        };
+        settings.relative_layout.clone()
+    };
+
+    if relative.is_empty() {
+        return 0;
+    }
+
+    LAYOUT_BUSY.store(true, Ordering::Relaxed);
+    open_missing(app, &relative);
+
+    let moves = project_relative(app, &relative, &area_pos, &area_size);
+    let count = moves.len();
+    place_windows(app, moves);
+    persist_open_notes(app);
+    count
+}
+
 /// The set of displays attached right now, as a key.
 ///
 /// Names rather than positions: a monitor keeps its name across unplugging,
@@ -1365,7 +1490,9 @@ pub fn remember_arrangement(app: &AppHandle) {
         return;
     }
 
+    let relative = relative_from(&notes);
     settings.layout_by_screens.insert(signature, notes);
+    settings.relative_layout = relative;
     crate::settings::save(app, &settings);
 }
 
@@ -1872,15 +1999,30 @@ pub async fn move_notes_to_screen(app: AppHandle, name: String) -> Result<usize,
 
     LAYOUT_BUSY.store(true, Ordering::Relaxed);
 
-    let mut current = Vec::new();
-    for (label, window) in notes {
-        let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) else {
-            continue;
-        };
-        current.push((label, pos, size));
-    }
+    // The remembered *shape* first, projected onto the screen being asked
+    // for. Mapping the notes' current positions instead reproduces whatever
+    // state they happen to be in — including the heap Windows leaves after a
+    // display disappears, which is how the order came out shuffled.
+    let relative = {
+        let state = app.state::<AppState>();
+        let settings = state.settings.lock().map_err(|e| e.to_string())?;
+        settings.relative_layout.clone()
+    };
 
-    let moves = fit_arrangement(current, &area.position, &area.size);
+    let moves = if relative.is_empty() {
+        // Nothing remembered yet: fall back to what is on screen.
+        let mut current = Vec::new();
+        for (label, window) in notes {
+            let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) else {
+                continue;
+            };
+            current.push((label, pos, size));
+        }
+        fit_arrangement(current, &area.position, &area.size)
+    } else {
+        open_missing(&app, &relative);
+        project_relative(&app, &relative, &area.position, &area.size)
+    };
 
     let count = moves.len();
     log::info!("screens: moving {count} note(s) to {name}");
@@ -1998,5 +2140,62 @@ mod layout_tests {
         let note = note_on("\\\\.\\DISPLAY1", 0, 300, 50);
         let moved_x = 1920 - note.monitor_x;
         assert_eq!(note.x + moved_x, 2220);
+    }
+}
+
+
+#[cfg(test)]
+mod relative_tests {
+    use super::*;
+
+    fn note(label: &str, x: i32, y: i32, w: u32, h: u32) -> crate::settings::LayoutNote {
+        crate::settings::LayoutNote {
+            label: label.into(),
+            list_id: "list".into(),
+            x,
+            y,
+            width: w,
+            height: h,
+            scale: 1.0,
+            monitor: None,
+            monitor_x: 0,
+            monitor_y: 0,
+            monitor_width: 0,
+            monitor_height: 0,
+        }
+    }
+
+    #[test]
+    fn the_shape_survives_a_change_of_screen() {
+        // Two columns and a tall note, as on a 1920x1080 screen.
+        let notes = vec![
+            note("a", 0, 0, 340, 1000),
+            note("b", 360, 0, 340, 490),
+            note("c", 360, 510, 340, 490),
+        ];
+
+        let relative = relative_from(&notes);
+
+        // Proportions, not pixels: b starts just past half way across.
+        assert!((relative[1].fx - 360.0 / 700.0).abs() < 0.01);
+        assert!((relative[2].fy - 510.0 / 1000.0).abs() < 0.01);
+
+        // And every note keeps its share of the width.
+        let total: f64 = relative.iter().map(|n| n.fw).sum();
+        assert!(total > 1.0, "three notes across two columns overlap in width");
+    }
+
+    #[test]
+    fn relative_places_are_stable_whatever_the_order() {
+        // The same arrangement described twice, listed in a different order,
+        // produces the same proportions — the order notes are enumerated in
+        // must not change where they land.
+        let a = relative_from(&[note("a", 0, 0, 340, 500), note("b", 360, 0, 340, 500)]);
+        let b = relative_from(&[note("b", 360, 0, 340, 500), note("a", 0, 0, 340, 500)]);
+
+        let a_first = a.iter().find(|n| n.label == "a").unwrap();
+        let b_first = b.iter().find(|n| n.label == "a").unwrap();
+        assert!((a_first.fx - b_first.fx).abs() < 0.0001);
+        assert!((a_first.fw - b_first.fw).abs() < 0.0001);
     }
 }
