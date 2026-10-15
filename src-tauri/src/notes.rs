@@ -324,6 +324,11 @@ pub fn start_geometry_writer(app: &AppHandle) {
         let _ = app.save_window_state(StateFlags::POSITION | StateFlags::SIZE);
         remember_arrangement(&app);
         log::debug!("geometry: saved");
+
+        // Every resting point, measured. A note dragged by hand changes the
+        // shape just as much as Arrange does, and comparing a later switch
+        // against the shape needs to know what the shape was.
+        log_arrangement(&app, "settled");
     });
 }
 
@@ -449,6 +454,15 @@ fn open_default_note(app: &AppHandle, known_lists: &[String]) -> usize {
 /// only applies to commands invoked while the loop is running.
 pub fn restore_session(app: &AppHandle, known_lists: &[String]) {
     open_layout(app, known_lists);
+
+    // The starting point of the session, once the windows have been placed by
+    // the window-state plugin. Without it there is nothing to compare the
+    // first screen change against.
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(2500));
+        log_arrangement(&app, "at startup");
+    });
 }
 
 /// The list of lists this account has, for deciding what can be opened.
@@ -980,15 +994,34 @@ const TILE_GAP: i32 = 10;
 fn place_windows(
     app: &AppHandle,
     moves: Vec<(String, tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>)>,
+    what: &str,
 ) -> usize {
     let count = moves.len();
     let handle = app.clone();
+    let what = what.to_string();
+
+    for (label, pos, size) in &moves {
+        log::info!(
+            "place[{what}]: {label} -> {},{} {}x{}",
+            pos.x,
+            pos.y,
+            size.width,
+            size.height
+        );
+    }
 
     std::thread::spawn(move || {
         for (label, pos, size) in moves {
             let Some(window) = handle.get_webview_window(&label) else {
                 continue;
             };
+            // Minimised first, then shown. `show` alone leaves a minimised
+            // window minimised — it was still in the taskbar with the new size
+            // and position applied to a window nobody could see.
+            if window.is_minimized().unwrap_or(false) {
+                log::info!("place[{what}]: {label} was minimised; restoring it");
+                let _ = window.unminimize();
+            }
             let _ = window.show();
             if let Err(err) = window.set_size(size) {
                 log::warn!("place: could not resize {label}: {err}");
@@ -998,8 +1031,14 @@ fn place_windows(
             }
         }
 
-        log::info!("place: done");
+        log::info!("place[{what}]: done");
         LAYOUT_BUSY.store(false, Ordering::Relaxed);
+
+        // Measured rather than assumed: what was asked for is logged above,
+        // and this is what Windows actually did with it. The two disagreeing
+        // is its own kind of bug, and it was not visible before.
+        std::thread::sleep(std::time::Duration::from_millis(220));
+        log_arrangement(&handle, &what);
 
         // Settings cannot ask where the notes are until they are there: the
         // windows move on this thread, so a question asked from the command
@@ -1073,6 +1112,11 @@ pub fn watch_screens(app: &AppHandle) {
             // Let Windows finish moving things before moving them back.
             std::thread::sleep(SCREEN_SETTLE);
 
+            // What Windows itself did with the notes, before anything here
+            // touches them. The heap it leaves is the starting point every
+            // branch below has to cope with.
+            log_arrangement(&app, "after Windows moved things");
+
             // What this set of displays looked like last time. Not the named
             // layout: a layout is a preference, and this is a memory — the
             // one-screen arrangement and the two-screen one are both wanted,
@@ -1098,6 +1142,23 @@ pub fn watch_screens(app: &AppHandle) {
                 .map(|s| s.relative_layout.len())
                 .unwrap_or(0)
                 .max(note_windows(&app).len());
+
+            // Whether the pixels remembered for these displays still
+            // describe the shape in use. They can disagree: the arrangement
+            // was rebuilt while the other screen was attached, and the memory
+            // for this one is from an earlier session. Which of the two should
+            // win is a real question, and it cannot be answered without
+            // knowing how often they differ — so it is logged either way.
+            if let Some(notes) = remembered.as_ref() {
+                let as_shape = relative_from(notes);
+                log::info!(
+                    "screens: {signature} remembers {} note(s); comparing with the shape in use",
+                    notes.len()
+                );
+                log_drift(&app, "remembered pixels vs shape in use", &as_shape);
+            } else {
+                log::info!("screens: nothing remembered for {signature}");
+            }
 
             let remembered = remembered.filter(|notes| {
                 if notes.len() >= expected {
@@ -1295,6 +1356,186 @@ fn capture_layout(app: &AppHandle) -> Vec<crate::settings::LayoutNote> {
     }
 
     layout
+}
+
+/// Writes the whole arrangement to the log, with the numbers that are supposed
+/// to survive a change of screen.
+///
+/// Three failures in this feature were invisible in the log: a note placed off
+/// the screen, an arrangement that kept its positions but lost its gaps, and a
+/// projection that filled the width while leaving the height alone. All three
+/// are obvious in these lines and in none of the ones that came before.
+fn log_arrangement(app: &AppHandle, when: &str) {
+    let notes = capture_layout(app);
+
+    if notes.is_empty() {
+        log::info!("shape[{when}]: nothing visible to measure");
+        return;
+    }
+
+    // The work area each note could be using, so a rectangle can be read
+    // against the screen it is on rather than in the abstract.
+    for monitor in app.available_monitors().unwrap_or_default() {
+        let area = monitor.work_area();
+        log::info!(
+            "shape[{when}]: screen {} work area {}x{} at {},{} (scale {:.2}, {}x{} logical)",
+            monitor.name().cloned().unwrap_or_else(|| "?".into()),
+            area.size.width,
+            area.size.height,
+            area.position.x,
+            area.position.y,
+            monitor.scale_factor(),
+            (area.size.width as f64 / monitor.scale_factor()).round() as i32,
+            (area.size.height as f64 / monitor.scale_factor()).round() as i32,
+        );
+    }
+
+    let relative = relative_from(&notes);
+    let left = notes.iter().map(|n| n.x).min().unwrap_or(0);
+    let top = notes.iter().map(|n| n.y).min().unwrap_or(0);
+    let right = notes.iter().map(|n| n.x + n.width as i32).max().unwrap_or(0);
+    let bottom = notes.iter().map(|n| n.y + n.height as i32).max().unwrap_or(0);
+
+    log::info!(
+        "shape[{when}]: {} note(s), bounding box {}x{} at {},{}",
+        notes.len(),
+        right - left,
+        bottom - top,
+        left,
+        top
+    );
+
+    for (note, fraction) in notes.iter().zip(relative.iter()) {
+        log::info!(
+            "shape[{when}]: {} at {},{} {}x{} on {} — fx {:.3} fy {:.3} fw {:.3} fh {:.3} (w/h {:.2})",
+            note.label,
+            note.x,
+            note.y,
+            note.width,
+            note.height,
+            note.monitor.clone().unwrap_or_else(|| "?".into()),
+            fraction.fx,
+            fraction.fy,
+            fraction.fw,
+            fraction.fh,
+            note.width as f64 / note.height.max(1) as f64,
+        );
+    }
+
+    log_gaps(when, &notes);
+    log_drift(app, when, &relative);
+}
+
+/// The spaces between notes, which are what "even" means to a person looking
+/// at a desktop.
+///
+/// Columns are grouped by left edge — notes that share one are a column — and
+/// the gaps reported are between neighbouring columns and between the notes
+/// stacked inside each one. An arrangement that keeps its positions but
+/// stretches its gaps shows up here as a set of numbers that disagree.
+fn log_gaps(when: &str, notes: &[crate::settings::LayoutNote]) {
+    let mut columns: Vec<(i32, i32, Vec<(i32, i32)>)> = Vec::new();
+
+    for note in notes {
+        // Within a few pixels counts as the same column: a note dragged by
+        // hand is never exactly level with its neighbour.
+        match columns
+            .iter_mut()
+            .find(|(x, width, _)| (note.x - x).abs() <= 6 && (note.width as i32 - width).abs() <= 6)
+        {
+            Some((_, _, rows)) => rows.push((note.y, note.height as i32)),
+            None => columns.push((note.x, note.width as i32, vec![(note.y, note.height as i32)])),
+        }
+    }
+
+    columns.sort_by_key(|(x, _, _)| *x);
+
+    let widths: Vec<i32> = columns.iter().map(|(_, w, _)| *w).collect();
+    let between: Vec<i32> = columns
+        .windows(2)
+        .map(|pair| pair[1].0 - (pair[0].0 + pair[0].1))
+        .collect();
+
+    log::info!(
+        "shape[{when}]: {} column(s), widths {widths:?}, gaps between {between:?}",
+        columns.len()
+    );
+
+    for (x, _, mut rows) in columns {
+        rows.sort_by_key(|(y, _)| *y);
+        let heights: Vec<i32> = rows.iter().map(|(_, h)| *h).collect();
+        let stacked: Vec<i32> = rows
+            .windows(2)
+            .map(|pair| pair[1].0 - (pair[0].0 + pair[0].1))
+            .collect();
+        log::info!(
+            "shape[{when}]: column at x {x}: heights {heights:?}, gaps {stacked:?}"
+        );
+    }
+}
+
+/// How far the arrangement has moved from the shape that is meant to be
+/// reproduced on any screen.
+///
+/// This is the number the whole "same layout on any display" claim rests on:
+/// if a projection is faithful, every fraction here is within rounding of the
+/// one that was stored. Anything larger says which note went where it should
+/// not have, by name.
+fn log_drift(app: &AppHandle, when: &str, now: &[crate::settings::RelativeNote]) {
+    let stored = {
+        let state = app.state::<AppState>();
+        let Ok(settings) = state.settings.lock() else {
+            return;
+        };
+        settings.relative_layout.clone()
+    };
+
+    if stored.is_empty() {
+        log::info!("shape[{when}]: no remembered shape to compare with");
+        return;
+    }
+
+    let mut worst = 0.0_f64;
+    let mut culprit = String::new();
+
+    for note in now {
+        let Some(was) = stored.iter().find(|s| s.label == note.label) else {
+            log::info!(
+                "shape[{when}]: {} is not in the remembered shape at all",
+                note.label
+            );
+            continue;
+        };
+
+        for (field, before, after) in [
+            ("fx", was.fx, note.fx),
+            ("fy", was.fy, note.fy),
+            ("fw", was.fw, note.fw),
+            ("fh", was.fh, note.fh),
+        ] {
+            let drift = (after - before).abs();
+            if drift > worst {
+                worst = drift;
+                culprit = format!("{} {field} {before:.3} -> {after:.3}", note.label);
+            }
+        }
+    }
+
+    if stored.len() != now.len() {
+        log::warn!(
+            "shape[{when}]: remembered {} note(s) but measured {}",
+            stored.len(),
+            now.len()
+        );
+    }
+
+    // A twentieth of the arrangement is about a note's width: past that the
+    // shape is not the same shape any more.
+    if worst > 0.05 {
+        log::warn!("shape[{when}]: the shape has drifted by {worst:.3} — {culprit}");
+    } else {
+        log::info!("shape[{when}]: shape held, worst drift {worst:.3}");
+    }
 }
 
 /// Windows parks hidden and minimised windows far off-screen, at -32000. Any
@@ -1534,7 +1775,7 @@ pub fn apply_relative(app: &AppHandle, area_pos: tauri::PhysicalPosition<i32>, a
 
     let moves = project_relative(app, &relative, &area_pos, &area_size);
     let count = moves.len();
-    place_windows(app, moves);
+    place_windows(app, moves, "projected onto one screen");
     persist_open_notes(app);
     count
 }
@@ -1659,7 +1900,7 @@ fn apply_notes(
         }
     }
 
-    place_windows(app, moves);
+    place_windows(app, moves, "restored from saved pixels");
     persist_open_notes(app);
     (placed, skipped)
 }
@@ -1678,8 +1919,14 @@ fn reveal_notes(app: &AppHandle) -> usize {
     let mut shown = 0;
 
     for (label, window) in note_windows(app) {
-        if window.is_visible().unwrap_or(false) {
+        // A minimised window reports itself as visible, which is how these
+        // notes used to sit out an arrange without anyone noticing.
+        let minimised = window.is_minimized().unwrap_or(false);
+        if window.is_visible().unwrap_or(false) && !minimised {
             continue;
+        }
+        if minimised {
+            let _ = window.unminimize();
         }
         if let Err(err) = window.show() {
             log::warn!("reveal: could not show {label}: {err}");
@@ -1880,6 +2127,7 @@ pub async fn apply_layout(app: AppHandle, name: String) -> Result<LayoutOutcome,
 #[tauri::command]
 pub async fn arrange_notes(app: AppHandle) -> Result<LayoutOutcome, String> {
     reveal_notes(&app);
+    log_arrangement(&app, "before arrange");
 
     let notes = note_windows(&app);
     let total = notes.len();
@@ -1977,7 +2225,7 @@ pub async fn arrange_notes(app: AppHandle) -> Result<LayoutOutcome, String> {
     }
 
     log::info!("arrange: placing {} note(s)", moves.len());
-    place_windows(&app, moves);
+    place_windows(&app, moves, "arrange");
     log::info!("layout: arranged {arranged} of {total} note(s)");
     Ok(LayoutOutcome::new(arranged, total, &skipped))
 }
@@ -2002,6 +2250,7 @@ const SNAP_STEP: i32 = 24;
 #[tauri::command]
 pub async fn snap_notes(app: AppHandle) -> Result<LayoutOutcome, String> {
     reveal_notes(&app);
+    log_arrangement(&app, "before align");
 
     let notes = note_windows(&app);
     let total = notes.len();
@@ -2134,7 +2383,7 @@ pub async fn snap_notes(app: AppHandle) -> Result<LayoutOutcome, String> {
 
     let count = moves.len();
     log::info!("snap: aligning {count} of {total} note(s)");
-    place_windows(&app, moves);
+    place_windows(&app, moves, "align");
     Ok(LayoutOutcome::new(count, total, &skipped))
 }
 
@@ -2269,7 +2518,7 @@ pub async fn move_notes_to_screen(app: AppHandle, name: String) -> Result<Layout
 
     let count = moves.len();
     log::info!("screens: moving {count} of {total} note(s) to {name}");
-    place_windows(&app, moves);
+    place_windows(&app, moves, "moved to a chosen screen");
     Ok(LayoutOutcome::new(count, total.max(count), &skipped))
 }
 
@@ -2470,5 +2719,222 @@ mod outcome_tests {
         let outcome = LayoutOutcome::new(5, 5, &[]);
         assert_eq!(outcome.moved, 5);
         assert!(outcome.skipped.is_empty());
+    }
+}
+
+
+#[cfg(test)]
+mod projection_tests {
+    use super::*;
+
+    /// The arrangement the log recorded on 15 October: one full-height note
+    /// and two columns of two, every gap 10px.
+    fn measured() -> Vec<crate::settings::LayoutNote> {
+        let note = |label: &str, x: i32, y: i32, h: u32| crate::settings::LayoutNote {
+            label: label.into(),
+            list_id: "list".into(),
+            x,
+            y,
+            width: 340,
+            height: h,
+            scale: 1.0,
+            monitor: Some("\\\\.\\DISPLAY6".into()),
+            monitor_x: 0,
+            monitor_y: 0,
+            monitor_width: 1920,
+            monitor_height: 1080,
+        };
+
+        vec![
+            note("note-3", 870, 10, 1012),
+            note("note-1", 1220, 10, 501),
+            note("note-2", 1220, 521, 501),
+            note("note-4", 1570, 10, 501),
+            note("note-0", 1570, 521, 501),
+        ]
+    }
+
+    /// Where a projection would put them, without needing an app handle: the
+    /// same arithmetic as `project_relative`, which is the part under test.
+    fn project(
+        relative: &[crate::settings::RelativeNote],
+        at: (i32, i32),
+        size: (u32, u32),
+    ) -> Vec<(String, i32, i32, i32, i32)> {
+        let box_x = at.0 as f64 + TILE_GAP as f64;
+        let box_y = at.1 as f64 + TILE_GAP as f64;
+        let box_w = (size.0 as i32 - TILE_GAP * 2).max(200) as f64;
+        let box_h = (size.1 as i32 - TILE_GAP * 2).max(200) as f64;
+
+        relative
+            .iter()
+            .map(|note| {
+                (
+                    note.label.clone(),
+                    (box_x + note.fx * box_w).round() as i32,
+                    (box_y + note.fy * box_h).round() as i32,
+                    (note.fw * box_w).round().max(220.0) as i32,
+                    (note.fh * box_h).round().max(180.0) as i32,
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_shape_is_described_as_the_log_describes_it() {
+        let relative = relative_from(&measured());
+
+        let of = |label: &str| {
+            relative
+                .iter()
+                .find(|n| n.label == label)
+                .expect("note in the shape")
+                .clone()
+        };
+
+        // The numbers in the log line: fx 0.000 / 0.337 / 0.673, fw 0.327.
+        assert!((of("note-3").fx - 0.0).abs() < 0.001);
+        assert!((of("note-1").fx - 0.337).abs() < 0.002);
+        assert!((of("note-4").fx - 0.673).abs() < 0.002);
+        assert!((of("note-3").fw - 0.327).abs() < 0.002);
+        assert!((of("note-3").fh - 1.0).abs() < 0.001);
+        assert!((of("note-1").fh - 0.495).abs() < 0.002);
+    }
+
+    #[test]
+    fn the_same_shape_arrives_on_the_other_screen() {
+        let relative = relative_from(&measured());
+
+        // The laptop panel, alone: 1920x1020 of work area at the origin.
+        let placed = project(&relative, (0, 0), (1920, 1020));
+        let shape_again = relative_from(
+            &placed
+                .iter()
+                .map(|(label, x, y, w, h)| crate::settings::LayoutNote {
+                    label: label.clone(),
+                    list_id: "list".into(),
+                    x: *x,
+                    y: *y,
+                    width: *w as u32,
+                    height: *h as u32,
+                    scale: 1.0,
+                    monitor: None,
+                    monitor_x: 0,
+                    monitor_y: 0,
+                    monitor_width: 0,
+                    monitor_height: 0,
+                })
+                .collect::<Vec<_>>(),
+        );
+
+        for was in &relative {
+            let now = shape_again
+                .iter()
+                .find(|n| n.label == was.label)
+                .expect("every note survives the projection");
+
+            for (field, before, after) in [
+                ("fx", was.fx, now.fx),
+                ("fy", was.fy, now.fy),
+                ("fw", was.fw, now.fw),
+                ("fh", was.fh, now.fh),
+            ] {
+                assert!(
+                    (before - after).abs() < 0.01,
+                    "{} {field} moved from {before:.3} to {after:.3}",
+                    was.label
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_gaps_stay_even_and_in_proportion() {
+        let relative = relative_from(&measured());
+        let placed = project(&relative, (0, 0), (1920, 1020));
+
+        let at = |label: &str| {
+            placed
+                .iter()
+                .find(|(l, _, _, _, _)| l == label)
+                .expect("placed")
+                .clone()
+        };
+
+        // Three columns, so two gaps between them. They were equal before and
+        // have to be equal after: scaling each note by its own fractions
+        // stretched these while leaving the notes alone, and tidy columns
+        // arrived unevenly spaced.
+        let (_, x3, _, w3, _) = at("note-3");
+        let (_, x1, _, w1, _) = at("note-1");
+        let (_, x4, _, _, _) = at("note-4");
+
+        let first = x1 - (x3 + w3);
+        let second = x4 - (x1 + w1);
+        assert!(
+            (first - second).abs() <= 2,
+            "columns {first} and {second} apart"
+        );
+
+        // And in proportion to the arrangement: 10px in a 1040px-wide box is
+        // the same fraction as the gap in a 1900px-wide one.
+        let expected = (10.0_f64 / 1040.0 * 1900.0).round() as i32;
+        assert!(
+            (first - expected).abs() <= 2,
+            "gap {first} should be about {expected}"
+        );
+
+        // The stacked pair keeps its own gap too.
+        let (_, _, y1, _, h1) = at("note-1");
+        let (_, _, y2, _, _) = at("note-2");
+        let stacked = y2 - (y1 + h1);
+        let expected_stacked = (10.0_f64 / 1012.0 * 1000.0).round() as i32;
+        assert!(
+            (stacked - expected_stacked).abs() <= 2,
+            "stacked gap {stacked} should be about {expected_stacked}"
+        );
+    }
+
+    #[test]
+    fn nothing_lands_off_the_screen() {
+        let relative = relative_from(&measured());
+
+        // Both ways round, and on a screen that does not start at the origin.
+        for (at, size) in [((0, 0), (1920u32, 1020u32)), ((1920, 0), (1920, 1032))] {
+            for (label, x, y, w, h) in project(&relative, at, size) {
+                assert!(x >= at.0, "{label} starts left of the screen");
+                assert!(y >= at.1, "{label} starts above the screen");
+                assert!(
+                    x + w <= at.0 + size.0 as i32,
+                    "{label} runs {} past the right edge",
+                    x + w - at.0 - size.0 as i32
+                );
+                assert!(
+                    y + h <= at.1 + size.1 as i32,
+                    "{label} runs {} past the bottom",
+                    y + h - at.1 - size.1 as i32
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_narrow_screen_keeps_the_columns_rather_than_the_aspect() {
+        // Worth stating plainly, because it is a choice and not an accident:
+        // the projection fills the screen it is given. Going from a wide
+        // arrangement to a narrower screen makes every note narrower in the
+        // same proportion, rather than shrinking the whole thing and leaving
+        // the bottom of the screen empty. Three columns stay three columns.
+        let relative = relative_from(&measured());
+        let placed = project(&relative, (0, 0), (1280, 1020));
+
+        let columns: std::collections::BTreeSet<i32> =
+            placed.iter().map(|(_, x, _, _, _)| *x).collect();
+        assert_eq!(columns.len(), 3, "three columns stay three columns");
+
+        for (label, _, _, w, h) in &placed {
+            assert!(*w > 200, "{label} is too narrow to read at {w}px");
+            assert!(*h > 180, "{label} is too short at {h}px");
+        }
     }
 }
