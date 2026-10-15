@@ -1011,8 +1011,8 @@ fn place_windows(
     }
 
     std::thread::spawn(move || {
-        for (label, pos, size) in moves {
-            let Some(window) = handle.get_webview_window(&label) else {
+        for (label, pos, size) in &moves {
+            let Some(window) = handle.get_webview_window(label) else {
                 continue;
             };
             // Minimised first, then shown. `show` alone leaves a minimised
@@ -1023,11 +1023,76 @@ fn place_windows(
                 let _ = window.unminimize();
             }
             let _ = window.show();
-            if let Err(err) = window.set_size(size) {
-                log::warn!("place: could not resize {label}: {err}");
+
+            // Position before size, so that a window changing screens has
+            // already been told about the new DPI by the time it is sized.
+            if let Err(err) = window.set_position(*pos) {
+                log::warn!("place[{what}]: could not move {label}: {err}");
             }
-            if let Err(err) = window.set_position(pos) {
-                log::warn!("place: could not move {label}: {err}");
+            if let Err(err) = window.set_size(*size) {
+                log::warn!("place[{what}]: could not resize {label}: {err}");
+            }
+        }
+
+        // Then check, because Windows does not necessarily do as it is told.
+        //
+        // A window crossing between a 100% screen and a 125% one is rescaled
+        // by Windows itself on the DPI change: 621x1000 arrived as 776x1250,
+        // every note a quarter too big and hanging off the panel. Moving back
+        // divided by the same number. Since Arrange and Align take their width
+        // from the notes, each switch made the next arrangement worse.
+        //
+        // Two passes are enough: the DPI change arrives once, and correcting
+        // the size does not move the window to another screen.
+        for attempt in 1..=2 {
+            std::thread::sleep(std::time::Duration::from_millis(if attempt == 1 {
+                180
+            } else {
+                120
+            }));
+
+            let mut corrected = 0;
+
+            for (label, pos, size) in &moves {
+                let Some(window) = handle.get_webview_window(label) else {
+                    continue;
+                };
+                let (Ok(now_pos), Ok(now_size)) = (window.outer_position(), window.outer_size())
+                else {
+                    continue;
+                };
+
+                // A pixel or two of difference is window-frame rounding, not
+                // Windows having changed its mind.
+                let off_by = (now_size.width as i32 - size.width as i32)
+                    .abs()
+                    .max((now_size.height as i32 - size.height as i32).abs())
+                    .max((now_pos.x - pos.x).abs())
+                    .max((now_pos.y - pos.y).abs());
+
+                if off_by <= 2 {
+                    continue;
+                }
+
+                log::info!(
+                    "place[{what}]: {label} came out {},{} {}x{} instead of {},{} {}x{}; correcting (pass {attempt})",
+                    now_pos.x,
+                    now_pos.y,
+                    now_size.width,
+                    now_size.height,
+                    pos.x,
+                    pos.y,
+                    size.width,
+                    size.height
+                );
+
+                let _ = window.set_position(*pos);
+                let _ = window.set_size(*size);
+                corrected += 1;
+            }
+
+            if corrected == 0 {
+                break;
             }
         }
 
@@ -1173,7 +1238,7 @@ pub fn watch_screens(app: &AppHandle) {
 
             match remembered {
                 Some(notes) => {
-                    let (placed, _) = apply_notes(&app, notes);
+                    let (placed, _) = apply_notes(&app, notes, "restored for these screens");
                     log::info!("screens: restored the arrangement for {signature} ({placed} note(s))");
                 }
                 None => {
@@ -1481,6 +1546,18 @@ fn log_gaps(when: &str, notes: &[crate::settings::LayoutNote]) {
 /// if a projection is faithful, every fraction here is within rounding of the
 /// one that was stored. Anything larger says which note went where it should
 /// not have, by name.
+fn shape_should_hold(when: &str) -> bool {
+    matches!(
+        when,
+        "at startup"
+            | "settled"
+            | "after Windows moved things"
+            | "projected onto one screen"
+            | "moved to a chosen screen"
+            | "restored for these screens"
+    )
+}
+
 fn log_drift(app: &AppHandle, when: &str, now: &[crate::settings::RelativeNote]) {
     let stored = {
         let state = app.state::<AppState>();
@@ -1530,12 +1607,34 @@ fn log_drift(app: &AppHandle, when: &str, now: &[crate::settings::RelativeNote])
     }
 
     // A twentieth of the arrangement is about a note's width: past that the
-    // shape is not the same shape any more.
-    if worst > 0.05 {
+    // shape is not the same shape any more. Arranging, aligning, restoring a
+    // preset and undoing all change the shape on purpose, so only the
+    // operations that promise to keep it are held to it.
+    if worst <= 0.05 {
+        log::info!("shape[{when}]: shape held, worst drift {worst:.3}");
+    } else if shape_should_hold(when) {
         log::warn!("shape[{when}]: the shape has drifted by {worst:.3} — {culprit}");
     } else {
-        log::info!("shape[{when}]: shape held, worst drift {worst:.3}");
+        log::info!("shape[{when}]: shape changed by {worst:.3} — {culprit} (expected here)");
     }
+}
+
+/// The width to give every note in a tidy arrangement.
+///
+/// The middle of the widths present, rather than the largest. Taking the
+/// largest meant one note dragged wide made every note wide, which on a 1920
+/// screen is the difference between three columns and two — and the notes that
+/// did not fit were stacked three-deep instead.
+fn tidy_width(mut widths: Vec<i32>, limit: i32) -> i32 {
+    if widths.is_empty() {
+        return 340;
+    }
+
+    widths.sort_unstable();
+    let middle = widths[widths.len() / 2];
+
+    // Never narrower than a note can usefully be, never wider than the screen.
+    middle.clamp(220, limit.max(220))
 }
 
 /// Windows parks hidden and minimised windows far off-screen, at -32000. Any
@@ -1837,6 +1936,7 @@ pub fn remember_arrangement(app: &AppHandle) {
 fn apply_notes(
     app: &AppHandle,
     saved: Vec<crate::settings::LayoutNote>,
+    what: &str,
 ) -> (usize, Vec<(String, &'static str)>) {
     LAYOUT_BUSY.store(true, Ordering::Relaxed);
     let known = known_list_ids(app);
@@ -1900,7 +2000,7 @@ fn apply_notes(
         }
     }
 
-    place_windows(app, moves, "restored from saved pixels");
+    place_windows(app, moves, what);
     persist_open_notes(app);
     (placed, skipped)
 }
@@ -2000,7 +2100,7 @@ pub async fn undo_layout(app: AppHandle) -> Result<LayoutOutcome, String> {
 
     let swap = capture_layout(&app);
     let wanted = previous.len();
-    let (placed, skipped) = apply_notes(&app, previous);
+    let (placed, skipped) = apply_notes(&app, previous, "undone");
 
     if !swap.is_empty() {
         if let Ok(mut slot) = UNDO.lock() {
@@ -2101,7 +2201,7 @@ pub async fn apply_layout(app: AppHandle, name: String) -> Result<LayoutOutcome,
     remember_for_undo(&app);
 
     let wanted = saved.len();
-    let (placed, skipped) = apply_notes(&app, saved);
+    let (placed, skipped) = apply_notes(&app, saved, "restored a saved layout");
 
     if let Ok(mut settings) = app.state::<AppState>().settings.lock() {
         if settings.last_layout.as_deref() != Some(name.as_str()) {
@@ -2191,13 +2291,17 @@ pub async fn arrange_notes(app: AppHandle) -> Result<LayoutOutcome, String> {
         );
 
         // Width comes from the notes themselves: how wide a note should be is
-        // a preference, and arranging is not the place to overrule it.
-        let width = group
-            .iter()
-            .filter_map(|(_, w)| w.outer_size().ok())
-            .map(|s| s.width as i32)
-            .max()
-            .unwrap_or(340);
+        // a preference, and arranging is not the place to overrule it. The
+        // middle width rather than the widest, so one wide note does not
+        // decide for the rest.
+        let width = tidy_width(
+            group
+                .iter()
+                .filter_map(|(_, w)| w.outer_size().ok())
+                .map(|s| s.width as i32)
+                .collect(),
+            area.size.width as i32 - TILE_GAP * 2,
+        );
 
         let usable_h = area.size.height as i32 - TILE_GAP * 2;
         let columns = ((area.size.width as i32 - TILE_GAP) / (width + TILE_GAP)).max(1);
@@ -2321,13 +2425,12 @@ pub async fn snap_notes(app: AppHandle) -> Result<LayoutOutcome, String> {
         let area = *monitor.work_area();
 
         // One width for every note: a column of notes that differ by nine
-        // pixels is the untidiness this is meant to remove.
-        let width = group
-            .iter()
-            .map(|(_, _, size, _)| size.width as i32)
-            .max()
-            .unwrap_or(340)
-            .min(area.size.width as i32 - TILE_GAP * 2);
+        // pixels is the untidiness this is meant to remove. The middle width,
+        // not the widest — see `tidy_width`.
+        let width = tidy_width(
+            group.iter().map(|(_, _, size, _)| size.width as i32).collect(),
+            area.size.width as i32 - TILE_GAP * 2,
+        );
 
         let column_pitch = width + TILE_GAP;
         let top = area.position.y + TILE_GAP;
@@ -2936,5 +3039,34 @@ mod projection_tests {
             assert!(*w > 200, "{label} is too narrow to read at {w}px");
             assert!(*h > 180, "{label} is too short at {h}px");
         }
+    }
+}
+
+#[cfg(test)]
+mod width_tests {
+    use super::*;
+
+    #[test]
+    fn one_wide_note_does_not_decide_for_the_rest() {
+        // The widths measured on 15 October, when one note had been dragged
+        // wide: taking the largest gave everybody 499 and left room for three
+        // columns on a 1920 screen. The middle width leaves room for four.
+        let widths = vec![340, 340, 499, 373, 387];
+        assert_eq!(tidy_width(widths, 1900), 373);
+    }
+
+    #[test]
+    fn notes_of_one_width_keep_it() {
+        assert_eq!(tidy_width(vec![340, 340, 340], 1900), 340);
+    }
+
+    #[test]
+    fn a_narrow_screen_caps_the_width() {
+        assert_eq!(tidy_width(vec![900, 900, 900], 600), 600);
+    }
+
+    #[test]
+    fn nothing_to_measure_falls_back_to_a_note_sized_note() {
+        assert_eq!(tidy_width(vec![], 1900), 340);
     }
 }
