@@ -132,6 +132,8 @@ pub fn run() {
             notes::save_layout,
             notes::apply_layout,
             notes::arrange_notes,
+            notes::undo_layout,
+            notes::can_undo_layout,
             notes::snap_notes,
             notes::list_screens,
             notes::move_notes_to_screen,

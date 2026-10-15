@@ -288,6 +288,7 @@
 /* Layout tools: one row, marks rather than sentences. */
 .layout-tools {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 6px 4px 2px 8px;
 }
@@ -328,4 +329,30 @@
 .layout-tool.is-danger:hover:not(:disabled) {
   color: var(--danger);
   border-color: color-mix(in srgb, var(--danger) 50%, transparent);
+}
+
+/* What Arrange and Align do, said where they are rather than in a tooltip. */
+.layout-rules {
+  margin: 4px 0 0;
+  padding: 0 8px 2px;
+  display: grid;
+  gap: 5px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.layout-rules > div {
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.layout-rules dt {
+  color: var(--text);
+}
+
+.layout-rules dd {
+  margin: 0;
+  line-height: 1.45;
 }

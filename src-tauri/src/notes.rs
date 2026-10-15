@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_window_state::{AppHandleExt, StateFlags, WindowExt};
 
 use crate::settings::{AppState, WindowLayer};
@@ -1001,6 +1001,14 @@ fn place_windows(
         log::info!("place: done");
         LAYOUT_BUSY.store(false, Ordering::Relaxed);
 
+        // Settings cannot ask where the notes are until they are there: the
+        // windows move on this thread, so a question asked from the command
+        // that started it is answered with the old positions. That is why the
+        // screen picker worked exactly once — it snapped back to the screen
+        // the notes had just left, and the next choice was the value it
+        // already had. Saying so is better than the 900ms guess it replaced.
+        let _ = handle.emit("layout:settled", ());
+
         // Deliberately *not* saving here.
         //
         // `save_window_state` asks every window where it is, and the plugin
@@ -1656,6 +1664,107 @@ fn apply_notes(
     (placed, skipped)
 }
 
+/// Brings every hidden note back before an arrangement is read or written.
+///
+/// A note hidden by the shortcut answers -32000,-32000 at 160x28, so Arrange
+/// and Align used to leave it out and report a smaller count with no
+/// explanation. Showing them first is also the honest reading of the request:
+/// "arrange my notes" is not "arrange the ones that happen to be visible".
+///
+/// Returns how many were brought back, and waits a beat if any were: Windows
+/// keeps answering with the parking spot until a shown window has actually
+/// been mapped, and reading it too early is the same bug in a different place.
+fn reveal_notes(app: &AppHandle) -> usize {
+    let mut shown = 0;
+
+    for (label, window) in note_windows(app) {
+        if window.is_visible().unwrap_or(false) {
+            continue;
+        }
+        if let Err(err) = window.show() {
+            log::warn!("reveal: could not show {label}: {err}");
+            continue;
+        }
+        log::info!("reveal: brought {label} back to arrange it");
+        shown += 1;
+    }
+
+    if shown > 0 {
+        // Blocking for a sixth of a second on a command thread, once per
+        // press, rather than reading positions that are not true yet.
+        std::thread::sleep(std::time::Duration::from_millis(160));
+    }
+
+    shown
+}
+
+/// The arrangement as it was before the last layout change.
+///
+/// Arrange, Align, restoring a preset and moving to another screen all replace
+/// an arrangement somebody may have spent an afternoon building. One step back
+/// is what makes them safe to try, and being safe to try is what makes them
+/// learnable.
+static UNDO: Mutex<Option<Vec<crate::settings::LayoutNote>>> = Mutex::new(None);
+
+/// Writes down where the notes are, for the operation that is about to move
+/// them.
+///
+/// Called before anything moves, and never while a placement is still in
+/// flight: the positions read during one are half-way through, and keeping
+/// those would undo to a state that never existed.
+fn remember_for_undo(app: &AppHandle) {
+    if LAYOUT_BUSY.load(Ordering::Relaxed) {
+        log::debug!("undo: a placement is still running; keeping the older state");
+        return;
+    }
+
+    let notes = capture_layout(app);
+    if notes.is_empty() {
+        return;
+    }
+
+    if let Ok(mut slot) = UNDO.lock() {
+        log::info!("undo: remembering {} note(s)", notes.len());
+        *slot = Some(notes);
+    }
+}
+
+/// Whether there is an arrangement to go back to.
+#[tauri::command]
+pub fn can_undo_layout() -> bool {
+    UNDO.lock().map(|slot| slot.is_some()).unwrap_or(false)
+}
+
+/// Puts the notes back as they were before the last layout change.
+///
+/// The arrangement being replaced is kept in turn, so pressing undo twice
+/// returns to the arranged version: one step, both ways, which is enough for
+/// "that was not what I meant" without a history to maintain.
+#[tauri::command]
+pub async fn undo_layout(app: AppHandle) -> Result<LayoutOutcome, String> {
+    let previous = UNDO
+        .lock()
+        .map_err(|e| e.to_string())?
+        .take();
+
+    let Some(previous) = previous else {
+        return Err("There is nothing to undo.".into());
+    };
+
+    let swap = capture_layout(&app);
+    let wanted = previous.len();
+    let (placed, skipped) = apply_notes(&app, previous);
+
+    if !swap.is_empty() {
+        if let Ok(mut slot) = UNDO.lock() {
+            *slot = Some(swap);
+        }
+    }
+
+    log::info!("undo: put {placed} of {wanted} note(s) back");
+    Ok(LayoutOutcome::new(placed, wanted, &skipped))
+}
+
 /// Saves the current arrangement under a name, replacing one of that name.
 ///
 /// Saving over an existing name is how a layout is *updated*: arrange the
@@ -1742,6 +1851,8 @@ pub async fn apply_layout(app: AppHandle, name: String) -> Result<LayoutOutcome,
         return Err(format!("There is no layout called {name}."));
     };
 
+    remember_for_undo(&app);
+
     let wanted = saved.len();
     let (placed, skipped) = apply_notes(&app, saved);
 
@@ -1768,6 +1879,8 @@ pub async fn apply_layout(app: AppHandle, name: String) -> Result<LayoutOutcome,
 /// rather than a thing that overwrites what you had.
 #[tauri::command]
 pub async fn arrange_notes(app: AppHandle) -> Result<LayoutOutcome, String> {
+    reveal_notes(&app);
+
     let notes = note_windows(&app);
     let total = notes.len();
     log::info!("arrange: starting with {total} note(s)");
@@ -1775,6 +1888,7 @@ pub async fn arrange_notes(app: AppHandle) -> Result<LayoutOutcome, String> {
         return Err("There are no notes to arrange.".into());
     }
 
+    remember_for_undo(&app);
     LAYOUT_BUSY.store(true, Ordering::Relaxed);
 
     // Grouped by monitor, in label order, so the result is stable: running it
@@ -1887,6 +2001,8 @@ const SNAP_STEP: i32 = 24;
 /// the feature had failed.
 #[tauri::command]
 pub async fn snap_notes(app: AppHandle) -> Result<LayoutOutcome, String> {
+    reveal_notes(&app);
+
     let notes = note_windows(&app);
     let total = notes.len();
     log::info!("snap: starting with {total} note(s)");
@@ -1894,6 +2010,7 @@ pub async fn snap_notes(app: AppHandle) -> Result<LayoutOutcome, String> {
         return Err("There are no notes to align.".into());
     }
 
+    remember_for_undo(&app);
     LAYOUT_BUSY.store(true, Ordering::Relaxed);
 
     // Current geometry, read before anything moves.
@@ -1905,6 +2022,15 @@ pub async fn snap_notes(app: AppHandle) -> Result<LayoutOutcome, String> {
             skipped.push((label, NOT_MEASURED));
             continue;
         };
+
+        // Still parked after `reveal_notes` asked for it back: minimised by
+        // Windows itself, most likely. Aligning from that position would send
+        // the note to a column that does not exist.
+        if !is_placeable(&pos, &size) {
+            skipped.push((label, NOT_MEASURED));
+            continue;
+        }
+
         let monitor = window
             .current_monitor()
             .ok()
@@ -2102,6 +2228,7 @@ pub async fn move_notes_to_screen(app: AppHandle, name: String) -> Result<Layout
     let open: Vec<String> = notes.iter().map(|(label, _)| label.clone()).collect();
     let total = open.len();
 
+    remember_for_undo(&app);
     LAYOUT_BUSY.store(true, Ordering::Relaxed);
 
     // The remembered *shape* first, projected onto the screen being asked

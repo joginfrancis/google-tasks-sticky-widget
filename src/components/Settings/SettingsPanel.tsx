@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type {
   Settings,
   TaskList,
@@ -298,6 +299,12 @@ function Layout() {
   /** Arranged but not yet kept — the save marks pick this up. */
   const [dirty, setDirty] = useState(false);
 
+  /** Whether there is an arrangement to go back to. */
+  const [undoable, setUndoable] = useState(false);
+
+  const checkUndo = () =>
+    invoke<boolean>("can_undo_layout").then(setUndoable).catch(() => {});
+
   const refresh = (keep?: string) =>
     invoke<string[]>("list_layouts")
       .then((list) => {
@@ -310,14 +317,34 @@ function Layout() {
 
   useEffect(() => {
     void refresh();
+    void checkUndo();
   }, []);
 
-  useEffect(() => {
+  const refreshScreens = () =>
     invoke<{ name: string; label: string; primary: boolean; hasNotes: boolean }[]>(
       "list_screens",
     )
-      .then(setScreens)
+      .then((list) => {
+        setScreens(list);
+        // The live answer is now the true one, so the optimistic choice can
+        // step aside.
+        setScreenChoice(null);
+      })
       .catch(() => {});
+
+  useEffect(() => {
+    void refreshScreens();
+
+    // The notes are placed on a thread of their own and say when they have
+    // finished. Before this the panel waited 900ms and hoped.
+    const settled = listen("layout:settled", () => {
+      void refreshScreens();
+      void checkUndo();
+    });
+
+    return () => {
+      void settled.then((off) => off());
+    };
   }, []);
 
 
@@ -334,6 +361,7 @@ function Layout() {
     invoke<LayoutOutcome>("apply_layout", { name })
       .then((out) => {
         setDirty(false);
+        setUndoable(true);
         say(report("Restored", out), true);
       })
       .catch((err: unknown) => say(String(err), true));
@@ -344,6 +372,7 @@ function Layout() {
     invoke<LayoutOutcome>("arrange_notes")
       .then((out) => {
         setDirty(true);
+        setUndoable(true);
         say(report("Arranged", out), true);
       })
       .catch((err: unknown) => say(String(err), true));
@@ -354,7 +383,26 @@ function Layout() {
     invoke<LayoutOutcome>("snap_notes")
       .then((out) => {
         setDirty(true);
+        setUndoable(true);
         say(report("Aligned", out), true);
+      })
+      .catch((err: unknown) => say(String(err), true));
+  };
+
+  /**
+   * One step back, and back again.
+   *
+   * The arrangement being replaced is kept in turn, so this is a toggle rather
+   * than a history: enough for "that was not what I meant", which is the whole
+   * reason Arrange and Align felt risky to press.
+   */
+  const undo = () => {
+    say("Putting it back…");
+    invoke<LayoutOutcome>("undo_layout")
+      .then((out) => {
+        setDirty(true);
+        say(report("Put back", out), true);
+        void checkUndo();
       })
       .catch((err: unknown) => say(String(err), true));
   };
@@ -404,23 +452,14 @@ function Layout() {
               const screen = screens.find((s) => s.name === name);
               setScreenChoice(name);
               say("Moving the notes…");
-              invoke<number>("move_notes_to_screen", { name })
-                .then((n) => {
+              invoke<LayoutOutcome>("move_notes_to_screen", { name })
+                .then((out) => {
                   setDirty(true);
-                  // Asked again once the windows have actually moved: the
-                  // placing happens on its own thread, so an immediate answer
-                  // still describes where they were.
-                  window.setTimeout(() => {
-                    void invoke<typeof screens>("list_screens")
-                      .then(setScreens)
-                      .catch(() => {});
-                  }, 900);
+                  setUndoable(true);
                   say(
-                    "Moved " +
-                      n +
-                      (n === 1 ? " note" : " notes") +
+                    report("Moved", out) +
                       " to " +
-                      (screen?.label ?? "that screen"),
+                      (screen?.label?.split(" — ")[0] ?? "that screen"),
                     true,
                   );
                 })
@@ -490,6 +529,36 @@ function Layout() {
           </button>
 
           <button
+            className="layout-tool"
+            onClick={undo}
+            disabled={!undoable}
+            title={
+              undoable
+                ? "Put the notes back as they were"
+                : "Nothing to undo yet"
+            }
+          >
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+              <path
+                d="M3.5 7.5h6a3 3 0 0 1 0 6H6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+              />
+              <path
+                d="M6 4.5 3 7.5l3 3"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span>Undo</span>
+          </button>
+
+          <button
             className={"layout-tool " + (dirty && selected ? "is-wanted" : "")}
             disabled={!selected}
             onClick={() => selected && save(selected)}
@@ -547,12 +616,40 @@ function Layout() {
         </div>
       )}
 
-      <p className="settings-hint">
-        {note ??
-          (names.length > 0
-            ? "Pick one to put the notes back. Align tidies what you have; Arrange starts again in columns."
-            : "Align snaps the notes where they are onto a grid; Arrange lays them out afresh in columns.")}
-      </p>
+      {/*
+        * What the two tools actually do, in their own words.
+        *
+        * "Align" moving a note somewhere unexpected reads as a fault until you
+        * know the rule it is following, so the rule is on the panel rather
+        * than in a tooltip nobody hovers.
+        */}
+      {note ? (
+        <p className="settings-hint">{note}</p>
+      ) : (
+        <dl className="layout-rules">
+          {names.length > 0 && (
+            <div>
+              <dt>Layout</dt>
+              <dd>Picking one puts the notes back that way.</dd>
+            </div>
+          )}
+          <div>
+            <dt>Arrange</dt>
+            <dd>
+              Even columns from the right edge, filling the screen each note is
+              already on.
+            </dd>
+          </div>
+          <div>
+            <dt>Align</dt>
+            <dd>
+              Keeps each note where it is and makes it exact: one width for all,
+              and every column shared out evenly — one note full height, two a
+              half each, three a third.
+            </dd>
+          </div>
+        </dl>
+      )}
     </>
   );
 }
