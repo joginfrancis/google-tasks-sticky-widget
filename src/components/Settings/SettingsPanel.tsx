@@ -8,6 +8,7 @@ import type {
   WindowLayer,
 } from "../../types";
 import { formatLastSynced } from "../../lib/date";
+import { report, type LayoutOutcome } from "../../lib/layout";
 import "./SettingsPanel.css";
 
 interface Props {
@@ -330,30 +331,30 @@ function Layout() {
     if (!name) return;
     setSelected(name);
     say("Restoring " + name + "…");
-    invoke<number>("apply_layout", { name })
-      .then((n) => {
+    invoke<LayoutOutcome>("apply_layout", { name })
+      .then((out) => {
         setDirty(false);
-        say(name + " — " + n + (n === 1 ? " note" : " notes"), true);
+        say(report("Restored", out), true);
       })
       .catch((err: unknown) => say(String(err), true));
   };
 
   const arrange = () => {
     say("Arranging…");
-    invoke<number>("arrange_notes")
-      .then((n) => {
+    invoke<LayoutOutcome>("arrange_notes")
+      .then((out) => {
         setDirty(true);
-        say("Arranged " + n + (n === 1 ? " note" : " notes") + " — keep it?", true);
+        say(report("Arranged", out), true);
       })
       .catch((err: unknown) => say(String(err), true));
   };
 
   const snap = () => {
     say("Aligning…");
-    invoke<number>("snap_notes")
-      .then((n) => {
+    invoke<LayoutOutcome>("snap_notes")
+      .then((out) => {
         setDirty(true);
-        say("Aligned " + n + (n === 1 ? " note" : " notes") + " — keep it?", true);
+        say(report("Aligned", out), true);
       })
       .catch((err: unknown) => say(String(err), true));
   };

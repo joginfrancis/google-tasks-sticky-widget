@@ -1104,7 +1104,7 @@ pub fn watch_screens(app: &AppHandle) {
 
             match remembered {
                 Some(notes) => {
-                    let placed = apply_notes(&app, notes);
+                    let (placed, _) = apply_notes(&app, notes);
                     log::info!("screens: restored the arrangement for {signature} ({placed} note(s))");
                 }
                 None => {
@@ -1297,6 +1297,68 @@ const PARKED: i32 = -30000;
 fn is_placeable(pos: &tauri::PhysicalPosition<i32>, size: &tauri::PhysicalSize<u32>) -> bool {
     pos.x > PARKED && pos.y > PARKED && size.width > 120 && size.height > 120
 }
+
+/// What a layout operation actually did.
+///
+/// The count alone cannot say "four of your five notes moved": the fifth shows
+/// up as a smaller number and nothing explains it. The reasons travel with the
+/// count, so the panel can name what was left behind instead of quietly
+/// reporting success.
+#[derive(Debug, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayoutOutcome {
+    /// Notes that were given a new place.
+    pub moved: usize,
+    /// Notes the operation was asked about, moved or not.
+    pub total: usize,
+    /// One phrase per reason, ready to read: "1 note whose list is gone".
+    pub skipped: Vec<String>,
+}
+
+impl LayoutOutcome {
+    fn new(moved: usize, total: usize, skipped: &[(String, &'static str)]) -> Self {
+        for (label, reason) in skipped {
+            log::info!("layout: left {label} alone — {reason}");
+        }
+
+        Self {
+            moved,
+            total,
+            skipped: summarise(skipped),
+        }
+    }
+}
+
+/// Collapses a list of (note, reason) into one phrase per reason.
+///
+/// Reasons are written as noun phrases — "whose list is gone", not "is
+/// hidden" — so that counting them cannot produce "2 notes is hidden".
+fn summarise(skipped: &[(String, &'static str)]) -> Vec<String> {
+    let mut reasons: Vec<(&'static str, usize)> = Vec::new();
+
+    for (_, reason) in skipped {
+        match reasons.iter_mut().find(|(known, _)| known == reason) {
+            Some((_, count)) => *count += 1,
+            None => reasons.push((reason, 1)),
+        }
+    }
+
+    reasons
+        .into_iter()
+        .map(|(reason, count)| {
+            format!(
+                "{count} {} {reason}",
+                if count == 1 { "note" } else { "notes" }
+            )
+        })
+        .collect()
+}
+
+/// Why a note can be left where it is.
+const NO_LIST: &str = "whose list is gone";
+const NO_SCREEN: &str = "with no screen to put it on";
+const NOT_MEASURED: &str = "Windows would not give a position for";
+const NOT_IN_LAYOUT: &str = "this layout does not mention";
 
 /// Fits a whole arrangement onto one screen, keeping its shape.
 ///
@@ -1523,16 +1585,20 @@ pub fn remember_arrangement(app: &AppHandle) {
 
 /// Puts a set of notes where the saved arrangement says, opening any that are
 /// closed. Shared by the named layouts and by the per-display memory.
-fn apply_notes(app: &AppHandle, saved: Vec<crate::settings::LayoutNote>) -> usize {
+fn apply_notes(
+    app: &AppHandle,
+    saved: Vec<crate::settings::LayoutNote>,
+) -> (usize, Vec<(String, &'static str)>) {
     LAYOUT_BUSY.store(true, Ordering::Relaxed);
     let known = known_list_ids(app);
     let mut placed = 0;
     let mut moves = Vec::new();
     let mut stranded: Vec<String> = Vec::new();
+    let mut skipped: Vec<(String, &'static str)> = Vec::new();
 
     for note in saved {
         if !known.is_empty() && !known.contains(&note.list_id) {
-            log::info!("layout: skipping a note whose list is gone");
+            skipped.push((note.label.clone(), NO_LIST));
             continue;
         }
 
@@ -1548,6 +1614,7 @@ fn apply_notes(app: &AppHandle, saved: Vec<crate::settings::LayoutNote>) -> usiz
             // Reuse the label, so the note keeps its own colour and pin.
             if let Err(err) = open_note_labelled(app, &note.list_id, None, Some(&note.label)) {
                 log::warn!("layout: could not open {}: {err}", note.label);
+                skipped.push((note.label.clone(), NOT_MEASURED));
                 continue;
             }
         }
@@ -1586,7 +1653,7 @@ fn apply_notes(app: &AppHandle, saved: Vec<crate::settings::LayoutNote>) -> usiz
 
     place_windows(app, moves);
     persist_open_notes(app);
-    placed
+    (placed, skipped)
 }
 
 /// Saves the current arrangement under a name, replacing one of that name.
@@ -1660,7 +1727,7 @@ pub async fn delete_layout(app: AppHandle, name: String) -> Result<(), String> {
 /// the user has opened since would be a surprise, and "restore my arrangement"
 /// does not have to mean "and discard everything else".
 #[tauri::command]
-pub async fn apply_layout(app: AppHandle, name: String) -> Result<usize, String> {
+pub async fn apply_layout(app: AppHandle, name: String) -> Result<LayoutOutcome, String> {
     let saved = {
         let state = app.state::<AppState>();
         let settings = state.settings.lock().map_err(|e| e.to_string())?;
@@ -1675,7 +1742,8 @@ pub async fn apply_layout(app: AppHandle, name: String) -> Result<usize, String>
         return Err(format!("There is no layout called {name}."));
     };
 
-    let placed = apply_notes(&app, saved);
+    let wanted = saved.len();
+    let (placed, skipped) = apply_notes(&app, saved);
 
     if let Ok(mut settings) = app.state::<AppState>().settings.lock() {
         if settings.last_layout.as_deref() != Some(name.as_str()) {
@@ -1684,8 +1752,8 @@ pub async fn apply_layout(app: AppHandle, name: String) -> Result<usize, String>
         }
     }
 
-    log::info!("layout: applied {name} to {placed} note(s)");
-    Ok(placed)
+    log::info!("layout: applied {name} to {placed} of {wanted} note(s)");
+    Ok(LayoutOutcome::new(placed, wanted, &skipped))
 }
 
 /// Arranges every open note in even columns down the work area.
@@ -1699,9 +1767,10 @@ pub async fn apply_layout(app: AppHandle, name: String) -> Result<usize, String>
 /// if it is worth keeping — that way the automatic version is a starting point
 /// rather than a thing that overwrites what you had.
 #[tauri::command]
-pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
+pub async fn arrange_notes(app: AppHandle) -> Result<LayoutOutcome, String> {
     let notes = note_windows(&app);
-    log::info!("arrange: starting with {} note(s)", notes.len());
+    let total = notes.len();
+    log::info!("arrange: starting with {total} note(s)");
     if notes.is_empty() {
         return Err("There are no notes to arrange.".into());
     }
@@ -1724,6 +1793,7 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
 
     let mut arranged = 0;
     let mut moves = Vec::new();
+    let mut skipped: Vec<(String, &'static str)> = Vec::new();
 
     for (_, mut group) in by_monitor {
         group.sort_by(|a, b| a.0.cmp(&b.0));
@@ -1743,6 +1813,9 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
         };
         let Some(monitor) = monitor else {
             log::warn!("arrange: no monitor at all; skipping this group");
+            for (label, _) in &group {
+                skipped.push((label.clone(), NO_SCREEN));
+            }
             continue;
         };
         let area = monitor.work_area();
@@ -1791,8 +1864,8 @@ pub async fn arrange_notes(app: AppHandle) -> Result<usize, String> {
 
     log::info!("arrange: placing {} note(s)", moves.len());
     place_windows(&app, moves);
-    log::info!("layout: arranged {arranged} note(s)");
-    Ok(arranged)
+    log::info!("layout: arranged {arranged} of {total} note(s)");
+    Ok(LayoutOutcome::new(arranged, total, &skipped))
 }
 
 /// The vertical grid a note snaps to. Small enough that a note barely moves,
@@ -1813,9 +1886,10 @@ const SNAP_STEP: i32 = 24;
 /// leaving two notes on top of each other after an alignment — would look like
 /// the feature had failed.
 #[tauri::command]
-pub async fn snap_notes(app: AppHandle) -> Result<usize, String> {
+pub async fn snap_notes(app: AppHandle) -> Result<LayoutOutcome, String> {
     let notes = note_windows(&app);
-    log::info!("snap: starting with {} note(s)", notes.len());
+    let total = notes.len();
+    log::info!("snap: starting with {total} note(s)");
     if notes.is_empty() {
         return Err("There are no notes to align.".into());
     }
@@ -1825,8 +1899,10 @@ pub async fn snap_notes(app: AppHandle) -> Result<usize, String> {
     // Current geometry, read before anything moves.
     let mut current: Vec<(String, tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>, String)> =
         Vec::new();
+    let mut skipped: Vec<(String, &'static str)> = Vec::new();
     for (label, window) in notes {
         let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) else {
+            skipped.push((label, NOT_MEASURED));
             continue;
         };
         let monitor = window
@@ -1861,6 +1937,9 @@ pub async fn snap_notes(app: AppHandle) -> Result<usize, String> {
             .and_then(|w| w.current_monitor().ok().flatten())
             .or_else(|| app.primary_monitor().ok().flatten());
         let Some(monitor) = monitor else {
+            for (label, _, _, _) in &group {
+                skipped.push((label.clone(), NO_SCREEN));
+            }
             continue;
         };
         // Owned before the monitor goes out of scope: `work_area` borrows it.
@@ -1928,10 +2007,9 @@ pub async fn snap_notes(app: AppHandle) -> Result<usize, String> {
     }
 
     let count = moves.len();
-    log::info!("snap: aligning {count} note(s)");
+    log::info!("snap: aligning {count} of {total} note(s)");
     place_windows(&app, moves);
-    log::info!("snap: aligned {count} note(s)");
-    Ok(count)
+    Ok(LayoutOutcome::new(count, total, &skipped))
 }
 
 /// A display, as Settings needs to describe it.
@@ -2010,7 +2088,7 @@ pub fn list_screens(app: AppHandle) -> Vec<ScreenInfo> {
 /// one. Width is kept where it fits, because a note's width is a preference;
 /// height is scaled with the screen, because a shorter screen cannot hold it.
 #[tauri::command]
-pub async fn move_notes_to_screen(app: AppHandle, name: String) -> Result<usize, String> {
+pub async fn move_notes_to_screen(app: AppHandle, name: String) -> Result<LayoutOutcome, String> {
     let monitors = app.available_monitors().map_err(|e| e.to_string())?;
     let Some(target) = monitors.iter().find(|m| m.name() == Some(&name)) else {
         return Err("That screen is no longer attached.".into());
@@ -2021,6 +2099,8 @@ pub async fn move_notes_to_screen(app: AppHandle, name: String) -> Result<usize,
     if notes.is_empty() {
         return Err("There are no notes to move.".into());
     }
+    let open: Vec<String> = notes.iter().map(|(label, _)| label.clone()).collect();
+    let total = open.len();
 
     LAYOUT_BUSY.store(true, Ordering::Relaxed);
 
@@ -2034,11 +2114,14 @@ pub async fn move_notes_to_screen(app: AppHandle, name: String) -> Result<usize,
         settings.relative_layout.clone()
     };
 
+    let mut skipped: Vec<(String, &'static str)> = Vec::new();
+
     let moves = if relative.is_empty() {
         // Nothing remembered yet: fall back to what is on screen.
         let mut current = Vec::new();
         for (label, window) in notes {
             let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) else {
+                skipped.push((label, NOT_MEASURED));
                 continue;
             };
             current.push((label, pos, size));
@@ -2049,10 +2132,18 @@ pub async fn move_notes_to_screen(app: AppHandle, name: String) -> Result<usize,
         project_relative(&app, &relative, &area.position, &area.size)
     };
 
+    // A note that is open but absent from the remembered shape would simply
+    // stay behind on the old screen, and the count would not mention it.
+    for label in open {
+        if !moves.iter().any(|(moved, _, _)| *moved == label) {
+            skipped.push((label, NOT_IN_LAYOUT));
+        }
+    }
+
     let count = moves.len();
-    log::info!("screens: moving {count} note(s) to {name}");
+    log::info!("screens: moving {count} of {total} note(s) to {name}");
     place_windows(&app, moves);
-    Ok(count)
+    Ok(LayoutOutcome::new(count, total.max(count), &skipped))
 }
 
 
@@ -2222,5 +2313,35 @@ mod relative_tests {
         let b_first = b.iter().find(|n| n.label == "a").unwrap();
         assert!((a_first.fx - b_first.fx).abs() < 0.0001);
         assert!((a_first.fw - b_first.fw).abs() < 0.0001);
+    }
+}
+
+#[cfg(test)]
+mod outcome_tests {
+    use super::*;
+
+    #[test]
+    fn one_phrase_per_reason_with_the_right_plural() {
+        let skipped = vec![
+            ("note-1".to_string(), NO_LIST),
+            ("note-2".to_string(), NO_SCREEN),
+            ("note-3".to_string(), NO_SCREEN),
+        ];
+
+        assert_eq!(
+            summarise(&skipped),
+            vec![
+                "1 note whose list is gone".to_string(),
+                "2 notes with no screen to put it on".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn nothing_skipped_says_nothing() {
+        assert!(summarise(&[]).is_empty());
+        let outcome = LayoutOutcome::new(5, 5, &[]);
+        assert_eq!(outcome.moved, 5);
+        assert!(outcome.skipped.is_empty());
     }
 }
