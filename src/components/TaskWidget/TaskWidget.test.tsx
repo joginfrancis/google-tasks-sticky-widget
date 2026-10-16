@@ -61,6 +61,7 @@ beforeEach(() => {
     onToggle: vi.fn(),
     onDelete: noop,
     onDeleteMany: vi.fn(),
+    onDuplicate: vi.fn(),
     onEdit: noop,
     onSetDue: noop,
     onOpenInGoogle: noop,

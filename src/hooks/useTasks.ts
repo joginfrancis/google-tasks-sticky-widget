@@ -1012,6 +1012,79 @@ export function useTasks(connected: boolean) {
     [],
   );
 
+/**
+   * Copies a task to directly below itself.
+   *
+   * A whole copy, not just the title: the description and the date come too,
+   * and so do the subtasks — a duplicated parent without its children is half
+   * a copy and leaves the user to rebuild the half that was the work.
+   *
+   * Sequential, like every other multi-write here: `create_task` positions each
+   * new task by the one it follows, so the subtasks have to be created in
+   * order. The title is left exactly as it was; "Water the plants" twice is
+   * usually the point, and renaming one is a click away.
+   */
+  const duplicateTask = useCallback(
+    async (taskId: string) => {
+      const listId = currentListRef.current;
+      if (!listId) return;
+
+      const source = tasksRef.current.find((t) => t.id === taskId);
+      if (!source) return;
+
+      // A task Google has not confirmed yet has no id to position against.
+      if (taskId.startsWith("pending-")) return;
+
+      setError(taskId, null);
+
+      try {
+        const created = await invoke<Task>("create_task", {
+          taskListId: listId,
+          title: source.title,
+          notes: source.notes ?? null,
+          parentId: source.parentId ?? null,
+          afterId: taskId,
+        });
+
+        // `create_task` does not take a date; the copy is given one after the
+        // fact, which is also how the rest of the app sets dates.
+        if (source.due) {
+          await invoke<Task>("update_task", {
+            taskListId: listId,
+            taskId: created.id,
+            due: source.due,
+          });
+        }
+
+        const children = tasksRef.current.filter((t) => t.parentId === taskId);
+        let after: string | null = null;
+        for (const child of children) {
+          const copy: Task = await invoke<Task>("create_task", {
+            taskListId: listId,
+            title: child.title,
+            notes: child.notes ?? null,
+            parentId: created.id,
+            afterId: after,
+          });
+          if (child.due) {
+            await invoke<Task>("update_task", {
+              taskListId: listId,
+              taskId: copy.id,
+              due: child.due,
+            });
+          }
+          after = copy.id;
+        }
+
+        await readCache(listId);
+      } catch (err) {
+        await readCache(listId);
+        setError(taskId, String(err));
+      }
+    },
+    [readCache, setError],
+  );
+
   const createList = useCallback(
     async (title: string): Promise<string | null> => {
       try {
@@ -1132,6 +1205,7 @@ export function useTasks(connected: boolean) {
     addTask,
     addSubtask,
     addTaskBelow,
+    duplicateTask,
     addOutline,
     editTask,
     openInGoogle,

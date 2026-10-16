@@ -56,15 +56,40 @@ export function parseOutline(text: string): OutlineEntry[] {
     // Blank lines are separators in prose and mean nothing as tasks.
     .filter((line) => line.trim() !== "");
 
+  // Whether this text marks its tasks with bullets.
+  //
+  // `formatTasksAsText` writes titles as bullets and a task's details as plain
+  // indented lines beneath them, so in such a text an unbulleted line that is
+  // indented under a bullet is detail, not a task. Text typed by hand usually
+  // has no bullets at all, where an indented line *is* a subtask — so the
+  // document decides, rather than a rule that would break one of the two.
+  const bulleted = lines.some((line) => LIST_MARKER.test(line.trim()));
+
   const entries: OutlineEntry[] = [];
   // Indent of the most recent top-level line, so a subtask is recognised by
   // being deeper than its parent rather than deeper than some fixed column.
   let topLevelIndent: number | null = null;
+  /** Indent of the last line that was a task, for spotting its details. */
+  let lastTaskIndent: number | null = null;
 
   for (const line of lines) {
     const columns = indentColumns(line);
+    const isBullet = LIST_MARKER.test(line.trim());
     const title = line.trim().replace(LIST_MARKER, "").trim();
     if (title === "") continue;
+
+    // A detail line under a bulleted task: part of its description, which a
+    // paste cannot carry, rather than a task in its own right.
+    if (
+      bulleted &&
+      !isBullet &&
+      lastTaskIndent !== null &&
+      columns > lastTaskIndent
+    ) {
+      continue;
+    }
+
+    lastTaskIndent = columns;
 
     // The first line sets the baseline: text pasted from an already-indented
     // block should not become one long chain of subtasks.
@@ -92,30 +117,95 @@ export function isOutlinePaste(text: string): boolean {
   return parseOutline(text).length > 1;
 }
 
-/** The least a task needs to be written out as a line of an outline. */
-export interface OutlineTask {
+/** A task with everything worth writing down about it. */
+export interface DetailedTask {
   id: string;
   title: string;
   parentId: string | null;
+  notes: string | null;
+  /** RFC 3339, as Google gives it. */
+  due?: string | null;
+}
+
+/** Month names written out, so copied text does not depend on a locale. */
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+/**
+ * A due date as it should read in a document someone else may open next week.
+ *
+ * Absolute, not "Tomorrow": the relative form the rows use is right on screen
+ * and wrong the moment the text is pasted somewhere and read later.
+ */
+function dueLine(due: string): string {
+  const date = new Date(due);
+  if (Number.isNaN(date.getTime())) return "";
+  return `Due ${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
 }
 
 /**
- * Writes tasks out as indented text — the inverse of `parseOutline`.
+ * Writes tasks out as text, keeping the hierarchy and the details.
  *
- * Copying a selection and pasting it back into a note rebuilds the same tasks
- * with the same nesting, so the two functions are tested as a pair. Tasks come
- * in the order they are shown, which is the order they should be pasted.
+ * ```
+ * - Book the venue
+ *   Deposit is due on signing
+ *   Due 20 Oct 2026
+ *   - Call about parking
+ *     Ask for the side gate
+ * ```
  *
- * A selected parent brings its subtasks with it, as it would in a drag. A
- * subtask selected without its parent is written at the top level: indenting it
- * would make it a subtask of whatever line happens to precede it on paste.
+ * Titles carry a bullet and details do not, which is the distinction
+ * `parseOutline` reads: pasting this back into a note rebuilds the same tasks
+ * and the same nesting. Details are dropped on the way back, because a pasted
+ * line can only become a title — better that than inventing a task called
+ * "Deposit is due on signing".
+ *
+ * A selected parent brings its subtasks. A subtask selected without its parent
+ * is written at the top level rather than indented under whatever happens to
+ * precede it.
  */
-export function formatOutline(tasks: OutlineTask[], selectedIds: Set<string>): string {
+export function formatTasksAsText(
+  tasks: DetailedTask[],
+  selectedIds: Set<string>,
+): string {
   const lines: string[] = [];
+
   for (const task of tasks) {
-    const parentSelected = task.parentId !== null && selectedIds.has(task.parentId);
+    const parentSelected =
+      task.parentId !== null && selectedIds.has(task.parentId);
     if (!selectedIds.has(task.id) && !parentSelected) continue;
-    lines.push(parentSelected ? `  ${task.title}` : task.title);
+
+    const indent = parentSelected ? "  " : "";
+    lines.push(`${indent}- ${task.title}`);
+
+    const detail = `${indent}  `;
+
+    // Notes keep their own line breaks: a description written as three bullet
+    // points should arrive as three bullet points.
+    if (task.notes) {
+      for (const line of task.notes.split(/\r\n|\r|\n/)) {
+        if (line.trim() === "") continue;
+        lines.push(`${detail}${line.trim()}`);
+      }
+    }
+
+    if (task.due) {
+      const written = dueLine(task.due);
+      if (written) lines.push(`${detail}${written}`);
+    }
   }
+
   return lines.join("\n");
 }

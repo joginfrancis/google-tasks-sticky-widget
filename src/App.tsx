@@ -531,6 +531,7 @@ export default function App() {
       onSetDue={(id, due) => void tasks.editTask(id, { due })}
       onOpenInGoogle={tasks.openInGoogle}
       onMoveToList={(id, dest) => void tasks.moveTaskToList(id, dest)}
+      onDuplicate={(id) => void tasks.duplicateTask(id)}
       onMoveTo={(ids, target) => void tasks.moveTasksTo(ids, target)}
       onAdopt={(ids, fromListId, toIndex) =>
         void tasks.adoptTasks(ids, fromListId, toIndex)

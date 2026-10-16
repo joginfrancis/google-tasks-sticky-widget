@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatOutline, isOutlinePaste, parseOutline } from "./outline";
+import { formatTasksAsText, isOutlinePaste, parseOutline } from "./outline";
 
 describe("parseOutline", () => {
   it("makes one task per line", () => {
@@ -119,41 +119,64 @@ describe("isOutlinePaste", () => {
   });
 });
 
-describe("formatOutline", () => {
+describe("formatTasksAsText — copying tasks as readable text", () => {
   const tasks = [
-    { id: "a", title: "shopping", parentId: null },
-    { id: "a1", title: "milk", parentId: "a" },
-    { id: "a2", title: "eggs", parentId: "a" },
-    { id: "b", title: "bank", parentId: null },
+    {
+      id: "a",
+      title: "Book the venue",
+      parentId: null,
+      notes: "Deposit is due on signing\nAsk about the piano",
+      due: "2026-10-20T00:00:00.000Z",
+    },
+    { id: "a1", title: "Call about parking", parentId: "a", notes: "Side gate", due: null },
+    { id: "b", title: "Send invitations", parentId: null, notes: null, due: null },
   ];
 
-  it("writes a selected parent with its subtasks indented beneath it", () => {
-    expect(formatOutline(tasks, new Set(["a"]))).toBe("shopping\n  milk\n  eggs");
-  });
-
-  it("writes a lone subtask at the top level", () => {
-    // Indented, it would become a subtask of whatever preceded it on paste.
-    expect(formatOutline(tasks, new Set(["a2", "b"]))).toBe("eggs\nbank");
-  });
-
-  it("keeps the order tasks are shown in", () => {
-    expect(formatOutline(tasks, new Set(["b", "a"]))).toBe(
-      "shopping\n  milk\n  eggs\nbank",
+  it("writes titles as bullets and details beneath them", () => {
+    expect(formatTasksAsText(tasks, new Set(["a", "b"]))).toBe(
+      [
+        "- Book the venue",
+        "  Deposit is due on signing",
+        "  Ask about the piano",
+        "  Due 20 Oct 2026",
+        "  - Call about parking",
+        "    Side gate",
+        "- Send invitations",
+      ].join("\n"),
     );
   });
 
-  it("is empty when nothing is selected", () => {
-    expect(formatOutline(tasks, new Set())).toBe("");
+  it("writes a subtask picked on its own at the top level", () => {
+    expect(formatTasksAsText(tasks, new Set(["a1"]))).toBe(
+      ["- Call about parking", "  Side gate"].join("\n"),
+    );
   });
 
-  // The property that matters: copy, paste, and you have what you copied.
-  it("round-trips through parseOutline", () => {
-    const text = formatOutline(tasks, new Set(["a", "b"]));
+  it("round-trips: pasting it back rebuilds the same tasks", () => {
+    const text = formatTasksAsText(tasks, new Set(["a", "b"]));
     expect(parseOutline(text)).toEqual([
-      { title: "shopping", depth: 0 },
-      { title: "milk", depth: 1 },
-      { title: "eggs", depth: 1 },
-      { title: "bank", depth: 0 },
+      { title: "Book the venue", depth: 0 },
+      { title: "Call about parking", depth: 1 },
+      { title: "Send invitations", depth: 0 },
+    ]);
+  });
+
+  it("still reads hand-written indented text as subtasks", () => {
+    // No bullets anywhere, so an indented line is a subtask as before — the
+    // detail rule must not swallow the way people actually type lists.
+    expect(parseOutline("Shopping\n  Milk\n  Bread")).toEqual([
+      { title: "Shopping", depth: 0 },
+      { title: "Milk", depth: 1 },
+      { title: "Bread", depth: 1 },
+    ]);
+  });
+
+  it("keeps an unbulleted line that is not indented under a task", () => {
+    // Mixed text: the plain line is level with the bullets, so it is a task.
+    expect(parseOutline("- One\nTwo\n- Three")).toEqual([
+      { title: "One", depth: 0 },
+      { title: "Two", depth: 0 },
+      { title: "Three", depth: 0 },
     ]);
   });
 });

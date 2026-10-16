@@ -18,7 +18,7 @@ import { useDragSession } from "../../hooks/useDragSession";
 import { useForeignDrag } from "../../hooks/useForeignDrag";
 import type { OutlineEntry } from "../../lib/outline";
 import { resolveDrop, slotAt, type DropTarget } from "../../lib/dropTarget";
-import { formatOutline } from "../../lib/outline";
+import { formatTasksAsText } from "../../lib/outline";
 import {
   applySelectClick,
   emptySelection,
@@ -57,6 +57,8 @@ interface Props {
   onDelete: (id: string) => void;
   /** Several tasks behind one Undo. */
   onDeleteMany: (ids: string[]) => void;
+  /** Copies a task, its details and its subtasks to below itself. */
+  onDuplicate: (id: string) => void;
   onEdit: (id: string, patch: { title?: string; notes?: string }) => void;
   onSetDue: (id: string, due: string | null) => void;
   onOpenInGoogle: (id: string) => void;
@@ -376,15 +378,23 @@ export function TaskWidget(props: Props) {
     else props.onToggle(id);
   };
 
-  const copySelected = () => {
-    // Indented the same way a paste is read, so copying tasks and pasting
-    // them into any note rebuilds them, nesting and all.
-    const text = formatOutline(sectionTasks, selectedIds);
+  /**
+   * Puts tasks on the clipboard as text a person can read.
+   *
+   * Titles as bullets, descriptions and dates as the lines beneath them,
+   * subtasks indented under their parent — a shape that pastes into a document
+   * as an outline and back into a note as the same tasks.
+   */
+  const copyAsText = (ids: Set<string>) => {
+    const text = formatTasksAsText(sectionTasks, ids);
+    if (!text) return;
     void navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1200);
     });
   };
+
+  const copySelected = () => copyAsText(selectedIds);
 
   // Escape ends a selection and Delete acts on it — but never while typing,
   // where both keys already mean something to the text.
@@ -811,6 +821,8 @@ export function TaskWidget(props: Props) {
                   onSelect={selectIn("active")}
                   onAddSubtask={props.onAddSubtask}
                   onOpenPage={props.onOpenPage}
+                  onDuplicate={props.onDuplicate}
+                  onCopyText={(id) => copyAsText(new Set([id]))}
                   onStartAddBelow={startAddBelow}
                   isAddingBelow={belowHostId === task.id}
                   belowIsSubtask={Boolean(belowTask?.parentId)}

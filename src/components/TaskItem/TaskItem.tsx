@@ -68,6 +68,10 @@ interface Props {
   onAddSubtask?: (parentId: string, title: string) => Promise<string | null>;
   /** Opens this task in a window of its own. */
   onOpenPage?: (id: string) => void;
+  /** Copies this task — details, date and subtasks — to just below itself. */
+  onDuplicate?: (id: string) => void;
+  /** Puts this task and its subtasks on the clipboard as readable text. */
+  onCopyText?: (id: string) => void;
   /**
    * Opens the "add a task below this one" field. The list owns which row has
    * it, so after each add the field can hop down onto the task just created
@@ -103,6 +107,8 @@ export function TaskItem({
   onSelect,
   onAddSubtask,
   onOpenPage,
+  onDuplicate,
+  onCopyText,
   onStartAddBelow,
   isAddingBelow,
   belowIsSubtask,
@@ -919,6 +925,35 @@ export function TaskItem({
             </button>
           )}
 
+          {onDuplicate && !done && (
+            <button
+              className="task-tool"
+              aria-label="Duplicate"
+              title="Duplicate this task"
+              onClick={() => onDuplicate(task.id)}
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                <rect
+                  x="5.5"
+                  y="5.5"
+                  width="8"
+                  height="8"
+                  rx="1.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                />
+                <path
+                  d="M10.5 3.5H4a1.5 1.5 0 0 0-1.5 1.5v6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          )}
+
           {onOpenPage && (
             <button
               className="task-tool"
@@ -1045,6 +1080,30 @@ export function TaskItem({
                 }}
               >
                 Add task below
+              </button>
+            )}
+            {onDuplicate && (
+              <button
+                role="menuitem"
+                className="task-menu-item"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onDuplicate(task.id);
+                }}
+              >
+                Duplicate
+              </button>
+            )}
+            {onCopyText && (
+              <button
+                role="menuitem"
+                className="task-menu-item"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onCopyText(task.id);
+                }}
+              >
+                Copy as text
               </button>
             )}
             {canAddSubtask && (
