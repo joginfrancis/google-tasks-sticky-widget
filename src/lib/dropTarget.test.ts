@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyDrop, resolveDrop, type DropRow } from "./dropTarget";
+import { applyDrop, resolveDrop, slotAt, type DropRow } from "./dropTarget";
 
 /** `a`, `b` with children `b1`/`b2`, then `c` — the list as drawn. */
 const rows: DropRow[] = [
@@ -220,5 +220,45 @@ describe("applyDrop", () => {
         }
       }
     }
+  });
+});
+
+describe("slotAt — which slot the pointer is over", () => {
+  const area = { top: 100, bottom: 500, left: 0, right: 300 };
+  const rows = [
+    { top: 100, height: 40 }, // 100–140
+    { top: 140, height: 40 }, // 140–180
+  ];
+
+  it("lands at the end when the pointer is in the blank space below the rows", () => {
+    // The bug: this space is inside the note and outside the <ul>, so every
+    // drop here used to be refused and the task sprang back.
+    expect(slotAt({ x: 150, y: 400 }, area, rows)).toBe(2);
+  });
+
+  it("gives an empty note its one slot", () => {
+    expect(slotAt({ x: 150, y: 300 }, area, [])).toBe(0);
+  });
+
+  it("puts a drop above the first row first", () => {
+    expect(slotAt({ x: 150, y: 105 }, area, rows)).toBe(0);
+  });
+
+  it("counts a row as passed once the pointer is past its middle", () => {
+    expect(slotAt({ x: 150, y: 135 }, area, rows)).toBe(1);
+    expect(slotAt({ x: 150, y: 145 }, area, rows)).toBe(1);
+    expect(slotAt({ x: 150, y: 165 }, area, rows)).toBe(2);
+  });
+
+  it("forgives a little overshoot past an edge", () => {
+    expect(slotAt({ x: 150, y: 490 }, area, rows)).toBe(2);
+    expect(slotAt({ x: 150, y: 515 }, area, rows)).toBe(2);
+  });
+
+  it("refuses a pointer that is nowhere near", () => {
+    expect(slotAt({ x: 150, y: 600 }, area, rows)).toBeNull();
+    expect(slotAt({ x: 150, y: 20 }, area, rows)).toBeNull();
+    expect(slotAt({ x: 420, y: 300 }, area, rows)).toBeNull();
+    expect(slotAt({ x: 150, y: 300 }, null, rows)).toBeNull();
   });
 });

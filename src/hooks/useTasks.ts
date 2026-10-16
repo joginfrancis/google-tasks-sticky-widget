@@ -711,6 +711,23 @@ export function useTasks(connected: boolean) {
     [readCache, setError],
   );
 
+/**
+   * Takes several tasks from another list, in the order they were shown.
+   *
+   * One at a time, and awaited: `move_task` positions each arrival by index,
+   * and five requests in flight at once arrive in whatever order the network
+   * settles on. Each one lands a slot further down so the group keeps its
+   * order rather than stacking up reversed.
+   */
+  const adoptTasks = useCallback(
+    async (taskIds: string[], fromListId: string, toIndex: number) => {
+      for (const [offset, taskId] of taskIds.entries()) {
+        await adoptTask(taskId, fromListId, toIndex + offset);
+      }
+    },
+    [adoptTask],
+  );
+
   /**
    * Moves a task to an exact parent and position, as the API expresses it.
    *
@@ -786,7 +803,32 @@ export function useTasks(connected: boolean) {
     [readCache],
   );
 
+/** The same, for a whole selection handed to another note. */
+  const departTasks = useCallback(
+    (taskIds: string[]) => {
+      for (const taskId of taskIds) departTask(taskId);
+    },
+    [departTask],
+  );
+
   /** Kept as a named intent; the context menu reads better for it. */
+/**
+   * Moves several tasks to one place, keeping their order.
+   *
+   * The first goes where the drop landed; each one after it follows the one
+   * before, which is how a group of tasks stays a group.
+   */
+  const moveTasksTo = useCallback(
+    async (taskIds: string[], target: DropTarget) => {
+      let previous = target.previous;
+      for (const taskId of taskIds) {
+        await moveTaskTo(taskId, { parent: target.parent, previous });
+        previous = taskId;
+      }
+    },
+    [moveTaskTo],
+  );
+
   const moveTaskToList = useCallback(
     (id: string, destinationListId: string) =>
       moveTask(id, { toListId: destinationListId }),
@@ -1095,9 +1137,12 @@ export function useTasks(connected: boolean) {
     openInGoogle,
     moveTask,
     moveTaskTo,
+    moveTasksTo,
     moveTaskToList,
     adoptTask,
+    adoptTasks,
     departTask,
+    departTasks,
     createList,
     renameList,
     deleteList,

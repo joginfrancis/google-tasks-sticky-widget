@@ -28,7 +28,10 @@ import { windowLabel } from "../lib/window";
 const DRAG_THRESHOLD_PX = 4;
 
 export interface DragSession {
+  /** The row under the pointer: what the ghost shows, and the anchor of a move. */
   taskId: string;
+  /** Every task travelling, in the order they are shown. */
+  taskIds: string[];
   fromListId: string;
   fromIndex: number;
   cursor: { x: number; y: number };
@@ -43,6 +46,15 @@ export interface DragSession {
 
 interface StartArgs {
   taskId: string;
+  /**
+   * The tasks this drag carries, in visible order.
+   *
+   * Just the grabbed row for an ordinary drag; every selected row when the
+   * grabbed one belongs to a selection. The list decides this, because the
+   * selection is its state and the rule — a selected subtask whose parent is
+   * also selected travels with the parent, not twice — is about its rows.
+   */
+  taskIds: string[];
   fromListId: string;
   fromIndex: number;
   title: string;
@@ -64,7 +76,7 @@ export function useDragSession(options: {
    * The drop landed. `slot` is an insertion point in the list *as drawn*,
    * still containing the dragged row — see the note where it is called.
    */
-  onCommit: (taskId: string, slot: number) => void;
+  onCommit: (taskIds: string[], slot: number) => void;
   /**
    * The task was dropped into another note and is leaving this one.
    *
@@ -72,7 +84,7 @@ export function useDragSession(options: {
    * over the desktop, or back into this same list, is a cancel and leaves the
    * row exactly where it was.
    */
-  onDepart?: (taskId: string) => void;
+  onDepart?: (taskIds: string[]) => void;
 }) {
   const [session, setSession] = useState<DragSession | null>(null);
 
@@ -142,6 +154,7 @@ export function useDragSession(options: {
           originLabel: self,
           targetLabel: foreignTargetRef.current,
           taskId: current.taskId,
+          taskIds: current.taskIds,
           fromListId: current.fromListId,
           screenX,
           screenY,
@@ -197,6 +210,7 @@ export function useDragSession(options: {
         const rect = pending.row.getBoundingClientRect();
         setSession({
           taskId: pending.taskId,
+          taskIds: pending.taskIds,
           fromListId: pending.fromListId,
           fromIndex: pending.fromIndex,
           cursor: { x: event.clientX, y: event.clientY },
@@ -209,7 +223,12 @@ export function useDragSession(options: {
           ghost: {
             width: rect.width,
             height: rect.height,
-            title: pending.title,
+            // A count, when there is more than one: the title of whichever row
+            // happened to be grabbed would misrepresent what is being moved.
+            title:
+              pending.taskIds.length > 1
+                ? `${pending.taskIds.length} tasks`
+                : pending.title,
           },
         });
         return;
@@ -263,13 +282,14 @@ export function useDragSession(options: {
           originLabel: windowLabel(),
           targetLabel: foreign,
           taskId: current.taskId,
+          taskIds: current.taskIds,
           fromListId: current.fromListId,
           ...screen,
         });
         // Take it off this note now rather than when the move lands. Clearing
         // the session alone would un-dim the row for the moment in between, so
         // a successful drag would end with a flash of the task you just moved.
-        optionsRef.current.onDepart?.(current.taskId);
+        optionsRef.current.onDepart?.(current.taskIds);
 
         announcedForeignRef.current = false;
         foreignTargetRef.current = null;
@@ -291,7 +311,7 @@ export function useDragSession(options: {
         // for that here would be the third place in this codebase to hold an
         // opinion about which frame an index is in; resolveDrop takes the
         // visible frame by contract and converts it once, under test.
-        optionsRef.current.onCommit(current.taskId, current.overIndex);
+        optionsRef.current.onCommit(current.taskIds, current.overIndex);
       }
       setSession(null);
     };

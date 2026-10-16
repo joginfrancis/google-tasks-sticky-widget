@@ -42,7 +42,16 @@ export interface DragOverPayload {
   originLabel: string;
   /** Note the cursor is over now, or null when it is over none. */
   targetLabel: string | null;
+  /** The row that was grabbed — what the ghost shows and what it follows. */
   taskId: string;
+  /**
+   * Every task travelling, in the order they are shown.
+   *
+   * One id for an ordinary drag; the whole selection when the grabbed row was
+   * part of one. The order matters on arrival: the API positions a task by the
+   * task it follows, so inserting them in any other order lands them reversed.
+   */
+  taskIds: string[];
   fromListId: string;
   /** Physical screen pixels — the one frame both windows agree on. */
   screenX: number;

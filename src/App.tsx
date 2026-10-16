@@ -531,11 +531,11 @@ export default function App() {
       onSetDue={(id, due) => void tasks.editTask(id, { due })}
       onOpenInGoogle={tasks.openInGoogle}
       onMoveToList={(id, dest) => void tasks.moveTaskToList(id, dest)}
-      onMoveTo={(id, target) => void tasks.moveTaskTo(id, target)}
-      onAdopt={(id, fromListId, toIndex) =>
-        void tasks.adoptTask(id, fromListId, toIndex)
+      onMoveTo={(ids, target) => void tasks.moveTasksTo(ids, target)}
+      onAdopt={(ids, fromListId, toIndex) =>
+        void tasks.adoptTasks(ids, fromListId, toIndex)
       }
-      onDepart={tasks.departTask}
+      onDepart={tasks.departTasks}
       onCreateList={tasks.createList}
       onRenameList={tasks.renameList}
       onDeleteList={tasks.deleteList}

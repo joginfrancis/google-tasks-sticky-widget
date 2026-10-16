@@ -35,6 +35,8 @@ const handledDrop = { current: "" };
 
 export interface ForeignDrag {
   taskId: string;
+  /** Every task travelling, in the order the source note shows them. */
+  taskIds: string[];
   fromListId: string;
   /** Slot this window would drop into, or null when not over its list. */
   overIndex: number | null;
@@ -43,8 +45,8 @@ export interface ForeignDrag {
 export function useForeignDrag(options: {
   /** Client point → insertion index in this window's list, or null. */
   resolveIndex: (client: { x: number; y: number }) => number | null;
-  /** Take the task from another list into this one, at an index. */
-  onAdopt: (taskId: string, fromListId: string, toIndex: number) => void;
+  /** Take the tasks from another list into this one, at an index. */
+  onAdopt: (taskIds: string[], fromListId: string, toIndex: number) => void;
 }) {
   const [drag, setDrag] = useState<ForeignDrag | null>(null);
 
@@ -87,6 +89,9 @@ export function useForeignDrag(options: {
           const client = toClient(frame, payload.screenX, payload.screenY);
           setDrag({
             taskId: payload.taskId,
+            // An older build broadcast one id and no list; one id is still a
+            // perfectly good list of one.
+            taskIds: payload.taskIds ?? [payload.taskId],
             fromListId: payload.fromListId,
             overIndex: optionsRef.current.resolveIndex(client),
           });
@@ -129,7 +134,11 @@ export function useForeignDrag(options: {
         // Appending would put the task somewhere the user never pointed at.
         if (index === null) return;
 
-        optionsRef.current.onAdopt(payload.taskId, payload.fromListId, index);
+        optionsRef.current.onAdopt(
+          payload.taskIds ?? [payload.taskId],
+          payload.fromListId,
+          index,
+        );
       }),
 
       onDragEnd(() => {

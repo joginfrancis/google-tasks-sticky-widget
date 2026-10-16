@@ -17,7 +17,7 @@ import { TaskItem } from "../TaskItem/TaskItem";
 import { useDragSession } from "../../hooks/useDragSession";
 import { useForeignDrag } from "../../hooks/useForeignDrag";
 import type { OutlineEntry } from "../../lib/outline";
-import { resolveDrop, type DropTarget } from "../../lib/dropTarget";
+import { resolveDrop, slotAt, type DropTarget } from "../../lib/dropTarget";
 import { formatOutline } from "../../lib/outline";
 import {
   applySelectClick,
@@ -39,11 +39,11 @@ interface Props {
   tasks: Task[];
   /** Reorder within the current list. Index is among top-level active rows. */
   /** Move a task to an exact parent and position within this list. */
-  onMoveTo: (taskId: string, target: DropTarget) => void;
+  onMoveTo: (taskIds: string[], target: DropTarget) => void;
   /** The task was dropped into another note; drop it from this view. */
-  onDepart: (taskId: string) => void;
+  onDepart: (taskIds: string[]) => void;
   /** Take a task dragged in from another note into this window's list. */
-  onAdopt: (taskId: string, fromListId: string, toIndex: number) => void;
+  onAdopt: (taskIds: string[], fromListId: string, toIndex: number) => void;
   taskLists: TaskList[];
   settings: Settings;
   status: Status;
@@ -442,6 +442,31 @@ export function TaskWidget(props: Props) {
   // is also what gets handed to the resolver.
   const reorderable = useMemo(() => active, [active]);
 
+/**
+   * The tasks a drag starting on this row should carry.
+   *
+   * The grabbed row alone, unless it belongs to a selection of more than one —
+   * then the whole selection travels, in the order it is shown. A selected
+   * subtask whose parent is also selected is left out: children follow their
+   * parent through the move, and naming it twice would move it twice.
+   */
+  const travellingFrom = useCallback(
+    (id: string): string[] => {
+      if (!selectedIds.has(id) || selectedIds.size < 2) return [id];
+
+      const ids = sectionTasks
+        .filter(
+          (t) =>
+            selectedIds.has(t.id) &&
+            !(t.parentId !== null && selectedIds.has(t.parentId)),
+        )
+        .map((t) => t.id);
+
+      return ids.length > 0 ? ids : [id];
+    },
+    [selectedIds, sectionTasks],
+  );
+
   const listRef = useRef<HTMLUListElement>(null);
   /**
    * The scrolling area, which exists even when the list does not.
@@ -461,33 +486,29 @@ export function TaskWidget(props: Props) {
    */
   const resolveIndex = useCallback(
     (client: { x: number; y: number }) => {
+      // The *body* says whether the drop is ours; the *rows* say where in the
+      // list it goes. Asking the <ul> both questions refused every drop in the
+      // blank space below the last task, which on a half-full note is most of
+      // what a person reads as the list — and refused an empty note outright,
+      // which is the one place a hand-off is most obviously wanted.
+      //
+      // A drop over the completed section lands at the end of the active list.
+      // Nothing can be dropped *into* "completed", and the end of the list is
+      // the nearest honest answer to a pointer below every active row.
+      const body = bodyRef.current;
       const list = listRef.current;
-      const host = list ?? bodyRef.current;
-      if (!host) return null;
 
-      const bounds = host.getBoundingClientRect();
-      const slack = 24; // Forgive a little overshoot past either end.
-      if (
-        client.y < bounds.top - slack ||
-        client.y > bounds.bottom + slack ||
-        client.x < bounds.left - slack ||
-        client.x > bounds.right + slack
-      ) {
-        return null;
-      }
+      const rows = list
+        ? Array.from(list.querySelectorAll<HTMLElement>("li.task-item")).map(
+            (row) => {
+              const rect = row.getBoundingClientRect();
+              return { top: rect.top, height: rect.height };
+            },
+          )
+        : [];
 
-      // Nothing in this note yet: the only slot there is, is the first one.
-      if (!list) return 0;
-
-      const rows = Array.from(
-        list.querySelectorAll<HTMLElement>("li.task-item"),
-      );
-      for (let i = 0; i < rows.length; i += 1) {
-        const rect = rows[i].getBoundingClientRect();
-        // Past a row's midpoint means "after it", which is the next slot.
-        if (client.y < rect.top + rect.height / 2) return i;
-      }
-      return rows.length;
+      const area = body ?? list;
+      return slotAt(client, area ? area.getBoundingClientRect() : null, rows);
     },
     [],
   );
@@ -518,13 +539,24 @@ export function TaskWidget(props: Props) {
     // Drags resolve to a parent and a position rather than an index: with
     // subtasks in play the same slot can mean "last child here" or "next task
     // after this one", and only the pointer's indent tells them apart.
-    onCommit: (taskId, slot) => {
+    onCommit: (taskIds, slot) => {
+      const [taskId] = taskIds;
+      if (!taskId) return;
+
       const rows = reorderable.map((t) => ({
         id: t.id,
         parentId: t.parentId ?? null,
       }));
       const target = resolveDrop(rows, taskId, slot, wantsNestRef.current);
       if (!target) return;
+
+      // A group lands together, in order, wherever the drop was aimed. The
+      // no-op check below is about one row returning to its own position and
+      // cannot speak for a group, so it is skipped.
+      if (taskIds.length > 1) {
+        props.onMoveTo(taskIds, target);
+        return;
+      }
 
       // Skip a write that would change nothing. Judged on where the task ends
       // up, not on which slot it was dropped in: a nest keeps its slot and
@@ -546,7 +578,7 @@ export function TaskWidget(props: Props) {
         return;
       }
 
-      props.onMoveTo(taskId, target);
+      props.onMoveTo([taskId], target);
     },
     onDepart: props.onDepart,
   });
@@ -556,7 +588,9 @@ export function TaskWidget(props: Props) {
   const foreign = useForeignDrag({
     // The visible slot, so the gap is drawn in the same frame as a local drag.
     resolveIndex,
-    onAdopt: (taskId, fromListId, slot) => {
+    onAdopt: (taskIds, fromListId, slot) => {
+      const [taskId] = taskIds;
+      if (!taskId) return;
       // Two notes can show the same list — the `+` button exists to make that
       // happen — and a drag between them is a reorder, not a hand-off. The
       // cross-list path refuses it (there is no list to move to), so without
@@ -568,7 +602,7 @@ export function TaskWidget(props: Props) {
           parentId: t.parentId ?? null,
         }));
         const target = resolveDrop(rows, taskId, slot, false);
-        if (target) props.onMoveTo(taskId, target);
+        if (target) props.onMoveTo(taskIds, target);
         return;
       }
 
@@ -583,7 +617,7 @@ export function TaskWidget(props: Props) {
       const topLevel = reorderable
         .slice(0, slot)
         .filter((t) => !t.parentId).length;
-      props.onAdopt(taskId, fromListId, topLevel);
+      props.onAdopt(taskIds, fromListId, topLevel);
     },
   });
 
@@ -752,7 +786,7 @@ export function TaskWidget(props: Props) {
                 <TaskItem
                   task={task}
                   isSubtask={Boolean(task.parentId)}
-                  isDragging={session?.taskId === task.id}
+                  isDragging={session?.taskIds.includes(task.id) ?? false}
                   onDragPress={
                     // Subtasks drag too now; where a drop lands decides whether
                     // it stays nested, and resolveDrop works that out.
@@ -760,6 +794,7 @@ export function TaskWidget(props: Props) {
                           dragStartXRef.current = event.clientX;
                           beginPress({
                             taskId: task.id,
+                            taskIds: travellingFrom(task.id),
                             fromListId: selectedId ?? "",
                             fromIndex: reorderable.indexOf(task),
                             title: task.title,

@@ -17,6 +17,55 @@ export interface DropRow {
   parentId: string | null;
 }
 
+/** A rectangle, as `getBoundingClientRect` gives it. */
+export interface Bounds {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+/**
+ * Which slot a pointer is over, from the area and the rows in it.
+ *
+ * The *area* decides whether the drop belongs to this list at all, and the
+ * *rows* decide where in it the task lands. Those are two different questions,
+ * and answering both with the row container is what refused every drop below
+ * the last task: the blank space under a short list is not inside the list
+ * element, but it is unmistakably part of the list to the person pointing at
+ * it. A note with nothing in it has no rows and exactly one slot.
+ *
+ * Returns an insertion index, or null when the pointer is outside the area.
+ */
+export function slotAt(
+  client: { x: number; y: number },
+  area: Bounds | null,
+  rows: { top: number; height: number }[],
+  slack = 24,
+): number | null {
+  if (!area) return null;
+
+  // A little overshoot past an edge still counts: a drop aimed at the last row
+  // from slightly below it means the last row.
+  if (
+    client.y < area.top - slack ||
+    client.y > area.bottom + slack ||
+    client.x < area.left - slack ||
+    client.x > area.right + slack
+  ) {
+    return null;
+  }
+
+  for (let i = 0; i < rows.length; i += 1) {
+    // Past a row's midpoint means "after it", which is the next slot.
+    if (client.y < rows[i].top + rows[i].height / 2) return i;
+  }
+
+  // Below every row — including the empty space under a short list, and the
+  // whole of an empty note.
+  return rows.length;
+}
+
 export interface DropTarget {
   /** The parent to move into, or null for top level. */
   parent: string | null;
