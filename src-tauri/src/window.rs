@@ -60,6 +60,30 @@ fn note_visibility(window: &WebviewWindow, visible: bool) {
     }
 }
 
+/// Shows a window and lifts it above whatever was in front.
+///
+/// `show` on its own returns a window to the place it had in the stack, which
+/// on a desktop with a maximised browser in front is behind it — the window is
+/// visible by every measure Windows reports and invisible to the person who
+/// asked for it. Topmost for an instant and then back lifts it to the top of
+/// the ordinary windows without taking the keyboard, which matters when five
+/// notes come back and only one of them should have focus.
+///
+/// A note the user has pinned is already topmost; toggling that off and on
+/// would be a flicker for no gain, and getting the restore wrong would silently
+/// unpin it.
+pub fn show_and_raise(window: &WebviewWindow, pinned: bool) {
+    let _ = window.show();
+    let _ = window.unminimize();
+
+    if !pinned {
+        let _ = window.set_always_on_top(true);
+        let _ = window.set_always_on_top(false);
+    }
+
+    note_visibility(window, true);
+}
+
 pub fn show_and_focus(window: &WebviewWindow) {
     let _ = window.show();
     let _ = window.unminimize();

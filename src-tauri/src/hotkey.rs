@@ -149,11 +149,25 @@ pub fn on_pressed(app: &AppHandle) {
         .iter()
         .any(|(_, win)| win.is_visible().unwrap_or(false));
 
+    // Which notes are pinned in front. Needed by both branches: showing has to
+    // leave a pinned note's topmost flag alone, and hiding leaves it alone
+    // entirely.
+    let pinned: Vec<String> = match app.state::<AppState>().settings.lock() {
+        Ok(settings) => notes
+            .iter()
+            .map(|(label, _)| label.clone())
+            .filter(|label| settings.layer_for(label) == WindowLayer::Top)
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+
     if *hidden || !any_visible {
         log::info!("hotkey: showing {} note(s)", notes.len());
-        for (_, win) in &notes {
-            let _ = win.show();
-            let _ = win.unminimize();
+        for (label, win) in &notes {
+            // Raised, not merely shown. Five notes returned behind a maximised
+            // window is indistinguishable from a shortcut that does nothing,
+            // which is exactly how this was reported.
+            window::show_and_raise(win, pinned.contains(label));
         }
         // Focus one, so the set comes back ready to type into rather than
         // merely visible.
@@ -168,17 +182,8 @@ pub fn on_pressed(app: &AppHandle) {
         return;
     }
 
-    // A pinned note is exempt: pinning says "keep this in front", and a
-    // shortcut that hid it anyway would make the pin meaningless.
-    let pinned: Vec<String> = match app.state::<AppState>().settings.lock() {
-        Ok(settings) => notes
-            .iter()
-            .map(|(label, _)| label.clone())
-            .filter(|label| settings.layer_for(label) == WindowLayer::Top)
-            .collect(),
-        Err(_) => Vec::new(),
-    };
-
+    // A pinned note is exempt from hiding: pinning says "keep this in front",
+    // and a shortcut that hid it anyway would make the pin meaningless.
     let mut hidden_count = 0;
     for (label, win) in &notes {
         if pinned.contains(label) {
