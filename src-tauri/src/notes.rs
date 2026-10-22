@@ -462,6 +462,12 @@ pub fn restore_session(app: &AppHandle, known_lists: &[String]) {
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(2500));
         log_arrangement(&app, "at startup");
+
+        // And recorded, not only logged. The writer only runs after something
+        // moves, so a session where nothing is dragged would have no shape to
+        // project if a screen disappeared — which is exactly the session after
+        // an older shape has been dropped as unreadable.
+        remember_arrangement(&app);
     });
 }
 
