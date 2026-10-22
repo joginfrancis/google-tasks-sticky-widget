@@ -1240,6 +1240,7 @@ pub fn watch_screens(app: &AppHandle) {
                 Some(notes) => {
                     let (placed, _) = apply_notes(&app, notes, "restored for these screens");
                     log::info!("screens: restored the arrangement for {signature} ({placed} note(s))");
+                    settled_on(&app, &signature);
                 }
                 None => {
                     // Never seen these displays together. Rather than leaving
@@ -1256,6 +1257,7 @@ pub fn watch_screens(app: &AppHandle) {
                     match area {
                         Some((pos, size)) => {
                             let placed = apply_relative(&app, pos, size);
+                            settled_on(&app, &signature);
                             log::info!(
                                 "screens: projected the layout onto the main screen ({placed} note(s))"
                             );
@@ -1879,6 +1881,24 @@ pub fn apply_relative(app: &AppHandle, area_pos: tauri::PhysicalPosition<i32>, a
     count
 }
 
+/// Marks this set of displays as the one the remembered shape now describes.
+///
+/// Called once the notes have been put back, which is the moment what is on
+/// screen stops being whatever Windows did and starts being an arrangement
+/// again. Until it is called, the writer leaves the shape alone.
+fn settled_on(app: &AppHandle, signature: &str) {
+    let state = app.state::<AppState>();
+    let Ok(mut settings) = state.settings.lock() else {
+        return;
+    };
+    if settings.relative_signature == signature {
+        return;
+    }
+    log::info!("screens: the shape now belongs to {signature}");
+    settings.relative_signature = signature.to_string();
+    crate::settings::save(app, &settings);
+}
+
 /// The set of displays attached right now, as a key.
 ///
 /// Names rather than positions: a monitor keeps its name across unplugging,
@@ -1926,8 +1946,31 @@ pub fn remember_arrangement(app: &AppHandle) {
     }
 
     let relative = relative_from(&notes);
+
+    // The pixels are always worth recording: they describe this set of
+    // displays and nothing else, so a heap recorded here is only ever replayed
+    // on the desk that produced it, where it is at least what the user is
+    // looking at.
+    //
+    // The shape is different: it is the answer for every screen the app has
+    // never seen, so recording a heap into it spreads the mess everywhere. It
+    // is only updated once the arrangement belongs to the displays attached
+    // now — which, after a monitor disappears, means after the watcher has put
+    // the notes back.
+    let settled_here =
+        settings.relative_signature.is_empty() || settings.relative_signature == signature;
+
+    if settled_here {
+        settings.relative_layout = relative;
+        settings.relative_signature = signature.clone();
+    } else {
+        log::debug!(
+            "layout: not reshaping; the shape belongs to {} and these are {signature}",
+            settings.relative_signature
+        );
+    }
+
     settings.layout_by_screens.insert(signature, notes);
-    settings.relative_layout = relative;
     crate::settings::save(app, &settings);
 }
 

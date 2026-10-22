@@ -146,6 +146,15 @@ pub struct Settings {
     #[serde(default)]
     pub relative_layout: Vec<RelativeNote>,
 
+    /// The set of displays the shape above was measured on.
+    ///
+    /// Between a monitor disappearing and the watcher putting the notes back,
+    /// the notes are wherever Windows dumped them. Anything measured in that
+    /// window is a heap, not an arrangement, so the shape is only updated
+    /// while these match the displays attached now.
+    #[serde(default)]
+    pub relative_signature: String,
+
     /// The arrangement last seen with each set of displays, keyed by their
     /// names.
     ///
@@ -188,6 +197,7 @@ impl Default for Settings {
             last_layout: None,
             layout_by_screens: std::collections::HashMap::new(),
             relative_layout: Vec::new(),
+            relative_signature: String::new(),
             selected_task_list_id: None,
         }
     }
