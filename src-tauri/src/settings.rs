@@ -43,6 +43,10 @@ pub struct LayoutNote {
     /// the new coordinate space and lands on whichever screen now occupies
     /// it — which is how notes came back on the wrong display.
     #[serde(default)]
+    /// The usable area of that screen — where it starts and how big it is,
+    /// with the taskbar already taken off. Both the proportions a note is
+    /// recorded in and the translation that follows a moved display are
+    /// measured against this rectangle.
     pub monitor_x: i32,
     #[serde(default)]
     pub monitor_y: i32,
@@ -66,10 +70,22 @@ fn default_scale() -> f64 {
 pub struct RelativeNote {
     pub label: String,
     pub list_id: String,
+    /// Where the note sits, as a fraction of its screen's usable width and
+    /// height: 0.6 across means three fifths from the left edge, whatever
+    /// that edge is today.
     pub fx: f64,
     pub fy: f64,
+    /// How big it is, as a fraction of the same: 0.2 wide is a fifth of the
+    /// screen, on a laptop panel and on a 4K monitor alike.
     pub fw: f64,
     pub fh: f64,
+    /// The screen it was measured on.
+    ///
+    /// Kept so an arrangement spread over two displays can be put back on two
+    /// displays, and so collapsing it onto one can give each screen's notes
+    /// their own share rather than piling them on top of each other.
+    #[serde(default)]
+    pub screen: Option<String>,
 }
 
 /// A named arrangement of notes.
@@ -331,6 +347,20 @@ pub fn load(app: &AppHandle) -> Settings {
     for notes in settings.layout_by_screens.values_mut() {
         notes.retain(|n| n.x > -30000 && n.y > -30000 && n.width > 120 && n.height > 120);
     }
+    // Shapes written before the proportions were measured against the screen
+    // rather than against the arrangement's own bounding box. The two are the
+    // same four numbers meaning different things, and the missing screen name
+    // is what tells them apart.
+    let before = settings.relative_layout.len();
+    settings.relative_layout.retain(|n| n.screen.is_some());
+    if settings.relative_layout.len() != before {
+        log::info!(
+            "settings: dropped {} note(s) of an older arrangement shape",
+            before - settings.relative_layout.len()
+        );
+        settings.relative_signature.clear();
+    }
+
     // An arrangement that lost entries to the cleaning above is no longer an
     // arrangement — restoring it would place one note and abandon the others.
     let full = settings.relative_layout.len();

@@ -1295,7 +1295,10 @@ fn fit_to_screen(
     // rather than taken literally.
     if let Some(name) = &note.monitor {
         if let Some(screen) = monitors.iter().find(|m| m.name() == Some(name)) {
-            let now = screen.position();
+            // Against the work area's origin, because that is what was
+            // recorded. The two differ whenever the taskbar is at the top or
+            // the left of the screen.
+            let now = screen.work_area().position;
             let moved_x = now.x - note.monitor_x;
             let moved_y = now.y - note.monitor_y;
 
@@ -1404,7 +1407,15 @@ fn capture_layout(app: &AppHandle) -> Vec<crate::settings::LayoutNote> {
 
         let screen = window.current_monitor().ok().flatten();
         let monitor = screen.as_ref().and_then(|m| m.name().cloned());
-        let frame = screen.as_ref().map(|m| (*m.position(), *m.size()));
+
+        // The *usable* area, not the whole monitor. A note is measured as a
+        // fraction of the space it can actually occupy, and placed back into
+        // the same: dividing by 1080 and multiplying by 1032 cost a
+        // full-height note four per cent of itself on every trip.
+        let frame = screen.as_ref().map(|m| {
+            let area = m.work_area();
+            (area.position, area.size)
+        });
 
         layout.push(crate::settings::LayoutNote {
             label,
@@ -1778,27 +1789,33 @@ fn fit_arrangement(
 /// can be restored exactly, and one that has not can still be given the same
 /// shape.
 fn relative_from(notes: &[crate::settings::LayoutNote]) -> Vec<crate::settings::RelativeNote> {
-    if notes.is_empty() {
-        return Vec::new();
-    }
-
-    let left = notes.iter().map(|n| n.x).min().unwrap_or(0) as f64;
-    let top = notes.iter().map(|n| n.y).min().unwrap_or(0) as f64;
-    let right = notes.iter().map(|n| n.x + n.width as i32).max().unwrap_or(1) as f64;
-    let bottom = notes.iter().map(|n| n.y + n.height as i32).max().unwrap_or(1) as f64;
-
-    let w = (right - left).max(1.0);
-    let h = (bottom - top).max(1.0);
-
     notes
         .iter()
-        .map(|n| crate::settings::RelativeNote {
-            label: n.label.clone(),
-            list_id: n.list_id.clone(),
-            fx: (n.x as f64 - left) / w,
-            fy: (n.y as f64 - top) / h,
-            fw: n.width as f64 / w,
-            fh: n.height as f64 / h,
+        .map(|n| {
+            // The screen the note is on, as it was when the note was measured.
+            // Its width and height are the units: everything about the note is
+            // expressed as a fraction of them, so the same four numbers
+            // describe the same arrangement on a laptop panel and a monitor.
+            let screen_w = if n.monitor_width > 0 {
+                n.monitor_width as f64
+            } else {
+                1920.0
+            };
+            let screen_h = if n.monitor_height > 0 {
+                n.monitor_height as f64
+            } else {
+                1080.0
+            };
+
+            crate::settings::RelativeNote {
+                label: n.label.clone(),
+                list_id: n.list_id.clone(),
+                fx: (n.x - n.monitor_x) as f64 / screen_w,
+                fy: (n.y - n.monitor_y) as f64 / screen_h,
+                fw: n.width as f64 / screen_w,
+                fh: n.height as f64 / screen_h,
+                screen: n.monitor.clone(),
+            }
         })
         .collect()
 }
@@ -1818,23 +1835,68 @@ fn project_relative(
 ) -> Vec<(String, tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>)> {
     let known = known_list_ids(app);
 
-    let box_x = area_pos.x as f64 + TILE_GAP as f64;
-    let box_y = area_pos.y as f64 + TILE_GAP as f64;
-    let box_w = (area_size.width as i32 - TILE_GAP * 2).max(200) as f64;
-    let box_h = (area_size.height as i32 - TILE_GAP * 2).max(200) as f64;
-
-    relative
+    let wanted: Vec<&crate::settings::RelativeNote> = relative
         .iter()
         .filter(|note| known.is_empty() || known.contains(&note.list_id))
+        .collect();
+
+    // Notes measured on different screens, collapsed onto one.
+    //
+    // Each note's fractions are of *its* screen, so two notes that were both
+    // halfway down their own displays would land on top of each other here.
+    // Each original screen is given an equal share of the width instead, in
+    // the order the screens were arranged, and the notes keep their place
+    // within their share. With one screen — which is the ordinary case — the
+    // share is the whole screen and nothing changes.
+    let mut screens: Vec<String> = wanted
+        .iter()
+        .map(|note| note.screen.clone().unwrap_or_default())
+        .collect();
+    screens.sort();
+    screens.dedup();
+
+    let slices = screens.len().max(1) as f64;
+    if slices > 1.0 {
+        log::info!(
+            "layout: {} screens' worth of notes onto one; each gets a {:.0}% slice",
+            screens.len(),
+            100.0 / slices
+        );
+    }
+
+    let full_w = area_size.width as f64;
+    let full_h = area_size.height as f64;
+
+    wanted
+        .iter()
         .map(|note| {
-            let x = (box_x + note.fx * box_w).round() as i32;
-            let y = (box_y + note.fy * box_h).round() as i32;
-            let w = (note.fw * box_w).round().max(220.0) as u32;
-            let h = (note.fh * box_h).round().max(180.0) as u32;
+            let slice = screens
+                .iter()
+                .position(|s| Some(s) == note.screen.as_ref() || (s.is_empty() && note.screen.is_none()))
+                .unwrap_or(0) as f64;
+
+            let slice_w = full_w / slices;
+            let origin_x = area_pos.x as f64 + slice * slice_w;
+
+            let x = (origin_x + note.fx * slice_w).round() as i32;
+            let y = (area_pos.y as f64 + note.fy * full_h).round() as i32;
+            // A floor, because a note too narrow to read is not a faithful
+            // reproduction of anything. Low enough that an ordinary three-column
+            // arrangement still scales honestly onto a 1280-wide screen; a
+            // screen narrower than that cannot hold three columns at a readable
+            // size, and the notes will overlap rather than shrink to nothing.
+            let w = (note.fw * slice_w).round().max(160.0) as u32;
+            let h = (note.fh * full_h).round().max(140.0) as u32;
+
+            // Nothing hangs off the edge it was pushed towards: rounding and
+            // the minimum size above can both put a note a few pixels past the
+            // right or the bottom of a smaller screen.
+            let max_x = area_pos.x + area_size.width as i32 - w as i32;
+            let max_y = area_pos.y + area_size.height as i32 - h as i32;
 
             (
                 note.label.clone(),
-                tauri::PhysicalPosition::new(x, y),
+                tauri::PhysicalPosition::new(x.min(max_x).max(area_pos.x), y.min(max_y).max(area_pos.y)),
                 tauri::PhysicalSize::new(w, h),
             )
         })
@@ -2803,24 +2865,36 @@ mod relative_tests {
         }
     }
 
+/// The same, but measured on a 1920x1032 screen at the origin.
+    fn on_screen(label: &str, x: i32, y: i32, w: u32, h: u32) -> crate::settings::LayoutNote {
+        crate::settings::LayoutNote {
+            monitor: Some("\\\\.\\DISPLAY6".into()),
+            monitor_width: 1920,
+            monitor_height: 1032,
+            ..note(label, x, y, w, h)
+        }
+    }
+
     #[test]
-    fn the_shape_survives_a_change_of_screen() {
-        // Two columns and a tall note, as on a 1920x1080 screen.
+    fn the_shape_is_measured_against_the_screen() {
+        // Two columns and a tall note on a 1920x1032 screen. The fractions are
+        // of the screen, not of the block the three of them happen to form:
+        // that is what lets a note keep its own proportions when it moves.
         let notes = vec![
-            note("a", 0, 0, 340, 1000),
-            note("b", 360, 0, 340, 490),
-            note("c", 360, 510, 340, 490),
+            on_screen("a", 0, 0, 340, 1000),
+            on_screen("b", 360, 0, 340, 490),
+            on_screen("c", 360, 510, 340, 490),
         ];
 
         let relative = relative_from(&notes);
 
-        // Proportions, not pixels: b starts just past half way across.
-        assert!((relative[1].fx - 360.0 / 700.0).abs() < 0.01);
-        assert!((relative[2].fy - 510.0 / 1000.0).abs() < 0.01);
+        assert!((relative[1].fx - 360.0 / 1920.0).abs() < 0.01, "b's place on the screen");
+        assert!((relative[2].fy - 510.0 / 1032.0).abs() < 0.01, "c's place down it");
+        assert!((relative[0].fw - 340.0 / 1920.0).abs() < 0.01, "a's share of the width");
 
-        // And every note keeps its share of the width.
-        let total: f64 = relative.iter().map(|n| n.fw).sum();
-        assert!(total > 1.0, "three notes across two columns overlap in width");
+        // Three notes in two columns take up well under the whole screen.
+        let widest: f64 = relative.iter().map(|n| n.fx + n.fw).fold(0.0, f64::max);
+        assert!(widest < 0.4, "the arrangement is not stretched to fill");
     }
 
     #[test]
@@ -2873,214 +2947,129 @@ mod outcome_tests {
 mod projection_tests {
     use super::*;
 
-    /// The arrangement the log recorded on 15 October: one full-height note
-    /// and two columns of two, every gap 10px.
-    fn measured() -> Vec<crate::settings::LayoutNote> {
-        let note = |label: &str, x: i32, y: i32, h: u32| crate::settings::LayoutNote {
+    /// A note on a 1920x1032 screen at the origin, in pixels.
+    fn note_at(label: &str, x: i32, y: i32, w: u32, h: u32) -> crate::settings::LayoutNote {
+        crate::settings::LayoutNote {
             label: label.into(),
             list_id: "list".into(),
             x,
             y,
-            width: 340,
+            width: w,
             height: h,
             scale: 1.0,
             monitor: Some("\\\\.\\DISPLAY6".into()),
             monitor_x: 0,
             monitor_y: 0,
             monitor_width: 1920,
-            monitor_height: 1080,
-        };
-
-        vec![
-            note("note-3", 870, 10, 1012),
-            note("note-1", 1220, 10, 501),
-            note("note-2", 1220, 521, 501),
-            note("note-4", 1570, 10, 501),
-            note("note-0", 1570, 521, 501),
-        ]
+            monitor_height: 1032,
+        }
     }
 
-    /// Where a projection would put them, without needing an app handle: the
-    /// same arithmetic as `project_relative`, which is the part under test.
+    /// `project_relative` without an app handle: the same arithmetic, which is
+    /// the part worth testing. One screen, so no slicing.
     fn project(
         relative: &[crate::settings::RelativeNote],
         at: (i32, i32),
-        size: (u32, u32),
+        size: (f64, f64),
     ) -> Vec<(String, i32, i32, i32, i32)> {
-        let box_x = at.0 as f64 + TILE_GAP as f64;
-        let box_y = at.1 as f64 + TILE_GAP as f64;
-        let box_w = (size.0 as i32 - TILE_GAP * 2).max(200) as f64;
-        let box_h = (size.1 as i32 - TILE_GAP * 2).max(200) as f64;
-
         relative
             .iter()
             .map(|note| {
+                let w = (note.fw * size.0).round().max(160.0);
+                let h = (note.fh * size.1).round().max(140.0);
                 (
                     note.label.clone(),
-                    (box_x + note.fx * box_w).round() as i32,
-                    (box_y + note.fy * box_h).round() as i32,
-                    (note.fw * box_w).round().max(220.0) as i32,
-                    (note.fh * box_h).round().max(180.0) as i32,
+                    (at.0 as f64 + note.fx * size.0).round() as i32,
+                    (at.1 as f64 + note.fy * size.1).round() as i32,
+                    w as i32,
+                    h as i32,
                 )
             })
             .collect()
     }
 
     #[test]
-    fn the_shape_is_described_as_the_log_describes_it() {
-        let relative = relative_from(&measured());
+    fn a_note_is_measured_against_its_own_screen() {
+        // The sentence this rule was asked for: a fifth of the width, half the
+        // height, three fifths across, half way down.
+        let note = note_at("note-0", 1152, 516, 384, 516);
+        let shape = relative_from(&[note]);
 
-        let of = |label: &str| {
-            relative
-                .iter()
-                .find(|n| n.label == label)
-                .expect("note in the shape")
-                .clone()
-        };
-
-        // The numbers in the log line: fx 0.000 / 0.337 / 0.673, fw 0.327.
-        assert!((of("note-3").fx - 0.0).abs() < 0.001);
-        assert!((of("note-1").fx - 0.337).abs() < 0.002);
-        assert!((of("note-4").fx - 0.673).abs() < 0.002);
-        assert!((of("note-3").fw - 0.327).abs() < 0.002);
-        assert!((of("note-3").fh - 1.0).abs() < 0.001);
-        assert!((of("note-1").fh - 0.495).abs() < 0.002);
+        assert!((shape[0].fw - 0.2).abs() < 0.001, "a fifth of the width");
+        assert!((shape[0].fh - 0.5).abs() < 0.001, "half the height");
+        assert!((shape[0].fx - 0.6).abs() < 0.001, "three fifths across");
+        assert!((shape[0].fy - 0.5).abs() < 0.001, "half way down");
     }
 
     #[test]
-    fn the_same_shape_arrives_on_the_other_screen() {
-        let relative = relative_from(&measured());
+    fn the_same_fractions_arrive_on_a_different_screen() {
+        let shape = relative_from(&[note_at("note-0", 1152, 516, 384, 516)]);
 
-        // The laptop panel, alone: 1920x1020 of work area at the origin.
-        let placed = project(&relative, (0, 0), (1920, 1020));
-        let shape_again = relative_from(
-            &placed
-                .iter()
-                .map(|(label, x, y, w, h)| crate::settings::LayoutNote {
-                    label: label.clone(),
-                    list_id: "list".into(),
-                    x: *x,
-                    y: *y,
-                    width: *w as u32,
-                    height: *h as u32,
-                    scale: 1.0,
-                    monitor: None,
-                    monitor_x: 0,
-                    monitor_y: 0,
-                    monitor_width: 0,
-                    monitor_height: 0,
-                })
-                .collect::<Vec<_>>(),
-        );
+        // A smaller, differently shaped screen: 1280x800 of usable area.
+        let placed = project(&shape, (0, 0), (1280.0, 800.0));
+        let (_, x, y, w, h) = placed[0].clone();
 
-        for was in &relative {
-            let now = shape_again
-                .iter()
-                .find(|n| n.label == was.label)
-                .expect("every note survives the projection");
-
-            for (field, before, after) in [
-                ("fx", was.fx, now.fx),
-                ("fy", was.fy, now.fy),
-                ("fw", was.fw, now.fw),
-                ("fh", was.fh, now.fh),
-            ] {
-                assert!(
-                    (before - after).abs() < 0.01,
-                    "{} {field} moved from {before:.3} to {after:.3}",
-                    was.label
-                );
-            }
-        }
+        assert_eq!(w, 256, "still a fifth of the width");
+        assert_eq!(h, 400, "still half the height");
+        assert_eq!(x, 768, "still three fifths across");
+        assert_eq!(y, 400, "still half way down");
     }
 
     #[test]
-    fn the_gaps_stay_even_and_in_proportion() {
-        let relative = relative_from(&measured());
-        let placed = project(&relative, (0, 0), (1920, 1020));
+    fn a_note_keeps_its_own_proportions_when_the_screens_match() {
+        // The complaint this replaced: moving between two screens of the same
+        // size and shape used to stretch a 340x501 note into 611x505, because
+        // the arrangement was stretched to fill the screen rather than each
+        // note keeping its share of it.
+        let shape = relative_from(&[note_at("note-0", 849, 9, 340, 1003)]);
+        let placed = project(&shape, (1920, 0), (1920.0, 1020.0));
+        let (_, x, _, w, h) = placed[0].clone();
 
-        let at = |label: &str| {
-            placed
-                .iter()
-                .find(|(l, _, _, _, _)| l == label)
-                .expect("placed")
-                .clone()
-        };
-
-        // Three columns, so two gaps between them. They were equal before and
-        // have to be equal after: scaling each note by its own fractions
-        // stretched these while leaving the notes alone, and tidy columns
-        // arrived unevenly spaced.
-        let (_, x3, _, w3, _) = at("note-3");
-        let (_, x1, _, w1, _) = at("note-1");
-        let (_, x4, _, _, _) = at("note-4");
-
-        let first = x1 - (x3 + w3);
-        let second = x4 - (x1 + w1);
+        assert_eq!(w, 340, "the same width on a screen of the same width");
         assert!(
-            (first - second).abs() <= 2,
-            "columns {first} and {second} apart"
+            (h as f64 - 1003.0 * 1020.0 / 1032.0).abs() <= 1.0,
+            "height follows the usable height, not the whole panel"
         );
+        assert_eq!(x, 1920 + 849, "the same place on the new screen");
+    }
 
-        // And in proportion to the arrangement: 10px in a 1040px-wide box is
-        // the same fraction as the gap in a 1900px-wide one.
-        let expected = (10.0_f64 / 1040.0 * 1900.0).round() as i32;
+    #[test]
+    fn an_arrangement_keeps_its_gaps_in_proportion() {
+        // Three columns, 10px apart, on a 1920-wide screen.
+        let shape = relative_from(&[
+            note_at("a", 849, 10, 340, 500),
+            note_at("b", 1199, 10, 340, 500),
+            note_at("c", 1549, 10, 340, 500),
+        ]);
+
+        // A 1280-wide screen: two thirds of the width, so two thirds of
+        // everything — the notes and the spaces between them alike.
+        let placed = project(&shape, (0, 0), (1280.0, 800.0));
+        let gap_one = placed[1].1 - (placed[0].1 + placed[0].3);
+        let gap_two = placed[2].1 - (placed[1].1 + placed[1].3);
+
         assert!(
-            (first - expected).abs() <= 2,
-            "gap {first} should be about {expected}"
+            (gap_one - gap_two).abs() <= 1,
+            "the columns stay evenly spaced: {gap_one} and {gap_two}"
         );
-
-        // The stacked pair keeps its own gap too.
-        let (_, _, y1, _, h1) = at("note-1");
-        let (_, _, y2, _, _) = at("note-2");
-        let stacked = y2 - (y1 + h1);
-        let expected_stacked = (10.0_f64 / 1012.0 * 1000.0).round() as i32;
         assert!(
-            (stacked - expected_stacked).abs() <= 2,
-            "stacked gap {stacked} should be about {expected_stacked}"
+            (gap_one - 7).abs() <= 1,
+            "a 10px gap on a 1920 screen is about 7px on a 1280 one: {gap_one}"
         );
     }
 
     #[test]
-    fn nothing_lands_off_the_screen() {
-        let relative = relative_from(&measured());
+    fn nothing_is_asked_to_sit_off_the_screen() {
+        let shape = relative_from(&[
+            note_at("a", 10, 10, 340, 1012),
+            note_at("b", 1570, 10, 340, 1012),
+        ]);
 
-        // Both ways round, and on a screen that does not start at the origin.
-        for (at, size) in [((0, 0), (1920u32, 1020u32)), ((1920, 0), (1920, 1032))] {
-            for (label, x, y, w, h) in project(&relative, at, size) {
-                assert!(x >= at.0, "{label} starts left of the screen");
-                assert!(y >= at.1, "{label} starts above the screen");
-                assert!(
-                    x + w <= at.0 + size.0 as i32,
-                    "{label} runs {} past the right edge",
-                    x + w - at.0 - size.0 as i32
-                );
-                assert!(
-                    y + h <= at.1 + size.1 as i32,
-                    "{label} runs {} past the bottom",
-                    y + h - at.1 - size.1 as i32
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn a_narrow_screen_keeps_the_columns_rather_than_the_aspect() {
-        // Worth stating plainly, because it is a choice and not an accident:
-        // the projection fills the screen it is given. Going from a wide
-        // arrangement to a narrower screen makes every note narrower in the
-        // same proportion, rather than shrinking the whole thing and leaving
-        // the bottom of the screen empty. Three columns stay three columns.
-        let relative = relative_from(&measured());
-        let placed = project(&relative, (0, 0), (1280, 1020));
-
-        let columns: std::collections::BTreeSet<i32> =
-            placed.iter().map(|(_, x, _, _, _)| *x).collect();
-        assert_eq!(columns.len(), 3, "three columns stay three columns");
-
-        for (label, _, _, w, h) in &placed {
-            assert!(*w > 200, "{label} is too narrow to read at {w}px");
-            assert!(*h > 180, "{label} is too short at {h}px");
+        for (label, x, y, w, h) in project(&shape, (0, 0), (1280.0, 800.0)) {
+            assert!(x >= 0, "{label} starts left of the screen");
+            assert!(y >= 0, "{label} starts above the screen");
+            assert!(x + w <= 1280 + 1, "{label} runs past the right edge");
+            assert!(y + h <= 800 + 1, "{label} runs past the bottom");
         }
     }
 }
