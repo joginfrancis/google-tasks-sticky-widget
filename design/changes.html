@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>What changed — design preview</title>
+
+    <!--
+      The three things built on 16 October, shown side by side.
+
+      Same rule as preview.html: this links the app's *real* stylesheets, so
+      what is here is what ships. The markup mirrors TaskItem.tsx, DragGhost.tsx
+      and the selection bar — a preview that lies is worse than no preview.
+
+      States that normally need a pointer (the hover strip, an open menu, a
+      drag in flight) are forced on by the preview chrome at the bottom, which
+      is the only CSS here that does not ship.
+    -->
+    <link rel="stylesheet" href="../src/styles/tokens.css" />
+    <link rel="stylesheet" href="../src/styles/base.css" />
+    <link rel="stylesheet" href="../src/components/TaskItem/TaskItem.css" />
+    <link rel="stylesheet" href="../src/components/TaskItem/DueChip.css" />
+    <link rel="stylesheet" href="../src/components/TaskWidget/TaskWidget.css" />
+
+    <style>
+      /* Preview chrome only — none of this ships. */
+      body {
+        margin: 0;
+        padding: 22px;
+        background: #6b6b74;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        color: #fff;
+      }
+      .board {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 22px;
+        align-items: flex-start;
+      }
+      .case {
+        /* Narrow enough that two sit side by side in a 700px pane, which is
+           how this page is usually looked at. */
+        width: 300px;
+      }
+      .case > h2 {
+        margin: 0 0 4px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .case > p {
+        margin: 0 0 10px;
+        font-size: 12px;
+        line-height: 1.5;
+        color: rgba(255, 255, 255, 0.72);
+      }
+      /* A note, as it sits on the desktop. */
+      .note {
+        position: relative;
+        max-width: 300px;
+        /* The app's rows inherit their colour from the widget root; this
+           preview's page text is white, so without this the titles inherit
+           white onto white paper. The app itself sets it on <body>. */
+        color: var(--text);
+        width: 100%;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
+        background: var(--surface);
+      }
+      .note .widget-body {
+        min-height: 210px;
+        padding-bottom: 10px;
+      }
+      /* Normally pointer-driven; pinned open so it can be looked at. */
+      .show-tools .task-tools {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .menu-demo .note {
+        /* Room for the menu, which in the app floats over whatever is below. */
+        padding-bottom: 210px;
+      }
+      .menu-demo .task-menu {
+        position: absolute;
+        top: 40px;
+        right: 10px;
+        left: auto;
+      }
+      .ghost-demo .drag-ghost {
+        position: absolute;
+        transform: translate3d(34px, 118px, 0);
+        width: 250px;
+      }
+      .new-mark {
+        outline: 2px solid #ffd166;
+        outline-offset: 1px;
+        border-radius: 5px;
+      }
+      .asText {
+        margin: 0;
+        padding: 12px 14px;
+        border-radius: 8px;
+        background: #2a2a31;
+        color: #e9e9ef;
+        font-family: "Cascadia Code", Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.65;
+        white-space: pre;
+        overflow-x: auto;
+      }
+      .legend {
+        margin: 18px 0 0;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.6);
+      }
+      .legend b {
+        color: #ffd166;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="board">
+      <!-- ───────────────────────────────── 1. Duplicate, on hover ───── -->
+      <section class="case">
+        <h2>1 · Duplicate, on hover</h2>
+        <p>
+          The new mark sits between “add subtask” and “open in a window”. It
+          copies the task directly below itself — description, date and
+          subtasks included.
+        </p>
+
+        <div class="note show-tools">
+          <div class="widget-body scroll-area">
+            <ul class="task-list">
+              <li class="task-item">
+                <div class="task-row">
+                  <button class="checkbox" role="checkbox" aria-checked="false"></button>
+                  <div class="task-main">
+                    <div class="task-line">
+                      <span class="task-title">Book the venue</span>
+                      <span class="task-has-notes" title="Has details">
+                        <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+                          <path
+                            d="M3.5 5h9M3.5 8h9M3.5 11h5.5"
+                            stroke="currentColor"
+                            stroke-width="1.5"
+                            stroke-linecap="round"
+                          />
+                        </svg>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="task-tools">
+                    <button class="task-tool" title="Set a date">
+                      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <rect x="2.5" y="3.5" width="11" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.3" />
+                        <path d="M2.5 6.5h11M5.5 2.5v2M10.5 2.5v2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+                      </svg>
+                    </button>
+                    <button class="task-tool" title="Add subtask">
+                      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path d="M3 3.5v6a2 2 0 0 0 2 2h4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+                        <path d="M11.5 8.5v6M8.5 11.5h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+                      </svg>
+                    </button>
+                    <button class="task-tool new-mark" title="Duplicate this task">
+                      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
+                        <path d="M10.5 3.5H4a1.5 1.5 0 0 0-1.5 1.5v6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+                      </svg>
+                    </button>
+                    <button class="task-tool" title="Open in a window">
+                      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path d="M9.5 2.5h4v4M13.5 2.5L9 7M6.5 13.5h-4v-4M2.5 13.5L7 9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </button>
+                    <button class="task-tool task-menu-trigger" title="Task options">
+                      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <circle cx="8" cy="3" r="1.4" fill="currentColor" />
+                        <circle cx="8" cy="8" r="1.4" fill="currentColor" />
+                        <circle cx="8" cy="13" r="1.4" fill="currentColor" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </li>
+
+              <li class="task-item">
+                <div class="task-row">
+                  <button class="checkbox" role="checkbox" aria-checked="false"></button>
+                  <div class="task-main">
+                    <div class="task-line"><span class="task-title">Send invitations</span></div>
+                  </div>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ───────────────────────────────── 2. The menu ───────────────── -->
+      <section class="case">
+        <h2>2 · Duplicate and Copy as text, in the menu</h2>
+        <p>
+          The same two actions for anyone who works from the ⋮ menu rather than
+          the hover strip.
+        </p>
+
+        <div class="note menu-demo">
+          <div class="widget-body scroll-area">
+            <ul class="task-list">
+              <li class="task-item is-menu-open">
+                <div class="task-row">
+                  <button class="checkbox" role="checkbox" aria-checked="false"></button>
+                  <div class="task-main">
+                    <div class="task-line"><span class="task-title">Book the venue</span></div>
+                  </div>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div class="task-menu" role="menu">
+            <button role="menuitem" class="task-menu-item">Edit details</button>
+            <button role="menuitem" class="task-menu-item">Change date</button>
+            <button role="menuitem" class="task-menu-item">Open in a window</button>
+            <button role="menuitem" class="task-menu-item">Add task below</button>
+            <button role="menuitem" class="task-menu-item new-mark">Duplicate</button>
+            <button role="menuitem" class="task-menu-item new-mark">Copy as text</button>
+            <button role="menuitem" class="task-menu-item">Add subtask</button>
+            <div class="task-menu-sep"></div>
+            <button role="menuitem" class="task-menu-item has-submenu">
+              Move to list <span class="submenu-chevron">▾</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ───────────────────────────────── 3. Dragging a selection ───── -->
+      <section class="case">
+        <h2>3 · Dragging a selection, dropped on nothing</h2>
+        <p>
+          Three rows picked, all three dimmed, and the ghost says what it is
+          carrying rather than naming the row that was grabbed. The gap below
+          the last task is the drop that used to be refused.
+        </p>
+
+        <div class="note ghost-demo">
+          <div class="widget-body scroll-area">
+            <ul class="task-list">
+              <li class="task-item is-selected is-dragging">
+                <div class="task-row">
+                  <button class="checkbox" role="checkbox" aria-checked="false"></button>
+                  <div class="task-main">
+                    <div class="task-line"><span class="task-title">Book the venue</span></div>
+                  </div>
+                </div>
+              </li>
+              <li class="task-item is-selected is-dragging">
+                <div class="task-row">
+                  <button class="checkbox" role="checkbox" aria-checked="false"></button>
+                  <div class="task-main">
+                    <div class="task-line"><span class="task-title">Send invitations</span></div>
+                  </div>
+                </div>
+              </li>
+              <li class="task-item is-selected is-dragging">
+                <div class="task-row">
+                  <button class="checkbox" role="checkbox" aria-checked="false"></button>
+                  <div class="task-main">
+                    <div class="task-line"><span class="task-title">Order the cake</span></div>
+                  </div>
+                </div>
+              </li>
+              <li class="drop-gap" aria-hidden="true"></li>
+            </ul>
+          </div>
+
+          <div class="drag-ghost" aria-hidden="true">
+            <span class="drag-ghost-checkbox"></span>
+            <span class="drag-ghost-title">3 tasks</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ───────────────────────────────── 4. Copy as text ───────────── -->
+      <section class="case">
+        <h2>4 · What “Copy as text” puts on the clipboard</h2>
+        <p>
+          Titles carry a bullet, details and the date are the lines beneath
+          them, subtasks indent under their parent. Pasting it back into a note
+          rebuilds the same tasks and the same nesting.
+        </p>
+
+        <pre class="asText">- Book the venue
+  Deposit is due on signing
+  Ask about the piano
+  Due 20 Oct 2026
+  - Call about parking
+    Ask for the side gate
+- Send invitations
+  Design first, print later
+- Order the cake</pre>
+
+        <p class="legend">
+          <b>Yellow outline</b> marks what is new. Everything else is the app's
+          own CSS, loaded from <code>src/</code> — change a style here and you
+          have changed the app.
+        </p>
+      </section>
+    </div>
+  </body>
+</html>
