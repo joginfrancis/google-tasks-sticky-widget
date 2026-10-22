@@ -20,6 +20,7 @@
     <link rel="stylesheet" href="../src/components/TaskItem/TaskItem.css" />
     <link rel="stylesheet" href="../src/components/TaskItem/DueChip.css" />
     <link rel="stylesheet" href="../src/components/TaskWidget/TaskWidget.css" />
+    <link rel="stylesheet" href="../src/components/Settings/SettingsPanel.css" />
 
     <style>
       /* Preview chrome only — none of this ships. */
@@ -106,6 +107,35 @@
         line-height: 1.65;
         white-space: pre;
         overflow-x: auto;
+      }
+      /* `:hover` cannot be forced from a stylesheet, so the open state is
+         reproduced here with the same values the real rule uses. If the two
+         ever disagree, this page is the one that is wrong. */
+      .force-open .settings-field > .settings-hint {
+        max-height: 120px;
+        margin: -1px 8px 6px;
+        opacity: 1;
+      }
+      .panel-demo {
+        width: 100%;
+        padding: 6px 0 10px;
+        border-radius: 10px;
+        background: var(--surface);
+        color: var(--text);
+      }
+      .panel-demo h2 {
+        margin: 10px 8px 4px;
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+      .state-label {
+        margin: 0 0 6px;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.5);
       }
       .legend {
         margin: 18px 0 0;
@@ -309,6 +339,56 @@
           own CSS, loaded from <code>src/</code> — change a style here and you
           have changed the app.
         </p>
+      </section>
+
+      <!-- ───────────────────────────────── 5. Settings, decluttered ──── -->
+      <section class="case">
+        <h2>5 · Settings — the explanations wait to be asked for</h2>
+        <p>
+          Every row used to carry its paragraph permanently. The words are the
+          same; they open when the row is hovered, or when the keyboard reaches
+          anything in it.
+        </p>
+
+        <p class="state-label">At rest</p>
+        <div class="panel-demo">
+          <h2>List</h2>
+          <div class="settings-field">
+            <button class="settings-row is-clickable" role="switch" aria-checked="true">
+              <span class="settings-label">Show subtasks</span>
+              <span class="switch is-on"><span class="switch-knob"></span></span>
+            </button>
+            <p class="settings-hint">
+              Off keeps the note to top-level tasks. A task you open still shows
+              its own subtasks, so nothing becomes unreachable.
+            </p>
+          </div>
+          <h2>General</h2>
+          <div class="settings-field">
+            <button class="settings-row is-clickable" role="switch" aria-checked="false">
+              <span class="settings-label">Start hidden</span>
+              <span class="switch"><span class="switch-knob"></span></span>
+            </button>
+            <p class="settings-hint">
+              Opens straight to the tray instead of showing the widget.
+            </p>
+          </div>
+        </div>
+
+        <p class="state-label" style="margin-top: 14px">Hovered</p>
+        <div class="panel-demo force-open">
+          <h2>List</h2>
+          <div class="settings-field">
+            <button class="settings-row is-clickable" role="switch" aria-checked="true">
+              <span class="settings-label">Show subtasks</span>
+              <span class="switch is-on"><span class="switch-knob"></span></span>
+            </button>
+            <p class="settings-hint">
+              Off keeps the note to top-level tasks. A task you open still shows
+              its own subtasks, so nothing becomes unreachable.
+            </p>
+          </div>
+        </div>
       </section>
     </div>
   </body>

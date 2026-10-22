@@ -115,25 +115,31 @@ export function SettingsPanel(props: Props) {
             checked={settings.globalHotkeyEnabled}
             onChange={(v) => props.onChange({ globalHotkeyEnabled: v })}
           />
-          {settings.globalHotkeyEnabled && (
-            <>
-              <HotkeyRecorder
-                value={settings.globalHotkey}
-                onChange={(accelerator) =>
-                  props.onChange({ globalHotkey: accelerator })
-                }
-              />
-              {accelerocatorWarning(settings.globalHotkey) ? (
+          {settings.globalHotkeyEnabled &&
+            // A warning earns its place on the panel; advice does not, so the
+            // advice is the one that waits to be asked for.
+            (accelerocatorWarning(settings.globalHotkey) ? (
+              <>
+                <HotkeyRecorder
+                  value={settings.globalHotkey}
+                  onChange={(accelerator) =>
+                    props.onChange({ globalHotkey: accelerator })
+                  }
+                />
                 <p className="settings-warning">
                   {accelerocatorWarning(settings.globalHotkey)}
                 </p>
-              ) : (
-                <p className="settings-hint">
-                  Short and safe: a bare function key like F9, or Ctrl+`.
-                </p>
-              )}
-            </>
-          )}
+              </>
+            ) : (
+              <Field hint="Short and safe: a bare function key like F9, or Ctrl+`.">
+                <HotkeyRecorder
+                  value={settings.globalHotkey}
+                  onChange={(accelerator) =>
+                    props.onChange({ globalHotkey: accelerator })
+                  }
+                />
+              </Field>
+            ))}
         </section>
 
         <section>
@@ -143,15 +149,13 @@ export function SettingsPanel(props: Props) {
 
         <section>
           <h2>List</h2>
-          <Toggle
-            label="Show subtasks"
-            checked={settings.showSubtasks}
-            onChange={(v) => props.onChange({ showSubtasks: v })}
-          />
-          <p className="settings-hint">
-            Off keeps the note to top-level tasks. A task you open still shows
-            its own subtasks, so nothing becomes unreachable.
-          </p>
+          <Field hint="Off keeps the note to top-level tasks. A task you open still shows its own subtasks, so nothing becomes unreachable.">
+            <Toggle
+              label="Show subtasks"
+              checked={settings.showSubtasks}
+              onChange={(v) => props.onChange({ showSubtasks: v })}
+            />
+          </Field>
         </section>
 
         <section>
@@ -161,14 +165,13 @@ export function SettingsPanel(props: Props) {
             checked={settings.startWithWindows}
             onChange={(v) => props.onChange({ startWithWindows: v })}
           />
-          <Toggle
-            label="Start hidden"
-            checked={settings.startHidden}
-            onChange={(v) => props.onChange({ startHidden: v })}
-          />
-          <p className="settings-hint">
-            Opens straight to the tray instead of showing the widget.
-          </p>
+          <Field hint="Opens straight to the tray instead of showing the widget.">
+            <Toggle
+              label="Start hidden"
+              checked={settings.startHidden}
+              onChange={(v) => props.onChange({ startHidden: v })}
+            />
+          </Field>
         </section>
 
         <section>
@@ -265,6 +268,27 @@ export function SettingsPanel(props: Props) {
 }
 
 /**
+ * What each layout control does, said where the control is.
+ *
+ * Shown while a mark is hovered, in the same line that reports what an action
+ * did. A permanent list of rules is three lines of panel for something read
+ * once; a line that answers the mark under the cursor is the same information
+ * at no cost.
+ */
+const LAYOUT_RULES: Record<string, string> = {
+  layout: "Picking one puts the notes back that way.",
+  screen: "Sends every note to that screen, keeping the arrangement.",
+  arrange: "Even columns from the right edge of the screen each note is on.",
+  // Two lines at the panel's width, so the line below the marks does not
+  // change height as the cursor crosses them.
+  align: "Keeps each note where it is: one width for all, columns shared evenly.",
+  undo: "Puts the notes back as they were before the last change.",
+  save: "Saves this arrangement over the layout in the dropdown.",
+  new: "Keeps this arrangement as a new layout.",
+  delete: "Deletes the layout in the dropdown.",
+};
+
+/**
  * Keeping arrangements, and rebuilding them.
  *
  * Notes are windows, and windows drift: a restart, a monitor unplugged, or an
@@ -301,6 +325,17 @@ function Layout() {
 
   /** Whether there is an arrangement to go back to. */
   const [undoable, setUndoable] = useState(false);
+
+  /** The mark under the cursor, so the line below can say what it does. */
+  const [about, setAbout] = useState<string | null>(null);
+
+  /** Hover and keyboard both ask the same question. */
+  const explains = (key: string) => ({
+    onMouseEnter: () => setAbout(key),
+    onMouseLeave: () => setAbout((current) => (current === key ? null : current)),
+    onFocus: () => setAbout(key),
+    onBlur: () => setAbout((current) => (current === key ? null : current)),
+  });
 
   const checkUndo = () =>
     invoke<boolean>("can_undo_layout").then(setUndoable).catch(() => {});
@@ -426,6 +461,7 @@ function Layout() {
         <span className="settings-label">Layout</span>
         <select
           className="settings-select"
+          {...explains("layout")}
           value={selected}
           // Choosing one is the whole gesture: a separate Use button asked the
           // user to say the same thing twice.
@@ -445,6 +481,7 @@ function Layout() {
           <span className="settings-label">Screen</span>
           <select
             className="settings-select"
+            {...explains("screen")}
             // The one the notes are on, or the main one if they are spread.
             value={screenChoice ?? screens.find((s) => s.hasNotes)?.name ?? ""}
             onChange={(e) => {
@@ -503,7 +540,7 @@ function Layout() {
         </div>
       ) : (
         <div className="layout-tools">
-          <button className="layout-tool" onClick={arrange} title="Arrange the notes evenly">
+          <button className="layout-tool" {...explains("arrange")} onClick={arrange} title="Arrange the notes evenly">
             <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
               <rect x="2" y="2" width="5" height="12" rx="1.3" fill="none" stroke="currentColor" strokeWidth="1.3" />
               <rect x="9" y="2" width="5" height="12" rx="1.3" fill="none" stroke="currentColor" strokeWidth="1.3" />
@@ -512,6 +549,7 @@ function Layout() {
           </button>
 
           <button
+            {...explains("align")}
             className="layout-tool"
             onClick={snap}
             title="Snap the notes onto a grid, keeping where they are"
@@ -529,6 +567,7 @@ function Layout() {
           </button>
 
           <button
+            {...explains("undo")}
             className="layout-tool"
             onClick={undo}
             disabled={!undoable}
@@ -567,6 +606,7 @@ function Layout() {
           <span className="layout-divider" aria-hidden="true" />
 
           <button
+            {...explains("save")}
             className={"layout-tool " + (dirty && selected ? "is-wanted" : "")}
             disabled={!selected}
             onClick={() => selected && save(selected)}
@@ -586,6 +626,7 @@ function Layout() {
           </button>
 
           <button
+            {...explains("new")}
             className={"layout-tool " + (dirty && !selected ? "is-wanted" : "")}
             onClick={() => setNaming(true)}
             title="Keep this arrangement as a new layout"
@@ -597,6 +638,7 @@ function Layout() {
           </button>
 
           <button
+            {...explains("delete")}
             className="layout-tool is-danger"
             disabled={!selected}
             onClick={() =>
@@ -625,39 +667,16 @@ function Layout() {
       )}
 
       {/*
-        * What the two tools actually do, in their own words.
+        * One line, doing two jobs: what just happened, or — when nothing has —
+        * what the mark under the cursor would do. Both are answers to "what is
+        * this?", and neither is worth a permanent paragraph.
         *
-        * "Align" moving a note somewhere unexpected reads as a fault until you
-        * know the rule it is following, so the rule is on the panel rather
-        * than in a tooltip nobody hovers.
+        * The space is held open whether or not there is anything to say, so
+        * the panel does not jump as the cursor crosses the marks.
         */}
-      {note ? (
-        <p className="settings-hint">{note}</p>
-      ) : (
-        <dl className="layout-rules">
-          {names.length > 0 && (
-            <div>
-              <dt>Layout</dt>
-              <dd>Picking one puts the notes back that way.</dd>
-            </div>
-          )}
-          <div>
-            <dt>Arrange</dt>
-            <dd>
-              Even columns from the right edge, filling the screen each note is
-              already on.
-            </dd>
-          </div>
-          <div>
-            <dt>Align</dt>
-            <dd>
-              Keeps each note where it is and makes it exact: one width for all,
-              and every column shared out evenly — one note full height, two a
-              half each, three a third.
-            </dd>
-          </div>
-        </dl>
-      )}
+      <p className="settings-hint layout-says">
+        {note ?? (about ? LAYOUT_RULES[about] : "")}
+      </p>
     </>
   );
 }
@@ -767,6 +786,29 @@ function prettyAccelerator(accelerator: string): string {
     .split("+")
     .map((part) => (part === "CmdOrCtrl" ? "Ctrl" : part))
     .join(" + ");
+}
+
+/**
+ * A control and the sentence that explains it.
+ *
+ * The explanation opens when the row is hovered, or when the keyboard reaches
+ * anything inside it. It is in the markup either way: collapsed with height
+ * and opacity rather than `display: none`, so a screen reader still reads it
+ * out and nothing becomes unreachable by hiding it.
+ */
+function Field({
+  hint,
+  children,
+}: {
+  hint: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="settings-field">
+      {children}
+      <p className="settings-hint">{hint}</p>
+    </div>
+  );
 }
 
 function Toggle({

@@ -331,36 +331,49 @@
   border-color: color-mix(in srgb, var(--danger) 50%, transparent);
 }
 
-/* What Arrange and Align do, said where they are rather than in a tooltip. */
-.layout-rules {
-  margin: 4px 0 0;
-  padding: 0 8px 2px;
-  display: grid;
-  gap: 5px;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-
-.layout-rules > div {
-  display: grid;
-  grid-template-columns: 62px 1fr;
-  gap: 8px;
-  align-items: baseline;
-}
-
-.layout-rules dt {
-  color: var(--text);
-}
-
-.layout-rules dd {
-  margin: 0;
-  line-height: 1.45;
-}
-
 /* Two groups of marks: the arrangement, then the saved layout. */
 .layout-divider {
   width: 1px;
   align-self: stretch;
   margin: 3px 3px;
   background: var(--border);
+}
+
+/* An explanation that waits to be asked for.
+ *
+ * Collapsed with height and opacity rather than `display: none`: the sentence
+ * stays in the accessibility tree, so hiding it from the eye does not hide it
+ * from a screen reader. It opens on hover, and on the keyboard reaching any
+ * control inside the row — otherwise the explanation would be unreachable
+ * without a mouse. */
+.settings-field > .settings-hint {
+  max-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    max-height var(--duration-fast) var(--ease),
+    opacity var(--duration-fast) var(--ease),
+    margin var(--duration-fast) var(--ease);
+}
+
+.settings-field:hover > .settings-hint,
+.settings-field:focus-within > .settings-hint {
+  max-height: 120px;
+  margin: -1px 8px 6px;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-field > .settings-hint {
+    transition: none;
+  }
+}
+
+/* The layout line says what just happened, or what the mark under the cursor
+   would do. Its height is held open either way, so the panel does not jump as
+   the cursor crosses the marks. */
+.layout-says {
+  min-height: 2.6em;
 }
