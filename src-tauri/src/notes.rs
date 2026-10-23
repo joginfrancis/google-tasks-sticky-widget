@@ -1220,26 +1220,48 @@ pub fn watch_screens(app: &AppHandle) {
             // for this one is from an earlier session. Which of the two should
             // win is a real question, and it cannot be answered without
             // knowing how often they differ — so it is logged either way.
+            let in_use = app
+                .state::<AppState>()
+                .settings
+                .lock()
+                .map(|settings| settings.relative_layout.clone())
+                .unwrap_or_default();
+
             if let Some(notes) = remembered.as_ref() {
-                let as_shape = relative_from(notes);
                 log::info!(
                     "screens: {signature} remembers {} note(s); comparing with the shape in use",
                     notes.len()
                 );
-                log_drift(&app, "remembered pixels vs shape in use", &as_shape);
+                log_drift(&app, "remembered pixels vs shape in use", &relative_from(notes));
             } else {
                 log::info!("screens: nothing remembered for {signature}");
             }
 
             let remembered = remembered.filter(|notes| {
-                if notes.len() >= expected {
-                    return true;
+                if notes.len() < expected {
+                    log::info!(
+                        "screens: the arrangement for {signature} covers {} of {expected} note(s); projecting instead",
+                        notes.len()
+                    );
+                    return false;
                 }
-                log::info!(
-                    "screens: the arrangement for {signature} covers {} of {expected} note(s); projecting instead",
-                    notes.len()
-                );
-                false
+
+                // Exact pixels are worth having only while they still describe
+                // the arrangement in use. These were recorded the last time
+                // these displays were attached, which may have been before the
+                // notes were rearranged — or, as the log showed on 23 October,
+                // in a session where Windows' own DPI rescale had inflated
+                // every note by a quarter. Replaying that is not "the same
+                // layout on this screen", which is the whole promise.
+                let drift = shape_drift(&relative_from(notes), &in_use);
+                if drift > SHAPE_TOLERANCE {
+                    log::info!(
+                        "screens: the pixels remembered for {signature} are a different arrangement (drift {drift:.3}); projecting the shape instead"
+                    );
+                    return false;
+                }
+
+                true
             });
 
             match remembered {
@@ -1680,6 +1702,10 @@ pub struct LayoutOutcome {
     pub total: usize,
     /// One phrase per reason, ready to read: "1 note whose list is gone".
     pub skipped: Vec<String>,
+    /// Said instead of the count, when a count would not be the answer —
+    /// "They are already on that screen."
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 impl LayoutOutcome {
@@ -1692,6 +1718,7 @@ impl LayoutOutcome {
             moved,
             total,
             skipped: summarise(skipped),
+            message: None,
         }
     }
 }
@@ -1948,6 +1975,46 @@ pub fn apply_relative(app: &AppHandle, area_pos: tauri::PhysicalPosition<i32>, a
     persist_open_notes(app);
     count
 }
+
+/// How far one arrangement's proportions are from another's.
+///
+/// The largest difference in any one number, so a single note in the wrong
+/// place counts as much as all of them being slightly off. Notes missing from
+/// either side count as a complete difference: an arrangement of five notes
+/// and one of three are not the same arrangement.
+fn shape_drift(
+    a: &[crate::settings::RelativeNote],
+    b: &[crate::settings::RelativeNote],
+) -> f64 {
+    if a.is_empty() || b.is_empty() {
+        return if a.len() == b.len() { 0.0 } else { 1.0 };
+    }
+
+    let mut worst: f64 = 0.0;
+
+    for note in a {
+        match b.iter().find(|other| other.label == note.label) {
+            Some(other) => {
+                worst = worst
+                    .max((note.fx - other.fx).abs())
+                    .max((note.fy - other.fy).abs())
+                    .max((note.fw - other.fw).abs())
+                    .max((note.fh - other.fh).abs());
+            }
+            None => return 1.0,
+        }
+    }
+
+    if a.len() != b.len() {
+        return 1.0;
+    }
+
+    worst
+}
+
+/// Past this, two arrangements are different arrangements rather than the same
+/// one with rounding. A twentieth of a screen is about a sixth of a note.
+const SHAPE_TOLERANCE: f64 = 0.05;
 
 /// Marks this set of displays as the one the remembered shape now describes.
 ///
@@ -2640,6 +2707,8 @@ pub fn list_screens(app: AppHandle) -> Vec<ScreenInfo> {
     // Left to right, which is how someone thinks about their desk.
     screens.sort_by_key(|(_, pos, _, _)| pos.x);
 
+    let total = screens.len();
+
     screens
         .into_iter()
         .enumerate()
@@ -2656,8 +2725,8 @@ pub fn list_screens(app: AppHandle) -> Vec<ScreenInfo> {
 
             ScreenInfo {
                 label: format!(
-                    "Screen {}{} — {} × {}",
-                    index + 1,
+                    "{}{} — {} × {}",
+                    place_name(index, total),
                     if is_primary { " (main)" } else { "" },
                     logical_w,
                     logical_h
@@ -2668,6 +2737,32 @@ pub fn list_screens(app: AppHandle) -> Vec<ScreenInfo> {
             }
         })
         .collect()
+}
+
+/// What to call a screen, given where it sits on the desk.
+///
+/// Not a number. The screens are listed left to right, so numbering them makes
+/// the left-hand one "Screen 1" — and Windows, which numbers displays its own
+/// way, may well call that same screen 2. Someone reading "Screen 2" means the
+/// one Windows showed them, picks it, and the notes move to the screen they
+/// were already on. Where a screen physically is cannot be got wrong.
+fn place_name(index: usize, total: usize) -> String {
+    match (index, total) {
+        (_, 1) => "This screen".to_string(),
+        (0, _) => "Left screen".to_string(),
+        (i, t) if i == t - 1 => "Right screen".to_string(),
+        (_, 3) => "Middle screen".to_string(),
+        (i, _) => format!("{} from the left", nth(i + 1)),
+    }
+}
+
+fn nth(n: usize) -> &'static str {
+    match n {
+        2 => "Second",
+        3 => "Third",
+        4 => "Fourth",
+        _ => "Next",
+    }
 }
 
 /// Moves every note onto one display, keeping the shape of the arrangement.
@@ -2688,6 +2783,31 @@ pub async fn move_notes_to_screen(app: AppHandle, name: String) -> Result<Layout
     if notes.is_empty() {
         return Err("There are no notes to move.".into());
     }
+
+    // Already there: say so rather than shuffling the notes on the spot and
+    // reporting a move. Four attempts to "switch back" in the log were four
+    // moves to the screen the notes were on, each one reported as a success,
+    // which is how the misreading survived.
+    let elsewhere = notes.iter().any(|(_, window)| {
+        window
+            .current_monitor()
+            .ok()
+            .flatten()
+            .and_then(|m| m.name().cloned())
+            .map(|on| on != name)
+            .unwrap_or(true)
+    });
+
+    if !elsewhere {
+        log::info!("screens: every note is already on {name}");
+        return Ok(LayoutOutcome {
+            moved: 0,
+            total: notes.len(),
+            skipped: Vec::new(),
+            message: Some("They are already on that screen.".to_string()),
+        });
+    }
+
     let open: Vec<String> = notes.iter().map(|(label, _)| label.clone()).collect();
     let total = open.len();
 

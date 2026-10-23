@@ -494,9 +494,12 @@ function Layout() {
                   setDirty(true);
                   setUndoable(true);
                   say(
-                    report("Moved", out) +
-                      " to " +
-                      (screen?.label?.split(" — ")[0] ?? "that screen"),
+                    out.message
+                      ? out.message
+                      : report("Moved", out) +
+                          " to the " +
+                          (screen?.label?.split(" — ")[0]?.toLowerCase() ??
+                            "other screen"),
                     true,
                   );
                 })
@@ -505,7 +508,10 @@ function Layout() {
           >
             {screens.map((screen) => (
               <option key={screen.name} value={screen.name}>
-                {screen.label}
+                {/* Marked in the list itself: the select can only show one
+                    value, and which screen the notes are on is a different
+                    question from which one you are about to pick. */}
+                {screen.hasNotes ? "• " + screen.label : screen.label}
               </option>
             ))}
           </select>

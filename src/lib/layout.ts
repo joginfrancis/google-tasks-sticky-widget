@@ -15,6 +15,8 @@ export type LayoutOutcome = {
   total: number;
   /** One phrase per reason, ready to read: "1 note whose list is gone". */
   skipped: string[];
+  /** Said instead of the count, when a count is not the answer. */
+  message?: string | null;
 };
 
 /**
@@ -24,6 +26,10 @@ export type LayoutOutcome = {
  * a worse sentence than "Arranged 5 notes" and says the same thing.
  */
 export function report(verb: string, out: LayoutOutcome): string {
+  // "They are already on that screen" is the whole answer; a count of nothing
+  // moved is not.
+  if (out.message) return out.message;
+
   const plural = out.moved === 1 ? " note" : " notes";
   const count =
     out.moved === out.total

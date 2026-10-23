@@ -22,6 +22,17 @@ describe("report", () => {
     ).toBe("Arranged 4 of 5 notes — left 1 note whose list is gone");
   });
 
+  it("prefers a message over counting nothing", () => {
+    expect(
+      report("Moved", {
+        moved: 0,
+        total: 5,
+        skipped: [],
+        message: "They are already on that screen.",
+      }),
+    ).toBe("They are already on that screen.");
+  });
+
   it("reads every reason, not just the first", () => {
     expect(
       report("Moved", {
