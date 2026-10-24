@@ -390,6 +390,140 @@
           </div>
         </div>
       </section>
+
+      <!-- ───────────────────────────────── 6. The layout line ────────── -->
+      <section class="case">
+        <h2>6 · The marks explain themselves</h2>
+        <p>
+          The table of rules that used to sit under the marks is gone. Hovering
+          one puts its rule in the line that already reports what an action did
+          — one line doing two jobs.
+        </p>
+
+        <div class="panel-demo">
+          <h2>Layout</h2>
+          <div class="settings-row">
+            <span class="settings-label">Layout</span>
+            <select class="settings-select"><option>Prefered</option></select>
+          </div>
+          <div class="layout-tools">
+            <button class="layout-tool new-mark"><span>Arrange</span></button>
+            <button class="layout-tool"><span>Align</span></button>
+            <button class="layout-tool"><span>Undo</span></button>
+            <span class="layout-divider" aria-hidden="true"></span>
+            <button class="layout-tool"><span>Save</span></button>
+            <button class="layout-tool"><span>New</span></button>
+          </div>
+          <p class="settings-hint layout-says">
+            Even columns from the right edge of the screen each note is on.
+          </p>
+        </div>
+
+        <p class="state-label" style="margin-top: 12px">Hovering Align instead</p>
+        <div class="panel-demo">
+          <div class="layout-tools">
+            <button class="layout-tool"><span>Arrange</span></button>
+            <button class="layout-tool new-mark"><span>Align</span></button>
+            <button class="layout-tool"><span>Undo</span></button>
+          </div>
+          <p class="settings-hint layout-says">
+            Keeps each note where it is: one width for all, columns shared
+            evenly.
+          </p>
+        </div>
+      </section>
+
+      <!-- ───────────────────────────────── 7. Named screens ──────────── -->
+      <section class="case">
+        <h2>7 · Screens named by where they are</h2>
+        <p>
+          “Screen 2” meant the second from the left — the laptop on this desk —
+          while Windows numbers the same displays its own way. Four attempts to
+          send the notes back went to the screen they were already on. A dot
+          marks where they are now.
+        </p>
+
+        <div class="panel-demo">
+          <h2>Layout</h2>
+          <div class="settings-row">
+            <span class="settings-label">Screen</span>
+            <select class="settings-select">
+              <option>Left screen (main) — 1920 × 1032</option>
+              <option selected>• Right screen — 1536 × 816</option>
+            </select>
+          </div>
+          <p class="settings-hint layout-says">
+            They are already on that screen.
+          </p>
+        </div>
+
+        <p class="legend" style="margin-top: 10px">
+          Choosing the screen the notes are on no longer reports a move and
+          shuffles them in place — it says so and does nothing.
+        </p>
+      </section>
+
+      <!-- ───────────────────────────────── 8. The projection rule ────── -->
+      <section class="case">
+        <h2>8 · A note is a share of its own screen</h2>
+        <p>
+          Not a share of the block the notes happen to form. A fifth of the
+          width and half the height stays a fifth and a half on any display, so
+          a note keeps its own shape instead of being stretched to fill.
+        </p>
+
+        <svg viewBox="0 0 300 210" width="100%" aria-hidden="true">
+          <!-- the external monitor -->
+          <rect x="2" y="8" width="180" height="97" rx="4" fill="none"
+                stroke="rgba(255,255,255,0.45)" stroke-width="1" />
+          <text x="2" y="4" fill="rgba(255,255,255,0.6)" font-size="7"
+                font-family="Segoe UI, sans-serif">1920 × 1032</text>
+          <rect x="83" y="9.9" width="31.9" height="95" rx="2"
+                fill="rgba(255,209,102,0.25)" stroke="#ffd166" stroke-width="1" />
+          <rect x="117" y="9.9" width="31.9" height="46" rx="2"
+                fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.5)" stroke-width="0.8" />
+          <rect x="117" y="58" width="31.9" height="46" rx="2"
+                fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.5)" stroke-width="0.8" />
+          <rect x="151" y="9.9" width="31.9" height="46" rx="2"
+                fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.5)" stroke-width="0.8" />
+          <rect x="151" y="58" width="31.9" height="46" rx="2"
+                fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.5)" stroke-width="0.8" />
+
+          <!-- the laptop panel, smaller and a different shape -->
+          <rect x="2" y="128" width="144" height="76" rx="4" fill="none"
+                stroke="rgba(255,255,255,0.45)" stroke-width="1" />
+          <text x="2" y="124" fill="rgba(255,255,255,0.6)" font-size="7"
+                font-family="Segoe UI, sans-serif">1536 × 816</text>
+          <rect x="66.7" y="129.5" width="25.5" height="74.4" rx="2"
+                fill="rgba(255,209,102,0.25)" stroke="#ffd166" stroke-width="1" />
+          <rect x="93.8" y="129.5" width="25.5" height="36" rx="2"
+                fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.5)" stroke-width="0.8" />
+          <rect x="93.8" y="167.2" width="25.5" height="36" rx="2"
+                fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.5)" stroke-width="0.8" />
+          <rect x="120.9" y="129.5" width="25.5" height="36" rx="2"
+                fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.5)" stroke-width="0.8" />
+          <rect x="120.9" y="167.2" width="25.5" height="36" rx="2"
+                fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.5)" stroke-width="0.8" />
+
+          <text x="192" y="40" fill="rgba(255,255,255,0.75)" font-size="8"
+                font-family="Segoe UI, sans-serif">fx 0.453</text>
+          <text x="192" y="52" fill="rgba(255,255,255,0.75)" font-size="8"
+                font-family="Segoe UI, sans-serif">fw 0.177</text>
+          <text x="192" y="64" fill="rgba(255,255,255,0.75)" font-size="8"
+                font-family="Segoe UI, sans-serif">fh 0.981</text>
+          <text x="192" y="152" fill="rgba(255,255,255,0.75)" font-size="8"
+                font-family="Segoe UI, sans-serif">the same</text>
+          <text x="192" y="164" fill="rgba(255,255,255,0.75)" font-size="8"
+                font-family="Segoe UI, sans-serif">four numbers</text>
+        </svg>
+
+        <p class="legend">
+          The tall note is <b>0.177</b> of the width and <b>0.981</b> of the
+          height on both, at <b>0.453</b> across. Before this it was measured
+          against the three-column block, so moving to a wider screen stretched
+          a 340 × 501 note into 611 × 505.
+        </p>
+      </section>
     </div>
   </body>
 </html>
