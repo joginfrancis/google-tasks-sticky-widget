@@ -103,6 +103,96 @@ impl NoteRegistry {
     }
 }
 
+/// What a new note is, before the user resizes it.
+const NEW_NOTE_WIDTH: f64 = 340.0;
+const NEW_NOTE_HEIGHT: f64 = 480.0;
+
+/// A rectangle in physical pixels: x, y, width, height.
+type Rect = (i32, i32, i32, i32);
+
+/// The notes a new one must not land on.
+///
+/// Hidden and minimised notes are left out: a window nobody can see cannot be
+/// obscured, and counting it would push new notes into a corner for no visible
+/// reason.
+fn occupied_rects(app: &AppHandle) -> Vec<Rect> {
+    note_windows(app)
+        .into_iter()
+        .filter(|(_, w)| {
+            w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false)
+        })
+        .filter_map(|(_, w)| {
+            let pos = w.outer_position().ok()?;
+            let size = w.outer_size().ok()?;
+            Some((pos.x, pos.y, size.width as i32, size.height as i32))
+        })
+        .collect()
+}
+
+/// Do two rectangles share any pixel?
+///
+/// Edges touching is not an overlap — two notes side by side with no gap are
+/// a tidy arrangement, not a collision.
+fn rects_overlap(a: Rect, b: Rect) -> bool {
+    a.0 < b.0 + b.2 && a.0 + a.2 > b.0 && a.1 < b.1 + b.3 && a.1 + a.3 > b.1
+}
+
+/// Is a rectangle wholly inside the work area?
+fn inside(r: Rect, area: Rect) -> bool {
+    r.0 >= area.0 && r.1 >= area.1 && r.0 + r.2 <= area.0 + area.2 && r.1 + r.3 <= area.1 + area.3
+}
+
+/// Where to put a new note: close to the one that asked, on top of nothing.
+///
+/// "Beside the window that asked" was the whole rule, and it is wrong in
+/// exactly the arrangement this app encourages. Notes tiled in columns leave
+/// no free space beside any of them — the space to the right of a note is the
+/// next note — so every new note landed on an existing one. Same size, same
+/// always-on-top, a few pixels off: indistinguishable from the `+` button
+/// doing nothing, which is what it looked like.
+///
+/// Candidates run from "touching the note you clicked" outwards, so the new
+/// note still arrives where you are looking whenever there is room there.
+fn pick_spot(origin: Rect, size: (i32, i32), area: Rect, taken: &[Rect]) -> (i32, i32) {
+    let gap = 12i32;
+    let (w, h) = size;
+
+    let mut candidates: Vec<(i32, i32)> = vec![
+        (origin.0 + origin.2 + gap, origin.1),          // right
+        (origin.0 - w - gap, origin.1),                 // left
+        (origin.0, origin.1 + origin.3 + gap),          // below
+        (origin.0, origin.1 - h - gap),                 // above
+    ];
+
+    // Then the work area itself, in reading order, on a grid of note-sized
+    // cells. This is what finds the empty column on a screen whose notes are
+    // all stacked on one side.
+    let step_x = (w + gap).max(1);
+    let step_y = (h + gap).max(1);
+    let mut y = area.1;
+    while y + h <= area.1 + area.3 {
+        let mut x = area.0;
+        while x + w <= area.0 + area.2 {
+            candidates.push((x, y));
+            x += step_x;
+        }
+        y += step_y;
+    }
+
+    for (x, y) in candidates {
+        let r = (x, y, w, h);
+        if inside(r, area) && !taken.iter().any(|t| rects_overlap(r, *t)) {
+            return (x, y);
+        }
+    }
+
+    // Every cell is spoken for: cascade off the origin rather than refuse, and
+    // keep it on screen so it can at least be dragged somewhere better.
+    let x = (origin.0 + 32).clamp(area.0, (area.0 + area.2 - w).max(area.0));
+    let y = (origin.1 + 32).clamp(area.1, (area.1 + area.3 - h).max(area.1));
+    (x, y)
+}
+
 /// Always opens a *new* note, even for a list that already has one.
 ///
 /// Duplicates are deliberate: the `+` button means "another note like this one",
@@ -121,6 +211,11 @@ pub fn open_note_labelled(
     label: Option<&str>,
 ) -> Result<String, String> {
     let registry = app.state::<NoteRegistry>();
+
+    // A label is supplied only when a saved session is being rebuilt, and that
+    // is the only time stored geometry belongs to the window being opened.
+    let restoring = label.is_some();
+
     let label = match label {
         Some(explicit) => explicit.to_string(),
         None => {
@@ -152,7 +247,7 @@ pub fn open_note_labelled(
 
     let mut builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html".into()))
         .title("Sticky Widget")
-        .inner_size(340.0, 480.0)
+        .inner_size(NEW_NOTE_WIDTH, NEW_NOTE_HEIGHT)
         .min_inner_size(260.0, 200.0)
         .decorations(false)
         .transparent(true)
@@ -161,47 +256,51 @@ pub fn open_note_labelled(
         .skip_taskbar(true)
         .always_on_top(layer == WindowLayer::Top);
 
-    // Place it *beside* the window that asked, not on top of it.
+    // Place it where there is room, near the window that asked.
     //
     // A small cascade offset looks like nothing happened: both notes are
     // always-on-top and the same size, so a 32px overlap leaves only a sliver
     // showing and the new note reads as missing.
+    let mut spot = None;
     if let Some(origin) = near.and_then(|l| app.get_webview_window(l)) {
         if let (Ok(pos), Ok(size)) = (origin.outer_position(), origin.outer_size()) {
-            let gap = 12i32;
-            let width = size.width as i32;
+            let scale = origin.scale_factor().unwrap_or(1.0);
+            let wanted = (
+                (NEW_NOTE_WIDTH * scale).round() as i32,
+                (NEW_NOTE_HEIGHT * scale).round() as i32,
+            );
 
-            // Prefer to the right; fall back to the left; cascade only if
-            // neither fits on this monitor.
-            let (mon_left, mon_right) = origin
+            let area = origin
                 .current_monitor()
                 .ok()
                 .flatten()
                 .map(|m| {
-                    let mp = m.position();
-                    (mp.x, mp.x + m.size().width as i32)
+                    let wp = m.work_area().position;
+                    let ws = m.work_area().size;
+                    (wp.x, wp.y, ws.width as i32, ws.height as i32)
                 })
-                .unwrap_or((i32::MIN, i32::MAX));
+                .unwrap_or((i32::MIN / 4, i32::MIN / 4, i32::MAX / 2, i32::MAX / 2));
 
-            let right = pos.x + width + gap;
-            let left = pos.x - width - gap;
-
-            let (x, y) = if right + width <= mon_right {
-                (right, pos.y)
-            } else if left >= mon_left {
-                (left, pos.y)
-            } else {
-                (pos.x + 32, pos.y + 32)
-            };
+            let taken = occupied_rects(app);
+            let origin_rect = (pos.x, pos.y, size.width as i32, size.height as i32);
+            let (x, y) = pick_spot(origin_rect, wanted, area, &taken);
 
             log::info!(
-                "open_note: placing at ({x},{y}); origin at ({},{}) size {}x{}; monitor x {mon_left}..{mon_right}",
+                "open_note: placing at ({x},{y}) {}x{}; origin at ({},{}) {}x{}; work area {}x{} at {},{}; {} window(s) in the way",
+                wanted.0,
+                wanted.1,
                 pos.x,
                 pos.y,
                 size.width,
-                size.height
+                size.height,
+                area.2,
+                area.3,
+                area.0,
+                area.1,
+                taken.len()
             );
             builder = builder.position(x as f64, y as f64);
+            spot = Some(tauri::PhysicalPosition::new(x, y));
         }
     } else {
         log::warn!("open_note: no origin window to place beside; using default position");
@@ -219,7 +318,24 @@ pub fn open_note_labelled(
     // at run time now. Without this the saved position is written faithfully
     // on exit and then ignored on launch, which is why a restart stacked the
     // notes in a corner instead of rebuilding the arrangement.
-    let _ = window.restore_state(StateFlags::POSITION | StateFlags::SIZE);
+    //
+    // Only for a note being restored, though. Labels are handed out in
+    // sequence from the highest *currently saved* note, so the first note
+    // added after a session that had more notes in it reuses a label whose
+    // geometry is still on disk — and the position chosen for it a few lines
+    // above was overwritten by wherever that older note happened to sit. On
+    // this machine that put every new note four pixels from `note-1`: same
+    // size, same list, both always-on-top, which reads as the `+` button
+    // doing nothing at all.
+    if restoring {
+        let _ = window.restore_state(StateFlags::POSITION | StateFlags::SIZE);
+    } else if let Some(at) = spot {
+        // The builder's position is taken as logical pixels while everything
+        // measured above is physical, so on a scaled display the two disagree.
+        // Setting it again, in the units the arithmetic was done in, is what
+        // makes the chosen spot the one the note actually lands on.
+        let _ = window.set_position(at);
+    }
 
     // Without this the new note can sit behind the one that opened it — both
     // are always-on-top, so z-order between them is otherwise arbitrary.
@@ -3226,5 +3342,79 @@ mod width_tests {
     #[test]
     fn nothing_to_measure_falls_back_to_a_note_sized_note() {
         assert_eq!(tidy_width(vec![], 1900), 340);
+    }
+}
+
+#[cfg(test)]
+mod placement_tests {
+    use super::{pick_spot, Rect};
+
+    /// 1920x1032 with no taskbar in the way, which is this machine's external
+    /// display.
+    const AREA: Rect = (0, 0, 1920, 1032);
+    const SIZE: (i32, i32) = (340, 480);
+
+    #[test]
+    fn a_new_note_appears_beside_the_one_that_asked() {
+        let origin = (870, 10, 340, 1000);
+        assert_eq!(pick_spot(origin, SIZE, AREA, &[origin]), (1222, 10));
+    }
+
+    #[test]
+    fn it_does_not_land_on_the_note_already_standing_there() {
+        // The arrangement that made the + button look broken: three columns,
+        // and the space to the right of note-3 is note-1.
+        let origin = (870, 10, 340, 1000);
+        let taken = [
+            origin,
+            (1220, 10, 340, 495),
+            (1220, 515, 340, 495),
+            (1570, 10, 340, 495),
+            (1570, 515, 340, 495),
+        ];
+
+        let (x, y) = pick_spot(origin, SIZE, AREA, &taken);
+        let placed = (x, y, SIZE.0, SIZE.1);
+        for t in taken {
+            assert!(
+                !super::rects_overlap(placed, t),
+                "new note at {placed:?} overlaps {t:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn it_goes_left_when_the_right_is_off_the_screen() {
+        let origin = (1560, 10, 340, 480);
+        assert_eq!(pick_spot(origin, SIZE, AREA, &[origin]), (1208, 10));
+    }
+
+    #[test]
+    fn it_stays_inside_the_work_area() {
+        let origin = (0, 0, 340, 480);
+        let mut taken = vec![origin];
+        // Fill the screen bar one cell in the bottom row.
+        for row in 0..2 {
+            for col in 0..5 {
+                taken.push((col * 352, row * 492, 340, 480));
+            }
+        }
+
+        let (x, y) = pick_spot(origin, SIZE, AREA, &taken);
+        assert!(x >= 0 && y >= 0, "placed off the left or top at ({x},{y})");
+        assert!(
+            x + SIZE.0 <= 1920 && y + SIZE.1 <= 1032,
+            "placed off the right or bottom at ({x},{y})"
+        );
+    }
+
+    #[test]
+    fn a_full_screen_cascades_rather_than_refusing() {
+        let origin = (0, 0, 340, 480);
+        // One rectangle covering everything: nothing can be free.
+        let taken = [(0, 0, 1920, 1032)];
+
+        let (x, y) = pick_spot(origin, SIZE, AREA, &taken);
+        assert_eq!((x, y), (32, 32));
     }
 }
