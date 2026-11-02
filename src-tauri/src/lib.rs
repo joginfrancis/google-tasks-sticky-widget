@@ -314,9 +314,20 @@ pub fn run() {
                 notes::restore_all_sizes(app);
                 if !commands::is_quitting(app) {
                     api.prevent_exit();
+                } else {
+                    log::info!("exit requested; shutting down");
                 }
             }
-            tauri::RunEvent::Exit => notes::restore_all_sizes(app),
+            // Written down so that a log which simply stops can be told apart
+            // from one that was asked to stop. Without it, a quit from the
+            // tray and a silent death look identical afterwards.
+            tauri::RunEvent::Exit => {
+                log::info!("=== Sticky Widget stopped ===");
+                notes::restore_all_sizes(app);
+            }
+            // The event loop is pumping from here on, which is what the
+            // background threads wait for before they ask it anything.
+            tauri::RunEvent::Ready => notes::mark_event_loop_ready(),
             _ => {}
         });
 }

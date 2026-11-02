@@ -235,13 +235,20 @@ pub fn open_note_labelled(
     // it.
     let layer = {
         let state = app.state::<AppState>();
-        let mut settings = match state.settings.lock() {
-            Ok(settings) => settings,
-            Err(_) => return Err("settings lock poisoned".to_string()),
+        let (layer, snapshot) = {
+            let mut settings = match state.settings.lock() {
+                Ok(settings) => settings,
+                Err(_) => return Err("settings lock poisoned".to_string()),
+            };
+            let layer = settings.layer_for(&label);
+            settings.set_layer_for(&label, layer);
+            (layer, settings.clone())
         };
-        let layer = settings.layer_for(&label);
-        settings.set_layer_for(&label, layer);
-        crate::settings::save(app, &settings);
+
+        // Written with the lock already released. Saving holds it across a
+        // file write, and this runs with a window about to be created — the
+        // two together are the shape every deadlock here has had.
+        crate::settings::save(app, &snapshot);
         layer
     };
 
@@ -372,6 +379,70 @@ pub fn is_note_label(label: &str) -> bool {
 /// Called after every open, close, and list change rather than only at exit: a
 /// crash or a force-kill would otherwise lose the arrangement, and this is a
 /// few bytes of JSON.
+/// Set while a session or a layout is being rebuilt.
+///
+/// A restore opens notes one at a time, and every note that opens writes the
+/// open set down. If the restore then stops half way — which a deadlock in
+/// window creation has made it do — the half that made it on screen is what
+/// gets saved, and the arrangement is permanently shorter. Five notes became
+/// two that way, and every launch afterwards faithfully restored the two.
+///
+/// While this is set the open set is not written at all. It is written once,
+/// by the restore itself, when the restore has actually finished.
+/// A count rather than a flag: the screen watcher can start projecting an
+/// arrangement while a session restore is still running, and a plain flag
+/// would let whichever finished first declare the other one finished too.
+static RESTORING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Holds [`RESTORING`] up for as long as it lives, however the restore ends.
+struct RestoreGuard;
+
+impl RestoreGuard {
+    fn start() -> Self {
+        RESTORING.fetch_add(1, Ordering::SeqCst);
+        RestoreGuard
+    }
+}
+
+impl Drop for RestoreGuard {
+    fn drop(&mut self) {
+        RESTORING.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// Is any rebuild still in progress?
+fn restore_in_progress() -> bool {
+    RESTORING.load(Ordering::SeqCst) > 0
+}
+
+/// Set once the event loop is running.
+///
+/// Nothing on a background thread may ask Tauri a question about windows or
+/// monitors before this: during `setup` the event loop is not pumping yet, so
+/// a call that waits for it waits for ever, holding whatever it holds. The
+/// screen watcher asking for the monitor list at the moment the session was
+/// being rebuilt is what froze the app part way through opening its notes.
+static EVENT_LOOP_READY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Called when the event loop starts.
+pub fn mark_event_loop_ready() {
+    EVENT_LOOP_READY.store(true, Ordering::Relaxed);
+}
+
+/// Blocks a background thread until the event loop can answer it.
+///
+/// Capped, so a build where the signal never arrives degrades to the old
+/// behaviour after a few seconds instead of a thread that never runs.
+fn wait_for_event_loop() {
+    for _ in 0..200 {
+        if EVENT_LOOP_READY.load(Ordering::Relaxed) {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    log::warn!("event loop never signalled ready; starting anyway");
+}
+
 /// Set while a layout operation is moving windows itself.
 ///
 /// Those moves raise the same `Moved`/`Resized` events a user drag does, and
@@ -419,7 +490,9 @@ const GEOMETRY_QUIET_MS: u64 = 1_200;
 /// Starts the one thread that writes window geometry.
 pub fn start_geometry_writer(app: &AppHandle) {
     let app = app.clone();
-    std::thread::spawn(move || loop {
+    std::thread::spawn(move || {
+        wait_for_event_loop();
+        loop {
         std::thread::sleep(GEOMETRY_SAVE_EVERY);
 
         if !GEOMETRY_DIRTY.load(Ordering::Relaxed) || LAYOUT_BUSY.load(Ordering::Relaxed) {
@@ -445,12 +518,18 @@ pub fn start_geometry_writer(app: &AppHandle) {
         // shape just as much as Arrange does, and comparing a later switch
         // against the shape needs to know what the shape was.
         log_arrangement(&app, "settled");
+        }
     });
 }
 
 /// Writes the arrangement right now — for the end of a layout operation.
 
 pub fn persist_open_notes(app: &AppHandle) {
+    // A rebuild in progress is not an arrangement yet: see RESTORING.
+    if restore_in_progress() {
+        return;
+    }
+
     let notes = match app.state::<NoteRegistry>().by_label.lock() {
         Ok(map) => map.clone(),
         Err(_) => return,
@@ -499,6 +578,10 @@ pub fn open_layout(app: &AppHandle, known_lists: &[String]) -> usize {
             .store(highest + 1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    // Nothing is written down until the whole set is up: a rebuild that stops
+    // half way must not shorten the arrangement it was rebuilding.
+    let guard = RestoreGuard::start();
+
     let mut opened = 0;
     for (label, list_id) in saved {
         // Already on screen: show it rather than opening a second view of the
@@ -520,6 +603,10 @@ pub fn open_layout(app: &AppHandle, known_lists: &[String]) -> usize {
     if opened == 0 && note_windows(app).is_empty() {
         opened += open_default_note(app, known_lists);
     }
+
+    // Reached the end, so this is a whole arrangement and can be written down.
+    drop(guard);
+    persist_open_notes(app);
 
     log::info!("layout: opened {opened} note(s)");
     opened
@@ -576,6 +663,7 @@ pub fn restore_session(app: &AppHandle, known_lists: &[String]) {
     // first screen change against.
     let app = app.clone();
     std::thread::spawn(move || {
+        wait_for_event_loop();
         std::thread::sleep(std::time::Duration::from_millis(2500));
         log_arrangement(&app, "at startup");
 
@@ -1268,6 +1356,12 @@ pub fn watch_screens(app: &AppHandle) {
     let app = app.clone();
 
     std::thread::spawn(move || {
+        // Asking for the monitor list waits on the event loop, and during
+        // setup there is nothing pumping it yet — so this question, asked at
+        // the moment the session was being rebuilt, is what hung the restore
+        // part way through opening its notes.
+        wait_for_event_loop();
+
         let names = |app: &AppHandle| -> Vec<String> {
             let mut names: Vec<String> = app
                 .available_monitors()
@@ -2083,11 +2177,14 @@ pub fn apply_relative(app: &AppHandle, area_pos: tauri::PhysicalPosition<i32>, a
     }
 
     LAYOUT_BUSY.store(true, Ordering::Relaxed);
+    let guard = RestoreGuard::start();
     open_missing(app, &relative);
 
     let moves = project_relative(app, &relative, &area_pos, &area_size);
     let count = moves.len();
     place_windows(app, moves, "projected onto one screen");
+
+    drop(guard);
     persist_open_notes(app);
     count
 }
@@ -2233,6 +2330,7 @@ fn apply_notes(
     what: &str,
 ) -> (usize, Vec<(String, &'static str)>) {
     LAYOUT_BUSY.store(true, Ordering::Relaxed);
+    let guard = RestoreGuard::start();
     let known = known_list_ids(app);
     let mut placed = 0;
     let mut moves = Vec::new();
@@ -2295,6 +2393,10 @@ fn apply_notes(
     }
 
     place_windows(app, moves, what);
+
+    // Same rule as a session restore: only a layout that finished describes
+    // what is on screen.
+    drop(guard);
     persist_open_notes(app);
     (placed, skipped)
 }
@@ -3416,5 +3518,47 @@ mod placement_tests {
 
         let (x, y) = pick_spot(origin, SIZE, AREA, &taken);
         assert_eq!((x, y), (32, 32));
+    }
+}
+
+#[cfg(test)]
+mod restore_guard_tests {
+    use super::{restore_in_progress, RestoreGuard};
+
+    /// One test, not several: the counter is process-wide and the harness
+    /// runs tests in parallel, so two of these would read each other's state.
+    #[test]
+    fn a_restore_suppresses_writing_the_open_set_until_it_finishes() {
+        assert!(!restore_in_progress(), "nothing should be restoring yet");
+
+        {
+            let _outer = RestoreGuard::start();
+            assert!(restore_in_progress());
+
+            {
+                // The screen watcher projecting an arrangement while a session
+                // restore is still running. A plain flag would let this inner
+                // one declare the outer finished when it ended.
+                let _inner = RestoreGuard::start();
+                assert!(restore_in_progress());
+            }
+
+            assert!(
+                restore_in_progress(),
+                "the outer restore is still running and must still be held"
+            );
+        }
+
+        assert!(!restore_in_progress(), "both finished, so writing resumes");
+
+        // And a restore that dies rather than returning — which is how this
+        // one has been failing — must not suppress writing for ever.
+        let caught = std::panic::catch_unwind(|| {
+            let _guard = RestoreGuard::start();
+            panic!("window creation blew up half way through");
+        });
+
+        assert!(caught.is_err());
+        assert!(!restore_in_progress());
     }
 }

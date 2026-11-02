@@ -361,6 +361,9 @@ pub fn is_quitting(_app: &AppHandle) -> bool {
 }
 
 pub fn begin_quit(app: &AppHandle) {
+    // The only record that the app was asked to stop. A quit from the tray
+    // used to leave a log that simply ended, indistinguishable from a crash.
+    log::info!("quit: asked to stop");
     QUITTING.store(true, std::sync::atomic::Ordering::SeqCst);
     app.exit(0);
 }
