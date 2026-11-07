@@ -351,6 +351,7 @@ pub fn open_note_labelled(
     log::info!("opened note window for list {list_id}");
 
     app.state::<NoteRegistry>().set(&label, list_id);
+    undefer_note(&label);
     persist_open_notes(app);
 
     // The scheduler polls only lists with a window open; a new note must start
@@ -443,6 +444,68 @@ fn wait_for_event_loop() {
     log::warn!("event loop never signalled ready; starting anyway");
 }
 
+/// Notes that belong to the arrangement but could not be opened this time.
+///
+/// A note is passed over when its list is not in the local store, and that is
+/// the right call for the screen: there is nothing to show. It is the wrong
+/// call for the arrangement. The store is a cache, and a laptop that has been
+/// shut, carried home and opened again can reach `open_layout` before the
+/// first sync has refilled it — so "this list is unknown" means "not yet",
+/// not "gone". Writing the shortened set back is how notes stopped coming
+/// back after a trip between desks.
+///
+/// Held here instead, and written out beside the windows that did open, so
+/// the note returns under its own label the moment its list does. Only an
+/// explicit close takes one out.
+static DEFERRED: Mutex<std::collections::BTreeMap<String, String>> =
+    Mutex::new(std::collections::BTreeMap::new());
+
+/// Keeps a note in the arrangement that this pass could not put on screen.
+fn defer_note(label: &str, list_id: &str) {
+    if let Ok(mut map) = DEFERRED.lock() {
+        map.insert(label.to_string(), list_id.to_string());
+    }
+}
+
+/// The note is on screen, or the user closed it: either way it is settled.
+pub fn undefer_note(label: &str) {
+    if let Ok(mut map) = DEFERRED.lock() {
+        map.remove(label);
+    }
+}
+
+/// The arrangement as it should be written down: the windows that are open,
+/// plus the notes still waiting for their list.
+///
+/// An open window always wins. It knows which list it is actually showing,
+/// where a deferral only records which list the note was last asked for.
+fn merge_deferred(notes: &mut HashMap<String, String>, deferred: Vec<(String, String)>) {
+    for (label, list_id) in deferred {
+        notes.entry(label).or_insert(list_id);
+    }
+}
+
+fn deferred_notes() -> Vec<(String, String)> {
+    DEFERRED
+        .lock()
+        .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+        .unwrap_or_default()
+}
+
+/// One placement at a time.
+///
+/// `place_windows` hands its moves to a thread and returns straight away, so
+/// a second display change arriving while the first is still moving windows
+/// started a second set of moves over the top of it: two threads each
+/// correcting what the other had just done, on the same windows. Undocking
+/// and redocking delivers exactly that pair of changes.
+static PLACE_LOCK: Mutex<()> = Mutex::new(());
+
+/// Blocks until any placement already running has finished.
+fn wait_for_placement() {
+    let _turn = PLACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+}
+
 /// Set while a layout operation is moving windows itself.
 ///
 /// Those moves raise the same `Moved`/`Resized` events a user drag does, and
@@ -530,10 +593,12 @@ pub fn persist_open_notes(app: &AppHandle) {
         return;
     }
 
-    let notes = match app.state::<NoteRegistry>().by_label.lock() {
+    let mut notes = match app.state::<NoteRegistry>().by_label.lock() {
         Ok(map) => map.clone(),
         Err(_) => return,
     };
+
+    merge_deferred(&mut notes, deferred_notes());
 
     let state = app.state::<AppState>();
     let Ok(mut settings) = state.settings.lock() else {
@@ -591,7 +656,8 @@ pub fn open_layout(app: &AppHandle, known_lists: &[String]) -> usize {
             continue;
         }
         if !known_lists.is_empty() && !known_lists.contains(&list_id) {
-            log::info!("layout: skipping note for a list that no longer exists");
+            log::info!("layout: {label} waits for list {list_id}, which is not in the store yet");
+            defer_note(&label, &list_id);
             continue;
         }
         match open_note_labelled(app, &list_id, None, Some(&label)) {
@@ -1221,6 +1287,15 @@ fn place_windows(
     }
 
     std::thread::spawn(move || {
+        // See PLACE_LOCK: one of these at a time, or two of them undo each
+        // other's work window by window.
+        let _turn = PLACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        // The placement that just released the lock cleared this on its way
+        // out. These moves are still to come, and the geometry writer must
+        // keep out of them too.
+        LAYOUT_BUSY.store(true, Ordering::Relaxed);
+
         for (label, pos, size) in &moves {
             let Some(window) = handle.get_webview_window(label) else {
                 continue;
@@ -1393,6 +1468,12 @@ pub fn watch_screens(app: &AppHandle) {
             // Let Windows finish moving things before moving them back.
             std::thread::sleep(SCREEN_SETTLE);
 
+            // And let any placement already in flight finish. Undocking and
+            // redocking in quick succession delivers two changes, and the
+            // measurements below are worthless taken halfway through the
+            // first one's moves.
+            wait_for_placement();
+
             // What Windows itself did with the notes, before anything here
             // touches them. The heap it leaves is the starting point every
             // branch below has to cope with.
@@ -1430,12 +1511,26 @@ pub fn watch_screens(app: &AppHandle) {
             // for this one is from an earlier session. Which of the two should
             // win is a real question, and it cannot be answered without
             // knowing how often they differ — so it is logged either way.
-            let in_use = app
+            let (in_use, shape_signature) = app
                 .state::<AppState>()
                 .settings
                 .lock()
-                .map(|settings| settings.relative_layout.clone())
+                .map(|settings| {
+                    (
+                        settings.relative_layout.clone(),
+                        settings.relative_signature.clone(),
+                    )
+                })
                 .unwrap_or_default();
+
+            // Whether the shape in use was measured on the displays attached
+            // now. On a genuine dock or undock it never is: the shape belongs
+            // to the screens just left, which is the whole reason this set has
+            // a memory of its own. Comparing the two then rejects the memory
+            // precisely when it is wanted — carrying the laptop home and back
+            // put every note onto the primary screen, in the home shape, with
+            // the desk arrangement sitting unused in the file.
+            let shape_describes_these = shape_signature == signature;
 
             if let Some(notes) = remembered.as_ref() {
                 log::info!(
@@ -1448,30 +1543,40 @@ pub fn watch_screens(app: &AppHandle) {
             }
 
             let remembered = remembered.filter(|notes| {
-                if notes.len() < expected {
-                    log::info!(
-                        "screens: the arrangement for {signature} covers {} of {expected} note(s); projecting instead",
-                        notes.len()
-                    );
-                    return false;
-                }
+                // Measured only when the shape is about these displays. When
+                // it is not, `None` says so, rather than standing in for a
+                // comparison that was never made.
+                let drift =
+                    shape_describes_these.then(|| shape_drift(&relative_from(notes), &in_use));
 
-                // Exact pixels are worth having only while they still describe
-                // the arrangement in use. These were recorded the last time
-                // these displays were attached, which may have been before the
-                // notes were rearranged — or, as the log showed on 23 October,
-                // in a session where Windows' own DPI rescale had inflated
-                // every note by a quarter. Replaying that is not "the same
-                // layout on this screen", which is the whole promise.
-                let drift = shape_drift(&relative_from(notes), &in_use);
-                if drift > SHAPE_TOLERANCE {
-                    log::info!(
-                        "screens: the pixels remembered for {signature} are a different arrangement (drift {drift:.3}); projecting the shape instead"
-                    );
-                    return false;
+                match judge_remembered(notes.len(), expected, drift) {
+                    Verdict::Use => {
+                        if !shape_describes_these {
+                            log::info!(
+                                "screens: the shape in use was measured on {}, so it says nothing about {signature}; using the remembered pixels",
+                                if shape_signature.is_empty() {
+                                    "nothing yet"
+                                } else {
+                                    shape_signature.as_str()
+                                }
+                            );
+                        }
+                        true
+                    }
+                    Verdict::TooFew => {
+                        log::info!(
+                            "screens: the arrangement for {signature} covers {} of {expected} note(s); projecting instead",
+                            notes.len()
+                        );
+                        false
+                    }
+                    Verdict::Drifted(drift) => {
+                        log::info!(
+                            "screens: the pixels remembered for {signature} are a different arrangement (drift {drift:.3}); projecting the shape instead"
+                        );
+                        false
+                    }
                 }
-
-                true
             });
 
             match remembered {
@@ -2154,6 +2259,12 @@ fn open_missing(app: &AppHandle, notes: &[crate::settings::RelativeNote]) {
             continue;
         }
         if !known.is_empty() && !known.contains(&note.list_id) {
+            log::info!(
+                "layout: {} waits for list {}, which is not in the store yet",
+                note.label,
+                note.list_id
+            );
+            defer_note(&note.label, &note.list_id);
             continue;
         }
         if let Err(err) = open_note_labelled(app, &note.list_id, None, Some(&note.label)) {
@@ -2228,6 +2339,39 @@ fn shape_drift(
 /// Past this, two arrangements are different arrangements rather than the same
 /// one with rounding. A twentieth of a screen is about a sixth of a note.
 const SHAPE_TOLERANCE: f64 = 0.05;
+
+/// What to do with the arrangement remembered for a set of displays.
+#[derive(Debug, PartialEq)]
+enum Verdict {
+    /// Replay the remembered pixels.
+    Use,
+    /// It does not account for every note, so projecting the shape puts more
+    /// of them on screen than restoring would.
+    TooFew,
+    /// The pixels describe some other arrangement - a heap, or a set Windows
+    /// had rescaled on a DPI change, as the log showed on 23 October - and
+    /// replaying it would not be "the same layout on this screen".
+    Drifted(f64),
+}
+
+/// Whether the pixels remembered for these displays are worth replaying.
+///
+/// `drift` is `None` when the shape in use was measured on *other* displays,
+/// which after a dock or undock it always is: the shape belongs to the screens
+/// just left, and this set has a memory of its own precisely because the two
+/// differ. Treating that absence as a mismatch rejected the memory exactly
+/// when it was wanted - carrying the laptop home and back put every note onto
+/// the primary screen in the home shape, with the desk arrangement sitting
+/// unused in the file.
+fn judge_remembered(remembered: usize, expected: usize, drift: Option<f64>) -> Verdict {
+    if remembered < expected {
+        return Verdict::TooFew;
+    }
+    match drift {
+        Some(drift) if drift > SHAPE_TOLERANCE => Verdict::Drifted(drift),
+        _ => Verdict::Use,
+    }
+}
 
 /// Marks this set of displays as the one the remembered shape now describes.
 ///
@@ -2339,6 +2483,12 @@ fn apply_notes(
 
     for note in saved {
         if !known.is_empty() && !known.contains(&note.list_id) {
+            log::info!(
+                "layout: {} waits for list {}, which is not in the store yet",
+                note.label,
+                note.list_id
+            );
+            defer_note(&note.label, &note.list_id);
             skipped.push((note.label.clone(), NO_LIST));
             continue;
         }
@@ -3518,6 +3668,72 @@ mod placement_tests {
 
         let (x, y) = pick_spot(origin, SIZE, AREA, &taken);
         assert_eq!((x, y), (32, 32));
+    }
+}
+
+#[cfg(test)]
+mod screen_memory_tests {
+    use super::{judge_remembered, merge_deferred, Verdict, SHAPE_TOLERANCE};
+    use std::collections::HashMap;
+
+    /// The case that sent the desk arrangement onto the laptop screen: back
+    /// at the dock, the pixels remembered for the dock are perfectly good,
+    /// and the only thing "wrong" with them is that they do not match the
+    /// shape measured at home.
+    #[test]
+    fn a_shape_from_other_displays_is_not_evidence_against_this_arrangement() {
+        assert_eq!(judge_remembered(5, 5, None), Verdict::Use);
+    }
+
+    /// A shape measured on *these* displays still is.
+    #[test]
+    fn a_drifted_shape_on_the_same_displays_is_still_rejected() {
+        assert_eq!(
+            judge_remembered(5, 5, Some(SHAPE_TOLERANCE * 4.0)),
+            Verdict::Drifted(SHAPE_TOLERANCE * 4.0)
+        );
+        assert_eq!(
+            judge_remembered(5, 5, Some(SHAPE_TOLERANCE / 2.0)),
+            Verdict::Use
+        );
+    }
+
+    /// An arrangement that leaves notes out loses to projecting, with or
+    /// without a shape to compare it against.
+    #[test]
+    fn an_incomplete_arrangement_loses_to_projecting_either_way() {
+        assert_eq!(judge_remembered(2, 5, None), Verdict::TooFew);
+        assert_eq!(judge_remembered(2, 5, Some(0.0)), Verdict::TooFew);
+    }
+
+    /// The notes that went missing after a trip between desks: a note whose
+    /// list the store has not synced yet is still part of the arrangement, so
+    /// what gets written down must still contain it.
+    #[test]
+    fn a_note_waiting_for_its_list_stays_in_the_arrangement() {
+        let mut open = HashMap::new();
+        open.insert("note-1".to_string(), "list-a".to_string());
+
+        merge_deferred(&mut open, vec![("note-4".to_string(), "list-b".to_string())]);
+
+        assert_eq!(open.len(), 2);
+        assert_eq!(open.get("note-4"), Some(&"list-b".to_string()));
+    }
+
+    /// An open window knows which list it is showing; a deferral only
+    /// remembers which one was asked for. The window wins.
+    #[test]
+    fn an_open_window_outranks_a_stale_deferral() {
+        let mut open = HashMap::new();
+        open.insert("note-1".to_string(), "the-list-it-shows".to_string());
+
+        merge_deferred(
+            &mut open,
+            vec![("note-1".to_string(), "what-it-used-to-show".to_string())],
+        );
+
+        assert_eq!(open.len(), 1);
+        assert_eq!(open.get("note-1"), Some(&"the-list-it-shows".to_string()));
     }
 }
 

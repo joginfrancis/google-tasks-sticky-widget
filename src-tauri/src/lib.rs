@@ -266,6 +266,10 @@ pub fn run() {
                 // better home than an exception nobody could see.
                 let _ = api;
                 win.state::<notes::NoteRegistry>().remove(win.label());
+                // Closing is the one thing that does mean "not part of the
+                // arrangement any more", including for a note that was only
+                // waiting for its list to sync.
+                notes::undefer_note(win.label());
                 notes::persist_open_notes(win.app_handle());
                 win.state::<sync::SyncManager>()
                     .refresh_lists(win.app_handle());
