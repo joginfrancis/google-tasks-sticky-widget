@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { isMainNote } from "../lib/window";
+import { getAllWindows } from "@tauri-apps/api/window";
+import { pickChecker, windowLabel } from "../lib/window";
 
 /**
  * Checking for, and installing, a new version.
@@ -10,8 +11,9 @@ import { isMainNote } from "../lib/window";
  * new version is offered on a strip the user can ignore. A widget that
  * interrupts you to talk about itself is a widget you close.
  *
- * Only the main note checks. Four notes are four webviews of the same app, and
- * four simultaneous downloads of the same installer would be absurd.
+ * Exactly one note checks - see `pickChecker`, which decides which. It used to
+ * be whichever window was labelled `main`, and a restored arrangement contains
+ * no such window, so on a desk with notes open nothing ever checked.
  */
 const CHECK_DELAY_MS = 20_000;
 
@@ -27,19 +29,23 @@ export function useUpdate() {
   const [update, setUpdate] = useState<Update | null>(null);
 
   useEffect(() => {
-    if (!isMainNote()) return;
-
     let cancelled = false;
-    const timer = window.setTimeout(() => {
-      check()
-        .then((found) => {
-          if (cancelled || !found) return;
-          setUpdate(found);
-          setState({ phase: "available", version: found.version });
-        })
+    const timer = window.setTimeout(async () => {
+      try {
+        // Asked for now rather than at mount: the arrangement is still being
+        // rebuilt when the first note's effect runs, so a list taken then
+        // would be missing the notes that open after it.
+        const labels = (await getAllWindows()).map((w) => w.label);
+        if (cancelled || pickChecker(labels) !== windowLabel()) return;
+
+        const found = await check();
+        if (cancelled || !found) return;
+        setUpdate(found);
+        setState({ phase: "available", version: found.version });
+      } catch {
         // An update check failing is not the user's problem: no network, no
         // release yet, a GitHub hiccup. Stay silent and try again next launch.
-        .catch(() => {});
+      }
     }, CHECK_DELAY_MS);
 
     return () => {
