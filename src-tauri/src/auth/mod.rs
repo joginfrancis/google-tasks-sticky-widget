@@ -61,12 +61,59 @@ impl AuthState {
                 self.cache.store(access);
                 Ok(value)
             }
-            Err(message) => {
-                // A refresh token can die on us: revoked from the Google account
-                // page, six months unused, or pushed out by the 100-token cap.
-                // All of them mean the same thing — sign in again.
-                log::warn!("access token refresh failed: {message}");
-                Err(AuthError::RefreshFailed(message))
+            // A refresh token can die on us: revoked from the Google account
+            // page, six months unused, or pushed out by the 100-token cap.
+            // Those mean sign in again.
+            Err(err) if err.is_rejection() => {
+                log::warn!("google refused the refresh token: {}", err.message());
+                Err(AuthError::RefreshFailed(err.into_message()))
+            }
+            // Not reaching Google is weather, not a verdict. It used to be
+            // treated as the same thing, which is how a sleeping laptop lost
+            // its session while the credential sat valid on disk.
+            Err(err) => {
+                log::warn!("could not refresh the access token: {}", err.message());
+                Err(AuthError::Offline(err.into_message()))
+            }
+        }
+    }
+
+    /// Whether a 401 from the Tasks API really means the sign-in is gone.
+    ///
+    /// A 401 on its own does not: the cached access token may simply have gone
+    /// stale while the machine slept. The grant is dead only if Google refuses
+    /// to mint a new token from it - and if Google cannot be reached to ask,
+    /// the honest answer is "don't know", which must not cost a session.
+    ///
+    /// Refreshes on the way past, so a recovered token is kept rather than
+    /// thrown away and asked for again.
+    pub fn refresh_token_is_dead(&self) -> bool {
+        self.cache.clear();
+
+        match tokens::load_refresh_token() {
+            Ok(Some(refresh)) => match flow::refresh_access_token(&refresh) {
+                Ok(access) => {
+                    self.cache.store(access);
+                    false
+                }
+                Err(err) => {
+                    if !err.is_rejection() {
+                        log::warn!(
+                            "could not check the sign-in after a 401: {}",
+                            err.message()
+                        );
+                    }
+                    err.is_rejection()
+                }
+            },
+            // Nothing stored: genuinely not connected.
+            Ok(None) => true,
+            // The credential store is unreadable. That is not evidence that
+            // the user signed out, and treating it as such would clear a
+            // session over a transient Credential Manager hiccup.
+            Err(err) => {
+                log::warn!("could not read the saved sign-in: {err}");
+                false
             }
         }
     }
@@ -76,6 +123,8 @@ impl AuthState {
 pub enum AuthError {
     NotConnected,
     RefreshFailed(String),
+    /// Google could not be reached. The sign-in is intact.
+    Offline(String),
     Storage(String),
 }
 
@@ -85,6 +134,10 @@ impl AuthError {
             AuthError::NotConnected => "Connect Google to see your tasks.".into(),
             AuthError::RefreshFailed(_) => {
                 "Google access expired. Reconnect in Settings.".into()
+            }
+            AuthError::Offline(_) => {
+                "Can't reach Google. Your tasks will sync when the connection is back."
+                    .into()
             }
             AuthError::Storage(_) => {
                 "Could not read your saved Google sign-in. Reconnect in Settings."

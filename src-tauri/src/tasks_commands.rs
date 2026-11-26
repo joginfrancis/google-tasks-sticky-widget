@@ -60,11 +60,25 @@ fn client(app: &AppHandle) -> Result<TasksClient, String> {
     TasksClient::new(token).map_err(|e| e.user_message())
 }
 
-/// Refresh-once-then-give-up on 401, per ARCHITECTURE §4.4. A second failure
-/// means the grant is genuinely gone, so we stop rather than loop.
+/// Refresh-once-then-give-up on 401, per ARCHITECTURE §4.4. This is the
+/// "once"; the giving up now requires Google to have actually said so.
+///
+/// A 401 used to end the session by itself. But the Tasks API answers 401 for
+/// a stale access token too, and the refresh that would have renewed it fails
+/// with no network - so a laptop waking before its Wi-Fi showed the connect
+/// screen while a valid refresh token sat in Credential Manager, with nothing
+/// in the log to say why. It came back on its own once the network did, which
+/// is the clearest evidence that nothing was ever lost.
 fn on_auth_lost(app: &AppHandle) {
+    let auth = app.state::<AuthState>();
+
+    if !auth.refresh_token_is_dead() {
+        log::info!("401 from the tasks api, but the sign-in still works; keeping it");
+        return;
+    }
+
     log::warn!("google access lost; returning to the connect prompt");
-    app.state::<AuthState>().cache.clear();
+    auth.cache.clear();
     let _ = app.emit("auth:changed", false);
 }
 

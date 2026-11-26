@@ -89,7 +89,8 @@ where
         return Err("Sign-in could not be verified. Please try again.".into());
     }
 
-    let response = exchange_code(&config, &code, &pkce.verifier, &redirect_uri)?;
+    let response = exchange_code(&config, &code, &pkce.verifier, &redirect_uri)
+        .map_err(|err| err.into_message())?;
 
     let refresh_token = response.refresh_token.clone();
     if let Some(token) = &refresh_token {
@@ -128,7 +129,7 @@ fn exchange_code(
     code: &str,
     verifier: &str,
     redirect_uri: &str,
-) -> Result<TokenResponse, String> {
+) -> Result<TokenResponse, TokenError> {
     post_token(token_form(
         config,
         vec![
@@ -140,8 +141,56 @@ fn exchange_code(
     ))
 }
 
-pub fn refresh_access_token(refresh_token: &str) -> Result<AccessToken, String> {
-    let config = ClientConfig::load()?;
+/// Why a call to Google's token endpoint failed.
+///
+/// The distinction that matters is whether Google answered at all. A request
+/// that never left the machine says nothing about the grant, and treating it
+/// as a dead sign-in is what put the connect screen in front of a refresh
+/// token sitting perfectly valid in Credential Manager - every time a laptop
+/// woke up before its network did.
+#[derive(Debug)]
+pub enum TokenError {
+    /// Never reached Google: no route, DNS, TLS, timeout. Says nothing about
+    /// the grant, so the only correct response is to try again later.
+    Unreachable(String),
+    /// Google answered and refused the grant. Signing in again is the only
+    /// way back.
+    Rejected(String),
+    /// Google answered with something unusable - a 5xx, or a body that did
+    /// not parse. Not evidence against the grant either.
+    Unexpected(String),
+}
+
+impl TokenError {
+    pub fn message(&self) -> &str {
+        match self {
+            TokenError::Unreachable(m) | TokenError::Rejected(m) | TokenError::Unexpected(m) => m,
+        }
+    }
+
+    pub fn into_message(self) -> String {
+        match self {
+            TokenError::Unreachable(m) | TokenError::Rejected(m) | TokenError::Unexpected(m) => m,
+        }
+    }
+
+    /// Whether Google itself said the grant is gone. Only this justifies
+    /// sending the user back to the connect screen.
+    pub fn is_rejection(&self) -> bool {
+        matches!(self, TokenError::Rejected(_))
+    }
+}
+
+impl std::fmt::Display for TokenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.message())
+    }
+}
+
+impl std::error::Error for TokenError {}
+
+pub fn refresh_access_token(refresh_token: &str) -> Result<AccessToken, TokenError> {
+    let config = ClientConfig::load().map_err(TokenError::Unexpected)?;
 
     let response = post_token(token_form(
         &config,
@@ -154,23 +203,36 @@ pub fn refresh_access_token(refresh_token: &str) -> Result<AccessToken, String> 
     Ok(AccessToken::new(response.access_token, response.expires_in))
 }
 
-fn post_token(form: Vec<(&str, String)>) -> Result<TokenResponse, String> {
-    let client = http_client()?;
+fn post_token(form: Vec<(&str, String)>) -> Result<TokenResponse, TokenError> {
+    let client = http_client().map_err(TokenError::Unexpected)?;
 
     let response = client
         .post(TOKEN_ENDPOINT)
         .form(&form)
         .send()
-        .map_err(|e| format!("Could not reach Google to complete sign-in: {}", redact(e)))?;
+        .map_err(|e| {
+            TokenError::Unreachable(format!(
+                "Could not reach Google to complete sign-in: {}",
+                redact(e)
+            ))
+        })?;
 
     let status = response.status();
-    let body = response
-        .text()
-        .map_err(|e| format!("Google's reply could not be read: {}", redact(e)))?;
+    let body = response.text().map_err(|e| {
+        TokenError::Unexpected(format!("Google's reply could not be read: {}", redact(e)))
+    })?;
 
     if status.is_success() {
-        return serde_json::from_str(&body)
-            .map_err(|_| "Google's reply was not in the expected format.".to_string());
+        return serde_json::from_str(&body).map_err(|_| {
+            TokenError::Unexpected("Google's reply was not in the expected format.".to_string())
+        });
+    }
+
+    // Google's own trouble, not a verdict on the grant. Retrying is right.
+    if status.is_server_error() {
+        return Err(TokenError::Unexpected(format!(
+            "Google is having trouble ({status}). Your tasks will sync when it recovers."
+        )));
     }
 
     // The body can echo request parameters, so surface only the error code.
@@ -186,7 +248,7 @@ fn post_token(form: Vec<(&str, String)>) -> Result<TokenResponse, String> {
 
     log::warn!("token endpoint returned {status}: {code}");
 
-    Err(match code {
+    Err(TokenError::Rejected(match code {
         "invalid_grant" => {
             "Your Google sign-in has expired. Connect again to continue.".into()
         }
@@ -197,7 +259,7 @@ fn post_token(form: Vec<(&str, String)>) -> Result<TokenResponse, String> {
         }
         _ if description.is_empty() => format!("Google rejected the sign-in ({code})."),
         _ => format!("Google rejected the sign-in ({code}): {description}"),
-    })
+    }))
 }
 
 /// Best-effort. ARCHITECTURE §4.4: local credentials are deleted whether or not

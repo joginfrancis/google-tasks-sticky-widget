@@ -14,6 +14,9 @@ use std::time::Duration;
 /// The browser tab is a one-shot; if the user wanders off, stop waiting.
 const TIMEOUT: Duration = Duration::from_secs(300);
 
+/// How often to look for a connection while waiting out the deadline.
+const POLL: Duration = Duration::from_millis(200);
+
 /// Refuse absurd request lines rather than reading unbounded input from a
 /// socket anything on the machine can connect to.
 const MAX_REQUEST_LINE: u64 = 8 * 1024;
@@ -54,25 +57,42 @@ impl Loopback {
     /// isn't the OAuth redirect is ignored and the listener keeps waiting rather
     /// than aborting the sign-in.
     pub fn wait_for_callback(self) -> Result<CallbackResult, String> {
+        self.wait_for_callback_within(TIMEOUT)
+    }
+
+    /// The deadline is honoured even when nothing ever connects.
+    ///
+    /// This used to loop over `incoming()`, which blocks until a connection
+    /// arrives, and test the deadline only afterwards. Closing the browser tab
+    /// before Google redirected meant nothing ever connected, so the check
+    /// never ran: the thread waited for ever, `finish()` was never called, and
+    /// every later attempt was refused with "a sign-in is already in progress"
+    /// until the app was restarted. The timeout existed for exactly this case
+    /// and was unreachable in it.
+    pub fn wait_for_callback_within(self, timeout: Duration) -> Result<CallbackResult, String> {
         self.listener
-            .set_nonblocking(false)
+            .set_nonblocking(true)
             .map_err(|e| format!("Listener configuration failed: {e}"))?;
 
-        let deadline = std::time::Instant::now() + TIMEOUT;
+        let deadline = std::time::Instant::now() + timeout;
 
-        for stream in self.listener.incoming() {
-            if std::time::Instant::now() > deadline {
-                return Err("Sign-in timed out. Try connecting again.".into());
-            }
-
-            let mut stream = match stream {
-                Ok(s) => s,
+        while std::time::Instant::now() < deadline {
+            let mut stream = match self.listener.accept() {
+                Ok((stream, _)) => stream,
+                Err(ref err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(POLL);
+                    continue;
+                }
                 Err(err) => {
                     log::debug!("ignoring failed loopback connection: {err}");
                     continue;
                 }
             };
 
+            // The accepted socket inherits the listener's non-blocking flag on
+            // some platforms, and the reads below are blocking ones with their
+            // own timeout.
+            let _ = stream.set_nonblocking(false);
             let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
 
             match read_query(&mut stream) {
@@ -92,7 +112,30 @@ impl Loopback {
             }
         }
 
-        Err("The sign-in listener closed unexpectedly.".into())
+        Err("Sign-in timed out. Try connecting again.".into())
+    }
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+
+    /// The regression: a tab closed before Google redirects means nothing ever
+    /// connects. The wait has to end by itself, or the sign-in stays "in
+    /// progress" for the life of the process and the button never works again.
+    #[test]
+    fn an_abandoned_sign_in_gives_up_instead_of_waiting_for_ever() {
+        let loopback = Loopback::bind().expect("bind");
+        let started = std::time::Instant::now();
+
+        let result = loopback.wait_for_callback_within(Duration::from_millis(400));
+
+        assert!(result.is_err(), "nothing connected, so this cannot succeed");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "took {:?}; the deadline was not honoured",
+            started.elapsed()
+        );
     }
 }
 
