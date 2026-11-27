@@ -56,6 +56,18 @@ const BEAT_DEADLINE: Duration = Duration::from_secs(5);
 /// rather than merely busy. Nothing short of sleep loses a whole minute.
 const SLEEP_GAP: Duration = Duration::from_secs(60);
 
+/// How long a gate probe waits before concluding that a blocking call made
+/// now would not come back.
+///
+/// Shorter than `BEAT_DEADLINE`. The watchdog is reporting and can afford to
+/// be certain before it accuses; a gate is deciding, and a slow decision is
+/// itself part of the cost it exists to avoid.
+pub const GATE_DEADLINE: Duration = Duration::from_secs(3);
+
+/// What a watcher waits between polls once the loop has stopped answering.
+/// Ten times the lively interval.
+pub const STALLED_POLL: Duration = Duration::from_secs(30);
+
 /* -- what the watchdog concludes ------------------------------------------ */
 
 /// The state of the event loop as of one beat.
@@ -380,6 +392,98 @@ pub fn watch_event_loop(app: &AppHandle) {
     });
 }
 
+/* -- the gate ------------------------------------------------------------- */
+
+/// Whether the event loop is answering, decided within `deadline`.
+///
+/// The watchdog's probe put to a different use: the watchdog asks in order to
+/// write it down, and this asks in order to decide.
+///
+/// What it is for. The calls a background thread makes into the event loop —
+/// `available_monitors`, `outer_position`, `set_position` — block on a reply
+/// with no deadline of their own: `tauri-runtime-wry`'s `getter!` macro ends
+/// in a bare `recv()`. That deadline cannot be added from out here, in a
+/// dependency's macro. What can be added is this: a bounded question asked
+/// first, so the unbounded one is only asked when there is reason to believe
+/// it will come back.
+///
+/// What it is not. It is not a guarantee — the loop could stall in the moment
+/// between this answer and the call it waves through. It is a guarantee about
+/// the case that has actually bitten: a stall that lasts, which is every
+/// freeze seen so far. Through one of those, every probe fails and the
+/// unbounded call is never made at all.
+///
+/// Holds no lock and touches no state, so it cannot become part of the
+/// deadlock it is testing for.
+pub fn loop_is_answering(app: &AppHandle, deadline: Duration) -> bool {
+    let (tx, rx) = std::sync::mpsc::channel();
+    if app
+        .run_on_main_thread(move || {
+            let _ = tx.send(());
+        })
+        .is_err()
+    {
+        // The runtime is going away. Nothing more should be handed to it.
+        return false;
+    }
+    rx.recv_timeout(deadline).is_ok()
+}
+
+/// What one gated tick means for a watcher.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pacing {
+    /// Answering, as it was before. Carry on at the normal interval.
+    Lively,
+    /// Has just stopped answering. Worth one line, then back off.
+    JustStalled,
+    /// Still not answering. Back off, and say nothing — it was already said.
+    StillStalled,
+    /// Answering again after a stall. Worth one line.
+    JustRecovered,
+}
+
+impl Pacing {
+    /// Whether a tick with this pacing may make a blocking call.
+    pub fn may_ask(self) -> bool {
+        matches!(self, Pacing::Lively | Pacing::JustRecovered)
+    }
+}
+
+/// A watcher's memory of whether the loop was answering last time.
+///
+/// Separated out because the property worth guaranteeing is about repetition
+/// rather than timing: exactly one line when a stall begins and one when it
+/// ends. A half-hour stall polled every three seconds would otherwise write
+/// six hundred identical lines and bury the arrangement data on either side
+/// of it — the log would record the freeze by destroying the evidence around
+/// it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Pace {
+    stalled: bool,
+}
+
+impl Pace {
+    pub const fn new() -> Self {
+        Self { stalled: false }
+    }
+
+    /// Records this tick's answer and says what it means.
+    pub fn observe(&mut self, answering: bool) -> Pacing {
+        match (self.stalled, answering) {
+            (false, true) => Pacing::Lively,
+            (false, false) => {
+                self.stalled = true;
+                Pacing::JustStalled
+            }
+            (true, false) => Pacing::StillStalled,
+            (true, true) => {
+                self.stalled = false;
+                Pacing::JustRecovered
+            }
+        }
+    }
+}
+
 /* -- the report ----------------------------------------------------------- */
 
 /// Where the log files live, for the button that opens the folder.
@@ -644,5 +748,69 @@ mod activity_tests {
         assert!(in_flight_now().contains(name));
         drop(outer);
         assert!(!in_flight_now().contains(name));
+    }
+}
+
+#[cfg(test)]
+mod pace_tests {
+    use super::*;
+
+    #[test]
+    fn a_lively_loop_says_nothing_and_keeps_asking() {
+        let mut pace = Pace::new();
+        for _ in 0..100 {
+            let pacing = pace.observe(true);
+            assert_eq!(pacing, Pacing::Lively);
+            assert!(pacing.may_ask());
+        }
+    }
+
+    #[test]
+    fn a_stall_is_announced_once_however_long_it_lasts() {
+        let mut pace = Pace::new();
+        assert_eq!(pace.observe(false), Pacing::JustStalled);
+        // Half an hour of three-second ticks. The log must not grow by six
+        // hundred lines: the freeze would bury its own surroundings.
+        for _ in 0..600 {
+            assert_eq!(pace.observe(false), Pacing::StillStalled);
+        }
+    }
+
+    #[test]
+    fn nothing_is_asked_of_a_loop_that_is_not_answering() {
+        let mut pace = Pace::new();
+        assert!(!pace.observe(false).may_ask());
+        assert!(!pace.observe(false).may_ask());
+    }
+
+    #[test]
+    fn recovery_is_announced_once_and_asking_resumes() {
+        let mut pace = Pace::new();
+        pace.observe(false);
+        pace.observe(false);
+
+        let back = pace.observe(true);
+        assert_eq!(back, Pacing::JustRecovered);
+        assert!(back.may_ask(), "a recovered loop may be asked straight away");
+
+        assert_eq!(pace.observe(true), Pacing::Lively);
+    }
+
+    #[test]
+    fn each_episode_is_announced_afresh() {
+        let mut pace = Pace::new();
+        for _ in 0..3 {
+            assert_eq!(pace.observe(false), Pacing::JustStalled);
+            assert_eq!(pace.observe(true), Pacing::JustRecovered);
+        }
+    }
+
+    #[test]
+    fn a_gate_decides_sooner_than_the_watchdog_accuses() {
+        assert!(
+            GATE_DEADLINE < BEAT_DEADLINE,
+            "a gate that waited as long as the watchdog would cost more than it saves"
+        );
+        assert!(GATE_DEADLINE < SLEEP_GAP);
     }
 }

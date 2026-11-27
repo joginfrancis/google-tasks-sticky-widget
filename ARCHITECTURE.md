@@ -414,3 +414,85 @@ Phase 0 (2026-09-05) closed the API questions — see
    `default-features = false` and features `["v1", "windows-native-keyring-store"]`.
    Default features drag in the whole Linux secret-service stack, so disabling
    them matters. A real round-trip test against Credential Manager passes.
+
+## 12. The event loop, and why the window freezes
+
+This is the most expensive thing in the codebase to re-derive. It has been
+re-derived three times.
+
+### 12.1 Every window call from a background thread is a blocking round-trip
+
+`AppHandle::available_monitors`, `Window::outer_position`, `set_position`,
+`set_size`, `is_minimized` — none of these do the work themselves. Each posts a
+message to the event loop thread and waits for the reply. In
+`tauri-runtime-wry` 2.11.4 the waiting is done by the `getter!` macro, which
+ends in a bare `rx.recv()`.
+
+`recv()`, not `recv_timeout()`. **There is no deadline.** A background thread
+that asks a stopped event loop for the monitor list waits there for ever, and
+the deadline cannot be added from outside the crate.
+
+### 12.2 How that becomes a frozen window
+
+Three things coincide when the machine resumes from sleep:
+
+1. The event loop is briefly unresponsive while Windows reinitialises graphics.
+2. The display set changes, because monitors come back one at a time.
+3. `watch_screens` polls `available_monitors` every three seconds, and the
+   display change fires the heavy path: `log_arrangement`, `screen_signature`
+   and `place_windows`, dozens more unbounded round-trips.
+
+A background thread blocks on 12.1. It is holding `PLACE_LOCK`, or the settings
+mutex, or both. The main thread then needs what that thread holds, and neither
+moves again. After about five seconds of not pumping messages, Windows hides
+the real window and substitutes a `Ghost`-class one: a default title bar, a
+blank white client area, and "(Not Responding)" on the end of the title. Since
+every note window is built with `.decorations(false)`, a note with a title bar
+is always a ghost, never the app.
+
+### 12.3 The rule
+
+**No background thread may make an unbounded call into the event loop without
+asking first.**
+
+`diagnostics::loop_is_answering` is the ask: `run_on_main_thread` with a
+closure that sends an empty message back, and a `recv_timeout`. It holds no
+lock and touches no state, so it cannot join the deadlock it tests for.
+
+It is not airtight — the loop can stall between the answer and the call it
+waves through. It is airtight against the case that has actually bitten: a
+stall lasting seconds or minutes, through which every probe fails and the
+unbounded call is never made.
+
+Current gates:
+
+| Caller | Deadline | On no answer |
+| --- | --- | --- |
+| `watch_screens` poll | `GATE_DEADLINE` (3s) | skip the poll, back off to `STALLED_POLL` (30s) |
+| `watch_screens` heavy path | `GATE_DEADLINE` (3s) | hold the change — `known` is left stale so the next tick retries |
+| `place_windows` thread | `PLACEMENT_GATE` (10s) | abandon the arrangement, clear `LAYOUT_BUSY`, still emit `layout:settled` |
+| `wait_for_placement` | `PLACEMENT_PATIENCE` (20s) | proceed and log, rather than inherit the stall |
+
+More patience where giving up costs more. A skipped poll costs one poll; an
+abandoned placement costs an arrangement already computed, and leaves the notes
+wherever Windows dropped them — visible and usable, which beats a dead window.
+
+An abandoned placement must still emit `layout:settled`. Settings waits on that
+event before reading positions back, so returning without it moves the hang up
+a floor instead of fixing it.
+
+### 12.4 Why the watchdog runs where it does
+
+A hang is the one fault that cannot report itself: the thread that writes the
+log is the thread that stops. So `diagnostics::watch_event_loop` runs on its
+own thread and keeps writing while the main thread is stuck, and
+`diagnostics::in_flight` names which blocking call was outstanding when it
+stalled — the line that turns "it froze" into a location.
+
+A wall-clock gap over `SLEEP_GAP` between beats is logged as suspension, not
+counted as a stall. Anything measured across a sleep is measuring the sleep.
+
+`Pace` exists so that a stall is announced once rather than once per poll. A
+half-hour stall at three-second intervals would otherwise write six hundred
+identical lines and bury the arrangement data on either side of it — recording
+the freeze by destroying the evidence around it.

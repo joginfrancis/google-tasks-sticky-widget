@@ -17,6 +17,7 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_window_state::{AppHandleExt, StateFlags, WindowExt};
 
+use crate::diagnostics::Pacing;
 use crate::settings::{AppState, WindowLayer};
 
 /// The window declared in tauri.conf.json. It shows whichever list is selected
@@ -501,9 +502,36 @@ fn deferred_notes() -> Vec<(String, String)> {
 /// and redocking delivers exactly that pair of changes.
 static PLACE_LOCK: Mutex<()> = Mutex::new(());
 
-/// Blocks until any placement already running has finished.
-fn wait_for_placement() {
-    let _turn = PLACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+/// How long to wait for a placement already running to finish.
+///
+/// There is a limit because the thread holding `PLACE_LOCK` is making blocking
+/// calls into the event loop, so a stalled loop means a held lock, and a plain
+/// `lock()` here would spread that stall to this thread too — quietly, with
+/// nothing in the log to say which of the two was the cause.
+const PLACEMENT_PATIENCE: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// Waits for any placement already running to finish, up to a point.
+///
+/// Returns whether it finished. A `false` means the measurements the caller is
+/// about to take will be taken halfway through someone else's moves, which is
+/// worth knowing and worth saying; it does not mean the caller should stop,
+/// because stopping leaves the notes wherever Windows dropped them.
+fn wait_for_placement() -> bool {
+    let until = std::time::Instant::now() + PLACEMENT_PATIENCE;
+    loop {
+        match PLACE_LOCK.try_lock() {
+            Ok(_turn) => return true,
+            // Poisoned means the holder panicked, so there is no placement
+            // running: nothing to wait for.
+            Err(std::sync::TryLockError::Poisoned(_)) => return true,
+            Err(std::sync::TryLockError::WouldBlock) => {
+                if std::time::Instant::now() >= until {
+                    return false;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        }
+    }
 }
 
 /// Set while a layout operation is moving windows itself.
@@ -1300,6 +1328,29 @@ fn place_windows(
         // note. If the loop stops mid-arrangement this is what it stopped in.
         let _busy = crate::diagnostics::in_flight("placing windows");
 
+        // And this thread holds PLACE_LOCK while it makes them. Starting dozens
+        // of unbounded calls into a loop that is not answering would wedge this
+        // thread and the lock together, so the arrangement is given up instead
+        // — more patiently than elsewhere, because by here the work has been
+        // computed and throwing it away costs something.
+        //
+        // What is lost is the arrangement: the notes stay where Windows left
+        // them, visible and usable, and the log says why. What is kept is an
+        // app that still answers, which is the trade worth making.
+        if !crate::diagnostics::loop_is_answering(&handle, PLACEMENT_GATE) {
+            log::error!(
+                "layout: the event loop has not answered in {}s; abandoning the placement of {} window(s) rather than waiting on it",
+                PLACEMENT_GATE.as_secs(),
+                moves.len()
+            );
+            LAYOUT_BUSY.store(false, Ordering::Relaxed);
+            // Settings waits on this event before it reads positions back.
+            // Giving up without it would leave that wait unanswered for ever,
+            // which is the hang this is here to avoid, moved one floor up.
+            let _ = handle.emit("layout:settled", ());
+            return;
+        }
+
         for (label, pos, size) in &moves {
             let Some(window) = handle.get_webview_window(label) else {
                 continue;
@@ -1420,6 +1471,12 @@ fn place_windows(
 const SCREEN_POLL: std::time::Duration = std::time::Duration::from_secs(3);
 const SCREEN_SETTLE: std::time::Duration = std::time::Duration::from_secs(2);
 
+/// How long a placement waits for the event loop before giving up on itself.
+///
+/// More patient than `GATE_DEADLINE`: a gate that turns a poll away costs one
+/// skipped poll, and this one costs an arrangement already measured.
+const PLACEMENT_GATE: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// Watches for displays coming and going, and puts the notes back.
 ///
 /// Unplugging a monitor makes Windows drag every note on it onto another
@@ -1430,7 +1487,10 @@ const SCREEN_SETTLE: std::time::Duration = std::time::Duration::from_secs(2);
 /// finished rearranging things itself.
 ///
 /// Polled rather than event-driven: Tauri exposes no display-change event, and
-/// a count of monitor names every three seconds costs nothing.
+/// a count of monitor names every three seconds costs nothing — except when
+/// the event loop has stopped answering, when it costs this thread everything.
+/// So each poll is gated on a bounded probe first, and backs off while the
+/// answer is no. See `diagnostics::loop_is_answering`.
 pub fn watch_screens(app: &AppHandle) {
     let app = app.clone();
 
@@ -1456,9 +1516,39 @@ pub fn watch_screens(app: &AppHandle) {
         };
 
         let mut known = names(&app);
+        let mut pace = crate::diagnostics::Pace::new();
+        let mut poll = SCREEN_POLL;
 
         loop {
-            std::thread::sleep(SCREEN_POLL);
+            std::thread::sleep(poll);
+
+            // Ask a bounded question before asking an unbounded one. Every
+            // call below waits on the event loop with no deadline of its own,
+            // so a loop that has stopped answering must not be asked at all:
+            // this thread would stop here for as long as the stall lasted,
+            // holding whatever it holds. Waking the machine is when a stall
+            // and a display change arrive together.
+            let pacing = pace.observe(crate::diagnostics::loop_is_answering(
+                &app,
+                crate::diagnostics::GATE_DEADLINE,
+            ));
+
+            // Said once per episode, either way. See `Pace`.
+            match pacing {
+                Pacing::JustStalled => log::warn!(
+                    "screens: the event loop is not answering; not asking it for the display list until it does"
+                ),
+                Pacing::JustRecovered => {
+                    log::info!("screens: the event loop is answering again")
+                }
+                Pacing::Lively | Pacing::StillStalled => {}
+            }
+
+            if !pacing.may_ask() {
+                poll = crate::diagnostics::STALLED_POLL;
+                continue;
+            }
+            poll = SCREEN_POLL;
 
             let current = names(&app);
             if current == known {
@@ -1470,16 +1560,39 @@ pub fn watch_screens(app: &AppHandle) {
                 known.len(),
                 current.len()
             );
-            known = current;
-
             // Let Windows finish moving things before moving them back.
             std::thread::sleep(SCREEN_SETTLE);
+
+            // That settle is the dangerous moment. Waking the machine delivers
+            // a display change *and* stalls the loop, and what follows here is
+            // the heavy path: dozens of blocking round-trips through
+            // `log_arrangement`, `screen_signature` and `place_windows`, each
+            // one unbounded. Starting it into a stalled loop is how a slow
+            // resume becomes a dead window.
+            //
+            // `known` is deliberately still the old list. A change that cannot
+            // be acted on now is not spent: the next tick sees it again.
+            if !crate::diagnostics::loop_is_answering(&app, crate::diagnostics::GATE_DEADLINE) {
+                log::warn!(
+                    "screens: a display change arrived while the event loop was not answering; holding it until the loop is back"
+                );
+                pace.observe(false);
+                poll = crate::diagnostics::STALLED_POLL;
+                continue;
+            }
+
+            known = current;
 
             // And let any placement already in flight finish. Undocking and
             // redocking in quick succession delivers two changes, and the
             // measurements below are worthless taken halfway through the
             // first one's moves.
-            wait_for_placement();
+            if !wait_for_placement() {
+                log::warn!(
+                    "screens: a placement is still running after {}s; measuring anyway",
+                    PLACEMENT_PATIENCE.as_secs()
+                );
+            }
 
             // What Windows itself did with the notes, before anything here
             // touches them. The heap it leaves is the starting point every
