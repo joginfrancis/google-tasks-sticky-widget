@@ -481,3 +481,49 @@ pub fn disconnect_google(app: AppHandle) -> Result<(), String> {
     let _ = app.emit("auth:changed", false);
     delete_result
 }
+
+/* -- Diagnostics ---------------------------------------------------------- */
+
+/// What the Troubleshooting section says about the run before this one.
+///
+/// A freeze that the user ends with Task Manager leaves nothing behind in the
+/// log — the line that would have said so is exactly the line the frozen
+/// process could not write. The mark on disk is written at startup and only
+/// cleared on the way out, so its presence next launch *is* the evidence.
+#[tauri::command]
+pub fn last_session_summary() -> String {
+    crate::diagnostics::last_session().summary()
+}
+
+/// Opens the folder holding the log files.
+///
+/// A path in the panel would be a path to retype. The folder is opened
+/// directly, and nothing about which folder it is comes from the frontend —
+/// see the note at the top of this file.
+#[tauri::command]
+pub fn open_log_folder(app: AppHandle) -> Result<(), String> {
+    let dir = crate::diagnostics::log_dir(&app).ok_or("No log folder on this system.")?;
+    tauri_plugin_opener::open_path(&dir, None::<&str>)
+        .map_err(|e| format!("Could not open {}: {e}", dir.display()))
+}
+
+/// The report as text, for the user to read before it goes anywhere.
+#[tauri::command]
+pub fn diagnostic_report(app: AppHandle) -> String {
+    crate::diagnostics::report(&app, 400)
+}
+
+/// Writes the report beside the logs and returns where it went.
+///
+/// Saved rather than copied when the report is long: a clipboard full of log
+/// lines is awkward to hand to anyone, and a file can be attached.
+#[tauri::command]
+pub fn save_diagnostic_report(app: AppHandle) -> Result<String, String> {
+    let dir = crate::diagnostics::log_dir(&app).ok_or("No log folder on this system.")?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
+    let path = dir.join("diagnostic-report.txt");
+    std::fs::write(&path, crate::diagnostics::report(&app, 2000))
+        .map_err(|e| format!("Could not write {}: {e}", path.display()))?;
+    log::info!("diagnostics: report written to {}", path.display());
+    Ok(path.display().to_string())
+}

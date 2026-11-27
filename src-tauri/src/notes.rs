@@ -1296,6 +1296,10 @@ fn place_windows(
         // keep out of them too.
         LAYOUT_BUSY.store(true, Ordering::Relaxed);
 
+        // Every move below is a blocking round-trip, and there are several per
+        // note. If the loop stops mid-arrangement this is what it stopped in.
+        let _busy = crate::diagnostics::in_flight("placing windows");
+
         for (label, pos, size) in &moves {
             let Some(window) = handle.get_webview_window(label) else {
                 continue;
@@ -1438,6 +1442,9 @@ pub fn watch_screens(app: &AppHandle) {
         wait_for_event_loop();
 
         let names = |app: &AppHandle| -> Vec<String> {
+            // Blocks on the event loop with no deadline of its own. Marked so
+            // that a stall can say this was what it was stuck in.
+            let _busy = crate::diagnostics::in_flight("screen watcher: available_monitors");
             let mut names: Vec<String> = app
                 .available_monitors()
                 .unwrap_or_default()
@@ -2396,6 +2403,7 @@ fn settled_on(app: &AppHandle, signature: &str) {
 /// Names rather than positions: a monitor keeps its name across unplugging,
 /// where its coordinates change the moment another one joins or leaves.
 pub fn screen_signature(app: &AppHandle) -> String {
+    let _busy = crate::diagnostics::in_flight("screen_signature: available_monitors");
     let mut names: Vec<String> = app
         .available_monitors()
         .unwrap_or_default()

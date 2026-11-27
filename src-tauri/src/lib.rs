@@ -5,6 +5,7 @@ pub mod auth;
 pub mod google;
 
 mod autostart;
+mod diagnostics;
 mod hotkey;
 mod notes;
 mod commands;
@@ -91,6 +92,10 @@ pub fn run() {
             commands::hide_to_tray,
             commands::quit_app,
             commands::ui_log,
+            commands::last_session_summary,
+            commands::open_log_folder,
+            commands::diagnostic_report,
+            commands::save_diagnostic_report,
             commands::set_list_color,
             commands::get_list_colors,
             commands::get_selected_task_list,
@@ -154,6 +159,10 @@ pub fn run() {
             );
             app.manage(auth::AuthState::default());
             app.manage(notes::NoteRegistry::default());
+
+            // Before anything else can fail: says whether the last run ended
+            // on purpose, and claims the mark for this one.
+            diagnostics::open_session(&handle);
 
             // A cache that cannot be opened must not stop the widget from
             // running — it degrades to network-only, which is survivable.
@@ -328,10 +337,19 @@ pub fn run() {
             tauri::RunEvent::Exit => {
                 log::info!("=== Sticky Widget stopped ===");
                 notes::restore_all_sizes(app);
+                // Reaching this line is what "ended cleanly" means. A frozen
+                // process never does, which is how the next launch can tell.
+                diagnostics::close_session(app);
             }
             // The event loop is pumping from here on, which is what the
             // background threads wait for before they ask it anything.
-            tauri::RunEvent::Ready => notes::mark_event_loop_ready(),
+            tauri::RunEvent::Ready => {
+                notes::mark_event_loop_ready();
+                // Started here rather than in setup: before the loop runs,
+                // every probe would miss and the log would open with a page
+                // of false alarms.
+                diagnostics::watch_event_loop(app);
+            }
             _ => {}
         });
 }

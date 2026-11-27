@@ -377,3 +377,22 @@
 .layout-says {
   min-height: 2.6em;
 }
+
+/* The diagnostic report, shown in the panel before it is sent anywhere.
+   Monospaced because it is columns of numbers, scrolled because it is long,
+   and capped in height so it cannot push the rest of the panel away. */
+.diagnostic-report {
+  max-height: 220px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--surface-sunken, rgba(0, 0, 0, 0.06));
+  color: var(--text-muted, inherit);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}

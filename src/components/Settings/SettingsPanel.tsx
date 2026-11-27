@@ -10,6 +10,7 @@ import type {
 } from "../../types";
 import { formatLastSynced } from "../../lib/date";
 import { report, type LayoutOutcome } from "../../lib/layout";
+import { Troubleshooting } from "./Troubleshooting";
 import "./SettingsPanel.css";
 
 interface Props {
@@ -232,6 +233,8 @@ export function SettingsPanel(props: Props) {
             ))}
           </div>
         </section>
+
+        <Troubleshooting />
 
         <section>
           <h2>About</h2>
